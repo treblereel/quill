@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.mcp.ReadOnlyToolNames;
+import org.treblereel.mcp.mcp.server.ReadOnlyToolNames;
 
 class ClaudePermissionConsentTest {
     @TempDir Path root;

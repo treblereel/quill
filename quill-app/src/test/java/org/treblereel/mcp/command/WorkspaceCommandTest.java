@@ -21,7 +21,7 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.QuillTopCommand;
-import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceLock;
@@ -40,7 +40,7 @@ class WorkspaceCommandTest {
         Captured result=execute("init","--project",project.toString());
         assertEquals(CommandLine.ExitCode.OK,result.exitCode(),result.stderr());
         assertTrue(ClaudeSettingsInstaller.areToolsAllowed(project,
-                org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+                org.treblereel.mcp.mcp.server.ReadOnlyToolNames.all()));
         String settings=Files.readString(project.resolve(".claude/settings.local.json"));
         assertFalse(settings.contains("Bash"));
         // One server rule allows every Quill tool, as the Codex registration approves them all.
@@ -63,7 +63,7 @@ class WorkspaceCommandTest {
         assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
         for (Path target : java.util.List.of(workspace, workspace.resolve("engine"))) {
             assertTrue(ClaudeSettingsInstaller.areToolsAllowed(target,
-                    org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+                    org.treblereel.mcp.mcp.server.ReadOnlyToolNames.all()));
         }
         assertEquals(CommandLine.ExitCode.OK,
                 execute("workspace", "clear", "--project", workspace.toString()).exitCode());

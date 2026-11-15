@@ -5,11 +5,11 @@
     "allPublicMethods": true
   },
   {
-    "name": "org.treblereel.mcp.mcp.QuillTools",
+    "name": "org.treblereel.mcp.mcp.tools.QuillTools",
     "allPublicMethods": true
   },
   {
-    "name": "org.treblereel.mcp.mcp.RouterTools",
+    "name": "org.treblereel.mcp.mcp.server.RouterTools",
     "allPublicMethods": true
   },
   {

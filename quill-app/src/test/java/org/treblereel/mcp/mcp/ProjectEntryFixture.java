@@ -3,8 +3,9 @@ package org.treblereel.mcp.mcp;
 import java.nio.file.Path;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.db.IndexGeneration;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
 
-final class ProjectEntryFixture implements org.junit.jupiter.api.extension.AfterEachCallback {
+public final class ProjectEntryFixture implements org.junit.jupiter.api.extension.AfterEachCallback {
     private final java.util.Queue<IndexGeneration> owners = new java.util.concurrent.ConcurrentLinkedQueue<>();
     @Override public synchronized void afterEach(org.junit.jupiter.api.extension.ExtensionContext context) {
         closed = true;
@@ -12,7 +13,7 @@ final class ProjectEntryFixture implements org.junit.jupiter.api.extension.After
         while ((generation = owners.poll()) != null) generation.close();
     }
     private boolean closed;
-    synchronized ProjectRegistry.ProjectEntry entry(String name, Path root, Jdbi database) {
+    public synchronized ProjectRegistry.ProjectEntry entry(String name, Path root, Jdbi database) {
         String file = database.withHandle(h -> h.createQuery("PRAGMA database_list")
                 .mapToMap().list().stream().filter(row -> "main".equals(row.get("name")))
                 .map(row -> (String) row.get("file")).findFirst().orElseThrow());

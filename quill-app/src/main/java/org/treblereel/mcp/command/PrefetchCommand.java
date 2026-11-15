@@ -10,7 +10,7 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.PrefetchContext;
+import org.treblereel.mcp.mcp.prefetch.PrefetchContext;
 import picocli.CommandLine.*;
 
 /** Read an existing index only. This hook never initializes MCP, runs builds or calls a provider. */
@@ -45,7 +45,7 @@ public final class PrefetchCommand implements Callable<Integer> {
                     // A session's first prompt that names nothing indexed still gets the project's shape once.
                     if(!delivered.has("_index_id") && "ready".equals(data.path("status").asText()) && data.path("facts").isEmpty()
                             && data.path("unavailable").isEmpty() && data.path("ambiguities").isEmpty())
-                        data.withArray("facts").add(org.treblereel.mcp.mcp.NameTargetPrefetch.projectFact(db,root));
+                        data.withArray("facts").add(org.treblereel.mcp.mcp.prefetch.NameTargetPrefetch.projectFact(db,root));
                 }
                 // shortcut: cache tracks stdout emission, not host acknowledgement; verify delivery in future CLI captures.
                 if(!data.path("index_id").asText().equals(delivered.path("_index_id").asText()))delivered.removeAll();
@@ -59,7 +59,7 @@ public final class PrefetchCommand implements Callable<Integer> {
                 }
                 data.set("facts",fresh);
                 if(!fresh.isEmpty() && "ready".equals(data.path("status").asText()))
-                    data.put("producer","quill.prefetch").put("instructions",org.treblereel.mcp.mcp.PrefetchRestatements.instructions(fresh));
+                    data.put("producer","quill.prefetch").put("instructions",org.treblereel.mcp.mcp.prefetch.PrefetchRestatements.instructions(fresh));
                 PrefetchContext.boundContext(data);
                 for(JsonNode fact:fresh){
                     ObjectNode identity=((ObjectNode)fact).deepCopy();identity.remove("_meta");

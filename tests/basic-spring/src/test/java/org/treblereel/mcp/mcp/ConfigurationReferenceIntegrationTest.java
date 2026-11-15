@@ -21,6 +21,8 @@ import org.junit.jupiter.api.io.CleanupMode;
 import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.db.IndexRepository;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.mcp.tools.QuillTools;
 
 class ConfigurationReferenceIntegrationTest {
 

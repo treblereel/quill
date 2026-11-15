@@ -33,7 +33,7 @@ class DoctorCommandTest {
         assertEquals("info", initial.get("claude_tool_permissions").path("status").asText());
         assertTrue(initial.get("claude_tool_permissions").path("action").asText().contains("permissions grant"));
         assertTrue(ClaudeSettingsInstaller.allowTools(project,
-                org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+                org.treblereel.mcp.mcp.server.ReadOnlyToolNames.all()));
         var granted = checksById(JSON.readTree(DoctorCommand.toJson(DoctorCommand.inspect(project))));
         assertEquals("pass", granted.get("claude_tool_permissions").path("status").asText());
         Path local = project.resolve(".claude/settings.local.json");

@@ -12,12 +12,12 @@ import org.treblereel.mcp.db.*;
 import org.treblereel.mcp.model.*;
 
 /** Real javac output feeds the same scanners and persistence contracts as production. */
-final class JavaEvidenceFixture {
-    static Jdbi index(Path root, String source) throws Exception {
+public final class JavaEvidenceFixture {
+    public static Jdbi index(Path root, String source) throws Exception {
         return index(root, Map.of("src/main/java/p/Fixture.java",source));
     }
     /** The compiler settings the Maven integration records, so source declarations resolve. */
-    static void writeCompilerSettings(Path root) throws Exception {
+    public static void writeCompilerSettings(Path root) throws Exception {
         var settings=new Properties();
         settings.setProperty("compilerSettingsProtocol","1");settings.setProperty("evidence","successful_mojo");
         settings.setProperty("sourceSet","main");settings.setProperty("release","17");
@@ -30,7 +30,7 @@ final class JavaEvidenceFixture {
         settings.setProperty("buildInput.sha256.0",SourceFileHashes.hash(root.resolve("pom.xml")));
         try(var writer=Files.newBufferedWriter(root.resolve("target/quill-java-main.properties"))){settings.store(writer,"fixture");}
     }
-    static Jdbi index(Path root, Map<String,String> sources) throws Exception {
+    public static Jdbi index(Path root, Map<String,String> sources) throws Exception {
         List<Path> sourceFiles=new ArrayList<>();
         for(var entry:sources.entrySet()){Path file=root.resolve(entry.getKey());Files.createDirectories(file.getParent());Files.writeString(file,entry.getValue());if(file.toString().endsWith(".java"))sourceFiles.add(file);}
         var roots=List.of(root.resolve("src/main/java"),root.resolve("src/test/java")).stream().filter(Files::isDirectory).toList();

@@ -1,0 +1,27 @@
+package org.treblereel.mcp.mcp.tools;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Tool {
+    String description();
+
+    /** Explicit query-only contract; new tools are not presumed safe to run without approval. */
+    boolean readOnly() default false;
+
+    /** Whether this tool returns a JSON object that should also be exposed as structured content. */
+    boolean structured() default false;
+
+    /** Optional identifier for a more specific output schema. */
+    String output() default "";
+
+    /**
+     * Whether tools/list advertises the tool. Unlisted tools stay callable by name and are
+     * discoverable through the router's search_tools.
+     */
+    boolean listed() default true;
+}

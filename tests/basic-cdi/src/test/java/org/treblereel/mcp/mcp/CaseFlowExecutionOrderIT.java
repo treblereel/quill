@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.index.ProjectIndexStore;
 import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.mcp.tools.QuillToolQueries;
 
 @Tag("e2e")
 class CaseFlowExecutionOrderIT {

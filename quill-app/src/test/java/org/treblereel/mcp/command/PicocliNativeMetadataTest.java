@@ -88,8 +88,8 @@ class PicocliNativeMetadataTest {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(manualConfig)) {
             assertNotNull(input);
             JsonNode entries = JSON.readTree(input);
-            for (String type : Set.of("org.treblereel.mcp.mcp.QuillTools",
-                    "org.treblereel.mcp.mcp.RouterTools")) {
+            for (String type : Set.of("org.treblereel.mcp.mcp.tools.QuillTools",
+                    "org.treblereel.mcp.mcp.server.RouterTools")) {
                 JsonNode entry = findCommand(entries, type);
                 assertTrue(entry.path("allPublicMethods").asBoolean());
                 assertFalse(entry.has("allDeclaredMethods"));

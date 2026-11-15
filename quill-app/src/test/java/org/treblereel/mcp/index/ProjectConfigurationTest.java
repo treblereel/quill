@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ProjectConfigurationTest {
 
     static {
-        ProjectConfiguration.useAgentsToolGuide(org.treblereel.mcp.mcp.CodexToolGuide::text);
+        ProjectConfiguration.useAgentsToolGuide(org.treblereel.mcp.mcp.server.CodexToolGuide::text);
     }
 
 

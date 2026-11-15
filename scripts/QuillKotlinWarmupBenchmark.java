@@ -1,4 +1,4 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.project;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,7 +13,7 @@ import org.treblereel.mcp.kotlin.KotlinWorkerClient;
 
 /** Measures the production JVM coordinator and external K2, excluding MCP transport/indexing.
  * Compile into a temporary directory with the app all.jar on the classpath, then run
- * org.treblereel.mcp.mcp.QuillKotlinWarmupBenchmark <generated-files> <samples> <output.json>.
+ * org.treblereel.mcp.mcp.project.QuillKotlinWarmupBenchmark <generated-files> <samples> <output.json>.
  * No foreground query is issued between saving and observing background completion.
  */
 public final class QuillKotlinWarmupBenchmark {

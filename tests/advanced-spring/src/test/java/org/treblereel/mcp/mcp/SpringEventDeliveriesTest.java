@@ -15,6 +15,7 @@ import org.treblereel.mcp.db.IndexFixture;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.mcp.tools.QuillTools;
 
 /** Apollo AQ-028: calls stopped at publishEvent, so listeners, multicaster and transaction phase were grep work. */
 class SpringEventDeliveriesTest {

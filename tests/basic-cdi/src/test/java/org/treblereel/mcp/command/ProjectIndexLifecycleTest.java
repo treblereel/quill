@@ -24,7 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.model.MetaEnvelope;
 
 class ProjectIndexLifecycleTest {

@@ -16,9 +16,9 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.mcp.McpStdioServer;
-import org.treblereel.mcp.mcp.McpToolProfile;
-import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.server.McpStdioServer;
+import org.treblereel.mcp.mcp.server.McpToolProfile;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 

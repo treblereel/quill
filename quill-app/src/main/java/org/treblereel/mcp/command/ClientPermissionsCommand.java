@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.Callable;
-import org.treblereel.mcp.mcp.ReadOnlyToolNames;
+import org.treblereel.mcp.mcp.server.ReadOnlyToolNames;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore;
 import picocli.CommandLine;

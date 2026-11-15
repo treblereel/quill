@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.treblereel.mcp.mcp.ReadOnlyToolNames;
+import org.treblereel.mcp.mcp.server.ReadOnlyToolNames;
 
 /** Static local evidence, not an attestation of a running Claude session's effective permissions. */
 final class ClaudePermissionStatus {

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.QuillTools;
+import org.treblereel.mcp.mcp.tools.QuillTools;
 import org.treblereel.mcp.model.*;
 
 class SpringQuillToolsTest {

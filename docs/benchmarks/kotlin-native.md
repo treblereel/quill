@@ -425,7 +425,7 @@ javac --release 21 -cp quill-app/target/quill-app-0.1-SNAPSHOT-all.jar \
   -d "$quill_bench_classes" scripts/QuillKotlinWarmupBenchmark.java
 java --enable-native-access=ALL-UNNAMED \
   -cp "$quill_bench_classes:quill-app/target/quill-app-0.1-SNAPSHOT-all.jar" \
-  org.treblereel.mcp.mcp.QuillKotlinWarmupBenchmark 500 20 /tmp/quill-warmup-latency.json
+  org.treblereel.mcp.mcp.project.QuillKotlinWarmupBenchmark 500 20 /tmp/quill-warmup-latency.json
 ```
 
 The benchmark uses normal runtime preparation; it can reuse a prepared shared cache

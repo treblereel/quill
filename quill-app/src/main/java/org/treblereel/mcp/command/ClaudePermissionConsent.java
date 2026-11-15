@@ -4,7 +4,7 @@ import org.treblereel.mcp.index.ClaudeSettingsInstaller;
 
 import java.nio.file.Path;
 import java.util.Collection;
-import org.treblereel.mcp.mcp.ReadOnlyToolNames;
+import org.treblereel.mcp.mcp.server.ReadOnlyToolNames;
 
 /** Initialization grants current read-only tools locally unless explicitly opted out. */
 final class ClaudePermissionConsent {

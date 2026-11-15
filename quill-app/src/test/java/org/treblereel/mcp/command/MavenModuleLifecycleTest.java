@@ -18,8 +18,8 @@ import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.ProjectRegistry;
-import org.treblereel.mcp.mcp.QuillTools;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.mcp.tools.QuillTools;
 import org.treblereel.mcp.workspace.SingleProjectScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 

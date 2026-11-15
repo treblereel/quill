@@ -16,10 +16,10 @@ import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.command.WorkspaceCommand;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.diagnostics.UxTelemetry;
-import org.treblereel.mcp.mcp.ProjectRegistry;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.workspace.WorkspaceProjectScope;
-import org.treblereel.mcp.mcp.McpStdioServer;
-import org.treblereel.mcp.mcp.McpToolProfile;
+import org.treblereel.mcp.mcp.server.McpStdioServer;
+import org.treblereel.mcp.mcp.server.McpToolProfile;
 import org.treblereel.mcp.workspace.WorkspaceLock;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -33,7 +33,7 @@ import picocli.CommandLine.Option;
 public class QuillTopCommand implements Callable<Integer> {
 
     static {
-        org.treblereel.mcp.index.ProjectConfiguration.useAgentsToolGuide(org.treblereel.mcp.mcp.CodexToolGuide::text);
+        org.treblereel.mcp.index.ProjectConfiguration.useAgentsToolGuide(org.treblereel.mcp.mcp.server.CodexToolGuide::text);
     }
 
     @Option(names = "--kotlin-semantic-worker", hidden = true)

@@ -19,6 +19,8 @@ import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.BeanRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.mcp.tools.QuillToolQueries;
+import org.treblereel.mcp.mcp.tools.QuillTools;
 
 class MultiModuleCdiTest {
 

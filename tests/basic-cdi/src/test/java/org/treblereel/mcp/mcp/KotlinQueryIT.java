@@ -18,6 +18,9 @@ import org.treblereel.mcp.index.ProjectIndexStore;
 import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.mcp.query.PositionSymbolQueries;
+import org.treblereel.mcp.mcp.query.SymbolToolQueries;
+import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
 
 @Tag("e2e")
 class KotlinQueryIT {

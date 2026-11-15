@@ -11,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.db.IndexRepository;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
 
 class BuildEventConsumerTest {
 

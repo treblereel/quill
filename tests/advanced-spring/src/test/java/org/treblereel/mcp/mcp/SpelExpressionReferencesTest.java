@@ -16,6 +16,8 @@ import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.mcp.tools.QuillTools;
+import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
 
 /** Apollo AQ-041: a validator called only from @PreAuthorize SpEL was reported as "called only from Java". */
 class SpelExpressionReferencesTest {

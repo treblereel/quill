@@ -1254,7 +1254,7 @@
       "type": "org.treblereel.mcp.core.KotlinSourceDebug$Mapping[]"
     },
     {
-      "type": "org.treblereel.mcp.mcp.QuillTools",
+      "type": "org.treblereel.mcp.mcp.tools.QuillTools",
       "methods": [
         {
           "name": "get_symbol_at_position",

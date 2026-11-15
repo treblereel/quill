@@ -169,7 +169,7 @@ javac --release 21 -cp quill-app/target/quill-app-0.1-SNAPSHOT-all.jar \
   -d /tmp/quill-watcher-stress-classes scripts/QuillKotlinWatcherStress.java
 java --enable-native-access=ALL-UNNAMED -Xmx512m \
   -cp /tmp/quill-watcher-stress-classes:quill-app/target/quill-app-0.1-SNAPSHOT-all.jar \
-  org.treblereel.mcp.mcp.QuillKotlinWatcherStress 2000 1000 /tmp/quill-stress.json
+  org.treblereel.mcp.mcp.project.QuillKotlinWatcherStress 2000 1000 /tmp/quill-stress.json
 ```
 
 The original provider failed intermittently; failing results were preserved in JSON

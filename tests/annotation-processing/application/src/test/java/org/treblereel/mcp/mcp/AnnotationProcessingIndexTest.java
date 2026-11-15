@@ -26,6 +26,7 @@ import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.mcp.tools.QuillTools;
 
 class AnnotationProcessingIndexTest {
 

@@ -505,20 +505,7 @@ public class ProjectInitializer {
         List<ExternalBeanRecord> externalBeans = ExternalBeanScanner.scan(
                 depResult.index(), depResult.jars());
 
-        Set<Integer> beanClassIds = new HashSet<>();
-        for (BeanRecord b : remappedBeans) {
-            beanClassIds.add(b.classId());
-        }
-        List<ClassRecord> correctedClasses = new ArrayList<>();
-        for (int i = 0; i < classes.size(); i++) {
-            ClassRecord c = classes.get(i);
-            boolean isBean = beanClassIds.contains(c.id());
-            if (isBean != c.isBean()) {
-                c = c.withBean(isBean);
-            }
-            correctedClasses.add(c);
-        }
-        classes = correctedClasses;
+        classes = markBeanClasses(classes, remappedBeans);
         timings.finish("bean_resolution");
 
         Map<Integer, org.treblereel.mcp.core.KotlinSourceDebug.Info> kotlinSourceDebug = new LinkedHashMap<>();
@@ -539,42 +526,9 @@ public class ProjectInitializer {
                 BackgroundTask.start("quill-git-analysis", () -> GitAnalyzer.hasGitRepo(root)
                         ? GitAnalyzer.analyze(root, MAX_GIT_COMMITS, sourceFileToClassId)
                         : GitAnalyzer.GitAnalysisResult.empty())) {
-            BytecodeDependencyScanner.ScanResult bytecode = BytecodeDependencyScanner.analyze(
-                    classFiles, classNameToSqliteId.keySet());
-            for (BytecodeDependencyScanner.StaticDependency dependency
-                    : bytecode.dependencies()) {
-                Integer from = classNameToSqliteId.get(dependency.fromClass());
-                Integer to = classNameToSqliteId.get(dependency.toClass());
-                if (from != null && to != null) {
-                    remappedDeps.add(new DependencyRecord(from, to, dependency.kind(), null,
-                            dependency.occurrences(), dependency.evidenceLines()));
-                } else if (from != null && dependency.kind().startsWith("SERVICE_")) {
-                    bytecodeServiceExternalDeps.add(new ExternalDepRecord(
-                            from, dependency.toClass(), dependency.kind()));
-                }
-            }
-            for (BytecodeDependencyScanner.StaticMethodCall call : bytecode.methodCalls()) {
-                Integer from = classNameToSqliteId.get(call.fromClass());
-                Integer to = classNameToSqliteId.get(call.toClass());
-                if (from != null && to != null) {
-                    methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
-                            call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
-                            call.invocationKind(), call.occurrences(), call.evidenceLines(),
-                            call.instructionOrdinals(), call.callerBranchCount(),
-                            call.callerExceptionHandlerCount(), call.callerControlFlowEdges(),
-                            call.callerAsyncBoundaries(), call.callerExternalCalls()));
-                }
-            }
-            for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {
-                Integer from = classNameToSqliteId.get(access.fromClass());
-                Integer to = classNameToSqliteId.get(access.toClass());
-                if (from != null && to != null) {
-                    fieldAccesses.add(new FieldAccessRecord(from, access.fromMethod(),
-                            access.fromDescriptor(), to, access.fieldName(),
-                            access.fieldDescriptor(), access.accessKind(), access.occurrences(),
-                            access.evidenceLines(), access.instructionOrdinals()));
-                }
-            }
+            remapBytecode(BytecodeDependencyScanner.analyze(classFiles, classNameToSqliteId.keySet()),
+                    classNameToSqliteId, remappedDeps, bytecodeServiceExternalDeps, methodCalls,
+                    fieldAccesses);
             timings.finish("bytecode_analysis");
 
             ServiceProviderScanner.Result services =
@@ -627,29 +581,8 @@ public class ProjectInitializer {
         List<InjectionPointRecord> contextualInjectionPoints = ApplicationContextResolver.refine(
                 persisted.injectionPoints(), remappedBeans, classes, classOccurrences,
                 moduleClasspath);
-        Map<Integer, BeanRecord> beansById = new HashMap<>();
-        remappedBeans.forEach(bean -> beansById.put(bean.id(), bean));
-        remappedDeps.removeIf(dependency -> dependency.injectionPointId() != null);
-        for (InjectionPointRecord point : contextualInjectionPoints) {
-            BeanRecord owner = beansById.get(point.beanId());
-            BeanRecord target = point.resolvedBeanId() == null
-                    ? null : beansById.get(point.resolvedBeanId());
-            if (owner != null && target != null) {
-                remappedDeps.add(new DependencyRecord(owner.classId(), target.classId(),
-                        InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy())
-                                ? "SPRING_INJECT" : "CDI_INJECT",
-                        point.id()));
-            }
-        }
-        Set<Integer> currentClassIds = new HashSet<>();
-        for (int i = 0; i < classes.size(); i++) {
-            ClassRecord cls = classes.get(i);
-            if (cls.lifecycle().equals("current") && !cls.origin().equals("orphan_output")) {
-                currentClassIds.add(cls.id());
-            }
-        }
-        remappedDeps.removeIf(dependency -> !currentClassIds.contains(dependency.fromClassId())
-                || !currentClassIds.contains(dependency.toClassId()));
+        replaceInjectionDependencies(remappedDeps, contextualInjectionPoints, remappedBeans);
+        keepCurrentClassDependencies(remappedDeps, classes);
         timings.finish("file_inventory");
 
         String indexId = ProjectIndexStore.createIndexId(lastCommit);
@@ -685,42 +618,7 @@ public class ProjectInitializer {
         metadata.put("module_discovery_scope", classesDiscovery.moduleScope());
         metadata.put("module_discovery_complete",
                 Boolean.toString(classesDiscovery.complete()));
-        metadata.put("compiled_main_output_count", Long.toString(compiledOutputs.stream()
-                .filter(output -> output.sourceSet().equals("main")).count()));
-        metadata.put("compiled_additional_output_count", Long.toString(compiledOutputs.stream()
-                .filter(output -> !output.sourceSet().equals("main") && !output.sourceSet().equals("test")).count()));
-        metadata.put("compiled_source_sets", toJson(compiledOutputs.stream()
-                .map(ProjectLayout.CompiledOutput::sourceSet).distinct().sorted().toList()));
-        metadata.put("compiled_test_output_count", Long.toString(compiledOutputs.stream()
-                .filter(output -> output.sourceSet().equals("test")).count()));
-        metadata.put("compiled_test_module_count", Long.toString(compiledOutputs.stream()
-                .filter(output -> output.sourceSet().equals("test"))
-                .map(ProjectLayout.CompiledOutput::moduleDirectory).distinct().count()));
-        Set<Path> testModules = compiledOutputs.stream()
-                .filter(output -> output.sourceSet().equals("test"))
-                .map(ProjectLayout.CompiledOutput::moduleDirectory)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<Path> mainModules = compiledOutputs.stream()
-                .filter(output -> output.sourceSet().equals("main"))
-                .map(ProjectLayout.CompiledOutput::moduleDirectory)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        metadata.put("compiled_test_modules", toJson(testModules.stream()
-                .map(module -> relativeModule(root, module)).sorted().toList()));
-        metadata.put("missing_test_output_modules", toJson(mainModules.stream()
-                .filter(ProjectLayout::hasTestSources)
-                .filter(module -> !testModules.contains(module.toAbsolutePath().normalize()))
-                .map(module -> relativeModule(root, module)).sorted().toList()));
-        Set<Path> testClasspathModules = testModules.stream()
-                .filter(module -> Files.isRegularFile(buildSystem.testClasspathFile(module)))
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        metadata.put("test_classpath_module_count",
-                Integer.toString(testClasspathModules.size()));
-        metadata.put("missing_test_classpath_modules", toJson(testModules.stream()
-                .filter(module -> !testClasspathModules.contains(module))
-                .map(module -> relativeModule(root, module)).sorted().toList()));
-        metadata.put("stale_test_output_modules", toJson(
-                ProjectLayout.staleTestOutputModules(compiledOutputs).stream()
-                        .map(module -> relativeModule(root, module)).sorted().toList()));
+        putCompiledOutputMetadata(metadata, root, compiledOutputs, buildSystem);
         metadata.put("application_index_cache_hits",
                 Integer.toString(scanResult.cacheHits()));
         metadata.put("application_index_cache_shards",
@@ -736,39 +634,7 @@ public class ProjectInitializer {
         metadata.put("kotlin_declarations", Integer.toString(kotlinDeclarations.size()));
         if (!indexOnly && (!kotlinDeclarations.isEmpty() || inventory.files().stream()
                 .anyMatch(file -> file.kind().equals("kotlin") && file.lifecycle().equals("current")))) {
-            var versions = new java.util.LinkedHashSet<String>();
-            boolean capturedVersion = false;
-            for (Path module : moduleDirectories) {
-                BuildSystem moduleBuild = BuildSystem.hasGradleMarker(module) ? BuildSystem.GRADLE
-                        : Files.isRegularFile(module.resolve("pom.xml")) ? BuildSystem.MAVEN : buildSystem;
-                Path output = moduleBuild.classpathFile(module).getParent();
-                if (!Files.isDirectory(output)) continue;
-                try (var settings = Files.newDirectoryStream(output, "quill-kotlin-*.properties")) {
-                    for (Path file : settings) {
-                        var properties = new java.util.Properties();
-                        try (var input = Files.newInputStream(file)) { properties.load(input); }
-                        String captured = properties.getProperty("compilerVersion", "");
-                        if (!captured.isBlank()) {
-                            capturedVersion = true;
-                            String selected = org.treblereel.mcp.kotlin.KotlinRuntime.selectVersion(captured);
-                            if (selected == null) System.err.println("[quill] K2 " + captured + " is unsupported; semantic analysis will use indexed fallback");
-                            else versions.add(selected);
-                        }
-                    }
-                } catch (IOException failure) {
-                    System.err.println("[quill] Could not read captured Kotlin compiler settings: " + failure.getMessage());
-                }
-            }
-            if (!capturedVersion) versions.add(org.treblereel.mcp.kotlin.KotlinRuntime.version());
-            for (String selected : versions) {
-                try {
-                    org.treblereel.mcp.kotlin.KotlinRuntime.prepareVersion(selected);
-                    System.err.println("[quill] K2 " + selected + " runtime ready");
-                } catch (IOException failure) {
-                    System.err.println("[quill] K2 " + selected + " runtime unavailable; Kotlin metadata analysis remains available. "
-                            + failure.getMessage());
-                }
-            }
+            prepareKotlinRuntimes(moduleDirectories, buildSystem);
             timings.finish("kotlin_runtime");
         }
         metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
@@ -901,6 +767,167 @@ public class ProjectInitializer {
                 + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
                 + depStatus + ".");
         return InitializationResult.success(startedAtNanos);
+    }
+
+    /** Maps bytecode facts onto SQLite class ids; edges whose ends are not indexed classes are dropped. */
+    private static void remapBytecode(BytecodeDependencyScanner.ScanResult bytecode,
+            Map<String, Integer> classIds, List<DependencyRecord> dependencies,
+            List<ExternalDepRecord> serviceExternalDependencies, List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses) {
+        for (BytecodeDependencyScanner.StaticDependency dependency : bytecode.dependencies()) {
+            Integer from = classIds.get(dependency.fromClass());
+            Integer to = classIds.get(dependency.toClass());
+            if (from != null && to != null) {
+                dependencies.add(new DependencyRecord(from, to, dependency.kind(), null,
+                        dependency.occurrences(), dependency.evidenceLines()));
+            } else if (from != null && dependency.kind().startsWith("SERVICE_")) {
+                serviceExternalDependencies.add(new ExternalDepRecord(
+                        from, dependency.toClass(), dependency.kind()));
+            }
+        }
+        for (BytecodeDependencyScanner.StaticMethodCall call : bytecode.methodCalls()) {
+            Integer from = classIds.get(call.fromClass());
+            Integer to = classIds.get(call.toClass());
+            if (from != null && to != null) {
+                methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
+                        call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
+                        call.invocationKind(), call.occurrences(), call.evidenceLines(),
+                        call.instructionOrdinals(), call.callerBranchCount(),
+                        call.callerExceptionHandlerCount(), call.callerControlFlowEdges(),
+                        call.callerAsyncBoundaries(), call.callerExternalCalls()));
+            }
+        }
+        for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {
+            Integer from = classIds.get(access.fromClass());
+            Integer to = classIds.get(access.toClass());
+            if (from != null && to != null) {
+                fieldAccesses.add(new FieldAccessRecord(from, access.fromMethod(),
+                        access.fromDescriptor(), to, access.fieldName(),
+                        access.fieldDescriptor(), access.accessKind(), access.occurrences(),
+                        access.evidenceLines(), access.instructionOrdinals()));
+            }
+        }
+    }
+
+    /** Sets each class's bean flag from the resolved beans. */
+    private static List<ClassRecord> markBeanClasses(List<ClassRecord> classes, List<BeanRecord> beans) {
+        Set<Integer> beanClassIds = new HashSet<>();
+        for (BeanRecord bean : beans) beanClassIds.add(bean.classId());
+        List<ClassRecord> corrected = new ArrayList<>(classes.size());
+        for (ClassRecord cls : classes) {
+            boolean isBean = beanClassIds.contains(cls.id());
+            corrected.add(isBean != cls.isBean() ? cls.withBean(isBean) : cls);
+        }
+        return corrected;
+    }
+
+    /** Replaces injection edges with those of the context-refined injection points. */
+    private static void replaceInjectionDependencies(List<DependencyRecord> dependencies,
+            List<InjectionPointRecord> injectionPoints, List<BeanRecord> beans) {
+        Map<Integer, BeanRecord> beansById = new HashMap<>();
+        beans.forEach(bean -> beansById.put(bean.id(), bean));
+        dependencies.removeIf(dependency -> dependency.injectionPointId() != null);
+        for (InjectionPointRecord point : injectionPoints) {
+            BeanRecord owner = beansById.get(point.beanId());
+            BeanRecord target = point.resolvedBeanId() == null
+                    ? null : beansById.get(point.resolvedBeanId());
+            if (owner != null && target != null) {
+                dependencies.add(new DependencyRecord(owner.classId(), target.classId(),
+                        InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy())
+                                ? "SPRING_INJECT" : "CDI_INJECT",
+                        point.id()));
+            }
+        }
+    }
+
+    /** Drops dependency edges touching removed or orphaned classes. */
+    private static void keepCurrentClassDependencies(List<DependencyRecord> dependencies,
+            List<ClassRecord> classes) {
+        Set<Integer> currentClassIds = new HashSet<>();
+        for (ClassRecord cls : classes) {
+            if (cls.lifecycle().equals("current") && !cls.origin().equals("orphan_output")) {
+                currentClassIds.add(cls.id());
+            }
+        }
+        dependencies.removeIf(dependency -> !currentClassIds.contains(dependency.fromClassId())
+                || !currentClassIds.contains(dependency.toClassId()));
+    }
+
+    private static void putCompiledOutputMetadata(Map<String, String> metadata, Path root,
+            List<ProjectLayout.CompiledOutput> compiledOutputs, BuildSystem buildSystem) {
+        metadata.put("compiled_main_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("main")).count()));
+        metadata.put("compiled_additional_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> !output.sourceSet().equals("main") && !output.sourceSet().equals("test")).count()));
+        metadata.put("compiled_source_sets", toJson(compiledOutputs.stream()
+                .map(ProjectLayout.CompiledOutput::sourceSet).distinct().sorted().toList()));
+        metadata.put("compiled_test_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test")).count()));
+        metadata.put("compiled_test_module_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory).distinct().count()));
+        Set<Path> testModules = compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<Path> mainModules = compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("main"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        metadata.put("compiled_test_modules", toJson(testModules.stream()
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        metadata.put("missing_test_output_modules", toJson(mainModules.stream()
+                .filter(ProjectLayout::hasTestSources)
+                .filter(module -> !testModules.contains(module.toAbsolutePath().normalize()))
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        Set<Path> testClasspathModules = testModules.stream()
+                .filter(module -> Files.isRegularFile(buildSystem.testClasspathFile(module)))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        metadata.put("test_classpath_module_count",
+                Integer.toString(testClasspathModules.size()));
+        metadata.put("missing_test_classpath_modules", toJson(testModules.stream()
+                .filter(module -> !testClasspathModules.contains(module))
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        metadata.put("stale_test_output_modules", toJson(
+                ProjectLayout.staleTestOutputModules(compiledOutputs).stream()
+                        .map(module -> relativeModule(root, module)).sorted().toList()));
+    }
+
+    /** Prepares the K2 runtime for each captured compiler version, or the bundled one. */
+    private static void prepareKotlinRuntimes(List<Path> moduleDirectories, BuildSystem buildSystem) {
+        var versions = new java.util.LinkedHashSet<String>();
+        boolean capturedVersion = false;
+        for (Path module : moduleDirectories) {
+            BuildSystem moduleBuild = BuildSystem.hasGradleMarker(module) ? BuildSystem.GRADLE
+                    : Files.isRegularFile(module.resolve("pom.xml")) ? BuildSystem.MAVEN : buildSystem;
+            Path output = moduleBuild.classpathFile(module).getParent();
+            if (!Files.isDirectory(output)) continue;
+            try (var settings = Files.newDirectoryStream(output, "quill-kotlin-*.properties")) {
+                for (Path file : settings) {
+                    var properties = new java.util.Properties();
+                    try (var input = Files.newInputStream(file)) { properties.load(input); }
+                    String captured = properties.getProperty("compilerVersion", "");
+                    if (!captured.isBlank()) {
+                        capturedVersion = true;
+                        String selected = org.treblereel.mcp.kotlin.KotlinRuntime.selectVersion(captured);
+                        if (selected == null) System.err.println("[quill] K2 " + captured + " is unsupported; semantic analysis will use indexed fallback");
+                        else versions.add(selected);
+                    }
+                }
+            } catch (IOException failure) {
+                System.err.println("[quill] Could not read captured Kotlin compiler settings: " + failure.getMessage());
+            }
+        }
+        if (!capturedVersion) versions.add(org.treblereel.mcp.kotlin.KotlinRuntime.version());
+        for (String selected : versions) {
+            try {
+                org.treblereel.mcp.kotlin.KotlinRuntime.prepareVersion(selected);
+                System.err.println("[quill] K2 " + selected + " runtime ready");
+            } catch (IOException failure) {
+                System.err.println("[quill] K2 " + selected + " runtime unavailable; Kotlin metadata analysis remains available. "
+                        + failure.getMessage());
+            }
+        }
     }
 
     private static List<KotlinDeclarationRecord> kotlinDeclarations(

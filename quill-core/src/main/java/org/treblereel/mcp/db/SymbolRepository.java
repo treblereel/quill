@@ -1106,4 +1106,13 @@ public final class SymbolRepository {
                 .bind("needle", namedKeyPattern(key))
                 .map((rs, ctx) -> new AnnotatedMember(rs.getString("class_name"), rs.getString("name"), rs.getString("annotation_details"))).list();
     }
+
+    /** {@code Class#member} names of current members annotated with {@code annotation}, by class and member. */
+    public List<String> findMembersAnnotatedWith(String annotation) {
+        return handle.createQuery("""
+                SELECT c.class_name, m.name FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE m.annotations LIKE :quoted AND c.lifecycle = 'current' ORDER BY c.class_name, m.name""")
+                .bind("quoted", "%\"" + annotation + "\"%")
+                .map((rs, ctx) -> rs.getString("class_name") + "#" + rs.getString("name")).list();
+    }
 }

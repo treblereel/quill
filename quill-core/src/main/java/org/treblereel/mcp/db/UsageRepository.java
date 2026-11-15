@@ -796,4 +796,16 @@ public final class UsageRepository {
                 .bind("type", type).bind("generic", type + "<%").bind("quoted", "%\"" + type + "\"%")
                 .mapTo(Boolean.class).one();
     }
+
+    /** A current class's use of an external type, by usage kind. */
+    public record ExternalTypeUse(String className, String usageKind) {}
+
+    /** Current classes using external {@code type}, by class and usage kind. */
+    public List<ExternalTypeUse> findCurrentExternalTypeUses(String type) {
+        return handle.createQuery("""
+                SELECT c.class_name, d.usage_kind FROM class_external_deps d JOIN classes c ON c.id = d.class_id
+                WHERE d.external_type = :type AND c.lifecycle = 'current' ORDER BY c.class_name, d.usage_kind""")
+                .bind("type", type)
+                .map((rs, ctx) -> new ExternalTypeUse(rs.getString("class_name"), rs.getString("usage_kind"))).list();
+    }
 }

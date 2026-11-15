@@ -234,18 +234,12 @@ final class ToolResponseSupport {
     static void appendApplicationReferences(ObjectNode root, ReadQueryContext reader, String target,
             java.util.Set<String> kinds, int limit) {
         java.util.Map<String, java.util.Set<String>> references = new java.util.TreeMap<>();
-        reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.class_name, d.usage_kind FROM class_external_deps d JOIN classes c ON c.id = d.class_id
-                WHERE d.external_type = :type AND c.lifecycle = 'current' ORDER BY c.class_name, d.usage_kind""")
-                .bind("type", target).mapToMap().list()).stream()
-                .filter(row -> kinds == null || kinds.contains(String.valueOf(row.get("usage_kind")))).forEach(row -> references
-                        .computeIfAbsent(String.valueOf(row.get("class_name")), ignored -> new java.util.TreeSet<>())
-                        .add(String.valueOf(row.get("usage_kind"))));
-        if (kinds == null || kinds.contains("ANNOTATION")) reader.jdbi().withHandle(handle -> handle.createQuery("""
-                SELECT c.class_name, m.name FROM class_members m JOIN classes c ON c.id = m.class_id
-                WHERE m.annotations LIKE :quoted AND c.lifecycle = 'current' ORDER BY c.class_name, m.name""")
-                .bind("quoted", "%\"" + target + "\"%").mapToMap().list()).forEach(row -> references
-                        .computeIfAbsent(row.get("class_name") + "#" + row.get("name"), ignored -> new java.util.TreeSet<>())
+        reader.usages.findCurrentExternalTypeUses(target).stream()
+                .filter(row -> kinds == null || kinds.contains(String.valueOf(row.usageKind()))).forEach(row -> references
+                        .computeIfAbsent(String.valueOf(row.className()), ignored -> new java.util.TreeSet<>())
+                        .add(String.valueOf(row.usageKind())));
+        if (kinds == null || kinds.contains("ANNOTATION")) reader.symbols.findMembersAnnotatedWith(target).forEach(member -> references
+                        .computeIfAbsent(member, ignored -> new java.util.TreeSet<>())
                         .add("ANNOTATION"));
         if (references.isEmpty()) return;
         var lines = root.putArray("application_references");

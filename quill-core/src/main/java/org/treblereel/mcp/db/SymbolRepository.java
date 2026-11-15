@@ -1134,4 +1134,17 @@ public final class SymbolRepository {
                 .map((rs, ctx) -> new AnnotationExpressionSite(rs.getString("class_name"), rs.getString("source_file"),
                         rs.getString("module"), rs.getString("source_set"), rs.getString("member"), rs.getString("details"))).list();
     }
+
+    /** A member's name and raw annotation details (JSON). */
+    public record MemberDetails(String name, String annotationDetails) {}
+
+    /** Members carrying an {@code io.quarkus.cache} annotation in the class {@code owner} (exact, or simple name when unqualified). */
+    public List<MemberDetails> findCacheAnnotatedMembers(String owner) {
+        return handle.createQuery("""
+                SELECT m.name, m.annotation_details FROM class_members m JOIN classes c ON c.id=m.class_id
+                WHERE (c.class_name=:owner OR (instr(:owner, '.')=0 AND c.class_name LIKE '%.' || :owner))
+                AND m.annotations LIKE '%"io.quarkus.cache.%' ORDER BY m.kind, m.name""")
+                .bind("owner", owner)
+                .map((rs, ctx) -> new MemberDetails(rs.getString("name"), rs.getString("annotation_details"))).list();
+    }
 }

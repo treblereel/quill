@@ -435,4 +435,19 @@ public final class ReferenceRepository {
                 .map((rs, ctx) -> new KeyConsumer(rs.getString("class_name"), rs.getString("member"), rs.getString("annotation"),
                         rs.getString("scope"), rs.getString("kind"))).list();
     }
+
+    /** A declaration with its source set. */
+    public record SourceSetDeclaration(String key, String kind, String file, Integer line, String sourceSet, String evidence) {}
+
+    /** Declarations under {@code quarkus.cache.caffeine.<cache>.}, the name plain or quoted, by source set, file and line. */
+    public List<SourceSetDeclaration> findCaffeineCacheDeclarations(String cache) {
+        return handle.createQuery("""
+                SELECT key, kind, file, line, source_set, evidence FROM configuration_definitions
+                WHERE substr(key, 1, length(:plain))=:plain OR substr(key, 1, length(:quoted))=:quoted
+                ORDER BY source_set, file, line""")
+                .bind("plain", "quarkus.cache.caffeine." + cache + ".")
+                .bind("quoted", "quarkus.cache.caffeine.\"" + cache + "\".")
+                .map((rs, ctx) -> new SourceSetDeclaration(rs.getString("key"), rs.getString("kind"), rs.getString("file"),
+                        nullableInt(rs, "line"), rs.getString("source_set"), rs.getString("evidence"))).list();
+    }
 }

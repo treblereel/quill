@@ -814,7 +814,27 @@ public final class MethodPrefetchRelations {
             lines.add(
                     "overloads differ: some are static and need no declaring bean instance; the others need what follows");
         int shown = 8;
-        var points = db.beans.findClassBeanInjectionPoints(classId, shown + 1);
+        // Apollo AQ-005: other producer methods' parameters are theirs, not the declaring bean's;
+        // this
+        // method's own are in producer_parameters.
+        Set<String> producers =
+                new java.util.HashSet<>(
+                        db.jdbi()
+                                .withHandle(
+                                        handle ->
+                                                handle.createQuery(
+                                                                "SELECT DISTINCT member_name FROM beans WHERE declaring_class_id = :id AND member_name IS NOT NULL")
+                                                        .bind("id", classId)
+                                                        .mapTo(String.class)
+                                                        .list()));
+        var points =
+                db.beans.findClassBeanInjectionPoints(classId, 200).stream()
+                        .filter(
+                                row ->
+                                        !("METHOD_PARAM".equals(row.kind())
+                                                && producers.contains(row.fieldName())))
+                        .limit(shown + 1)
+                        .toList();
         points.stream()
                 .limit(shown)
                 .forEach(
@@ -865,12 +885,13 @@ public final class MethodPrefetchRelations {
         ArrayNode injectedInto = JSON.createArrayNode();
         for (var bean : beans) {
             int id = bean.id();
+            // Apollo v1: CDI words on a Spring bean (@Default, @Singleton) were repeated as fact.
             produces.add(
-                    bean.kind()
+                    BeanTerms.kind(bean.framework(), bean.kind())
                             + " "
-                            + bean.scope()
+                            + BeanTerms.scope(bean.framework(), bean.scope())
                             + " qualifiers "
-                            + bean.qualifiers()
+                            + BeanTerms.qualifiersJson(bean.framework(), bean.qualifiers())
                             + " types "
                             + bean.beanTypes());
             db.beans
@@ -882,7 +903,8 @@ public final class MethodPrefetchRelations {
                                                     + ": "
                                                     + row.targetType()
                                                     + " "
-                                                    + row.qualifiers()
+                                                    + BeanTerms.qualifiersJson(
+                                                            bean.framework(), row.qualifiers())
                                                     + " -> "
                                                     + (row.resolved() == null
                                                             ? "not resolved by the application index"
@@ -905,7 +927,8 @@ public final class MethodPrefetchRelations {
                                                     + "#"
                                                     + row.fieldName()
                                                     + " "
-                                                    + row.qualifiers()
+                                                    + BeanTerms.qualifiersJson(
+                                                            bean.framework(), row.qualifiers())
                                                     + " ["
                                                     + row.resolutionStatus()
                                                     + "] "
@@ -916,7 +939,10 @@ public final class MethodPrefetchRelations {
                 .findClassBeanScope(classId)
                 .ifPresent(
                         scope -> {
-                            fact.put("declaring_class_bean", "CLASS " + scope);
+                            String framework = beans.getFirst().framework();
+                            fact.put(
+                                    "declaring_class_bean",
+                                    "CLASS " + BeanTerms.scope(framework, scope));
                             fact.set(
                                     "declaring_class_injects",
                                     declaringClassInjects(

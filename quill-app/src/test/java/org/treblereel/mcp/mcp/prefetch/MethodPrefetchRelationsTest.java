@@ -223,6 +223,21 @@ class MethodPrefetchRelationsTest {
                     handle.execute(
                             "INSERT INTO class_annotations(class_id, annotation_name, direct, annotation_values) SELECT id, "
                                     + "'com.acme.condition.ConditionalOnMissingProfile', 1, '{\"value\":[\"auth\",\"ldap\"]}' FROM classes WHERE class_name = 'p.DefaultConfig'");
+                    handle.execute(
+                            "INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, resolution_status, "
+                                    + "resolution_strategy, resolution_reason, resolution_confidence) SELECT ob.id, 'FIELD', 'p.Holder', '[\"@Default\"]', 'holder', pb.id, "
+                                    + "'RESOLVED', 'STATIC_SPRING', 'UNIQUE_CONTEXT_CANDIDATE', 'HIGH' FROM beans ob JOIN classes oc ON oc.id = ob.class_id, beans pb "
+                                    + "JOIN classes pc ON pc.id = pb.declaring_class_id WHERE oc.class_name = 'p.LdapConfig' AND ob.kind = 'CLASS' "
+                                    + "AND pc.class_name = 'p.AuthConfig' AND pb.kind = 'PRODUCER_METHOD'");
+                    // Apollo AQ-005: another @Bean method's parameters were listed as the declaring
+                    // bean's injections.
+                    handle.execute(
+                            "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, declaring_class_id, member_name, framework) "
+                                    + "SELECT id, 'PRODUCER_METHOD', '@Singleton', '[]', '[\"p.Encoder\"]', id, 'encoder', 'spring' FROM classes WHERE class_name = 'p.AuthConfig'");
+                    handle.execute(
+                            "INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolution_status, resolution_strategy, "
+                                    + "resolution_reason, resolution_confidence) SELECT b.id, 'METHOD_PARAM', 'javax.sql.DataSource', '[]', 'encoder', 'UNKNOWN', "
+                                    + "'STATIC_SPRING', 'NO_CANDIDATE', 'LOW' FROM beans b JOIN classes c ON c.id = b.class_id WHERE c.class_name = 'p.AuthConfig' AND b.kind = 'CLASS'");
                 });
         ObjectNode fact =
                 JSON.createObjectNode()
@@ -250,6 +265,26 @@ class MethodPrefetchRelationsTest {
                 fact.path("same_type_providers_basis")
                         .asText()
                         .contains("@ConditionalOnMissingBean"),
+                fact.toString());
+        // Apollo v1: CDI words on Spring beans ("@Default", "@Singleton", PRODUCER_METHOD) were
+        // repeated as fact.
+        assertTrue(
+                fact.path("produces").path(0).asText().startsWith("BEAN_METHOD singleton"),
+                fact.toString());
+        assertFalse(fact.path("produces").toString().contains("@Default"), fact.toString());
+        assertEquals(
+                "CLASS singleton", fact.path("declaring_class_bean").asText(), fact.toString());
+        assertTrue(
+                fact.path("produced_bean_injected_into")
+                        .path(0)
+                        .asText()
+                        .startsWith("p.LdapConfig#holder"),
+                fact.toString());
+        assertFalse(
+                fact.path("produced_bean_injected_into").toString().contains("@Default"),
+                fact.toString());
+        assertFalse(
+                fact.path("declaring_class_injects").toString().contains("encoder"),
                 fact.toString());
     }
 

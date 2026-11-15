@@ -808,4 +808,24 @@ public final class UsageRepository {
                 .bind("type", type)
                 .map((rs, ctx) -> new ExternalTypeUse(rs.getString("class_name"), rs.getString("usage_kind"))).list();
     }
+
+    /** An access of another class's field, with the bytecode lines (JSON). */
+    public record ForeignFieldAccess(String className, String fieldName, String accessKind, String evidenceLines) {}
+
+    /** Own fields one method accesses. */
+    public Set<String> findOwnFieldsAccessed(int classId, String method, String descriptor) {
+        return new HashSet<>(handle.createQuery("SELECT DISTINCT field_name FROM field_accesses WHERE from_class_id=:id AND to_class_id=:id AND from_method=:method AND from_descriptor=:descriptor")
+                .bind("id", classId).bind("method", method).bind("descriptor", descriptor).mapTo(String.class).list());
+    }
+
+    /** The first twelve accesses one method makes to other classes' fields, in line order. */
+    public List<ForeignFieldAccess> findForeignFieldAccesses(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT c.class_name, fa.field_name, fa.access_kind, fa.evidence_lines FROM field_accesses fa JOIN classes c ON c.id=fa.to_class_id
+                WHERE fa.from_class_id=:id AND fa.to_class_id<>:id AND fa.from_method=:method AND fa.from_descriptor=:descriptor
+                ORDER BY fa.evidence_lines LIMIT 12""")
+                .bind("id", classId).bind("method", method).bind("descriptor", descriptor)
+                .map((rs, ctx) -> new ForeignFieldAccess(rs.getString("class_name"), rs.getString("field_name"),
+                        rs.getString("access_kind"), rs.getString("evidence_lines"))).list();
+    }
 }

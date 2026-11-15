@@ -99,8 +99,7 @@ final class EndpointPrefetch {
         source.remove(List.of("target","name","descriptor","symbol_id","source_sha256"));
         if(source.path("source").asText().length()>4000){source.remove("source");source.put("source_complete",false).put("status","prefetch_source_limit");}
         node.set("source_evidence",source);
-        Set<String> fields=db.jdbi().withHandle(h->new HashSet<>(h.createQuery("SELECT DISTINCT field_name FROM field_accesses WHERE from_class_id=:id AND to_class_id=:id AND from_method=:method AND from_descriptor=:descriptor")
-                .bind("id",cls.id()).bind("method",name).bind("descriptor",descriptor).mapTo(String.class).list()));
+        Set<String> fields=db.usages.findOwnFieldsAccessed(cls.id(),name,descriptor);
         JsonNode injection=JSON.readTree(new StructureToolQueries().getInjectionPoints(db,owner));
         var selected=node.putObject("injection");
         // resolution_context states the same rules for every bean; get_injection_points still has it.
@@ -108,13 +107,10 @@ final class EndpointPrefetch {
             if(injection.has(key))selected.set(key,injection.get(key));
         var points=selected.putArray("injection_points");
         for(var point:injection.path("injection_points"))if(fields.contains(point.path("field").asText()))points.add(injectionLine(point));
-        var reads=db.jdbi().withHandle(h->h.createQuery("""
-                SELECT c.class_name, fa.field_name, fa.access_kind, fa.evidence_lines FROM field_accesses fa JOIN classes c ON c.id=fa.to_class_id
-                WHERE fa.from_class_id=:id AND fa.to_class_id<>:id AND fa.from_method=:method AND fa.from_descriptor=:descriptor
-                ORDER BY fa.evidence_lines LIMIT 12""").bind("id",cls.id()).bind("method",name).bind("descriptor",descriptor).mapToMap().list());
+        var reads=db.usages.findForeignFieldAccesses(cls.id(),name,descriptor);
         if(!reads.isEmpty()){
             var fieldReads=node.putArray("other_class_field_accesses");
-            reads.forEach(r->fieldReads.add(r.get("class_name")+"#"+r.get("field_name")+" "+r.get("access_kind")+" bytecode lines "+r.get("evidence_lines")));
+            reads.forEach(r->fieldReads.add(r.className()+"#"+r.fieldName()+" "+r.accessKind()+" bytecode lines "+r.evidenceLines()));
         }
         JsonNode config=JSON.readTree(new ConfigurationReferenceQueries().find(db,null,owner,null,null,8,0));
         var references=node.putObject("configuration_references").put("scope","direct indexed owned-field/programmatic reads only");

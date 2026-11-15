@@ -18,6 +18,7 @@ import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.MavenProjectDiscovery;
 import org.treblereel.mcp.index.MavenCompileScope;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Produces safe, non-executing focused and fallback build command plans. */
 public final class VerificationPlanQueries {
@@ -80,7 +81,7 @@ public final class VerificationPlanQueries {
                         ids.add(id);
                     }
                     profiles.put(name+":"+set, List.copyOf(ids));
-                } catch (java.io.IOException | RuntimeException unavailable) { unavailableProfiles.add(name+":"+set); }
+                } catch (java.io.IOException | RuntimeException unavailable) { QuillLog.swallowed(unavailable); unavailableProfiles.add(name+":"+set); }
             }
         }
         return (contexts, evidence) -> {

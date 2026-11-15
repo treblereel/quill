@@ -9,6 +9,7 @@ import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 import org.treblereel.mcp.workspace.WorkspaceManifest;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Dynamically reconciled project scope for an explicitly initialized workspace. */
 public final class WorkspaceProjectScope implements ProjectScope {
@@ -113,6 +114,7 @@ public final class WorkspaceProjectScope implements ProjectScope {
             return path.isAbsolute()
                     && path.toAbsolutePath().normalize().startsWith(projectRoot);
         } catch (RuntimeException invalidPath) {
+            QuillLog.swallowed(invalidPath);
             return false;
         }
     }

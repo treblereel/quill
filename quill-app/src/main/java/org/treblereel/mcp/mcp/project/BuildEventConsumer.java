@@ -24,6 +24,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Refreshes build-result markers off the request thread before exposing an index generation. */
 public final class BuildEventConsumer {
@@ -121,7 +122,7 @@ public final class BuildEventConsumer {
                 }
                 delete(rejected);
                 if (!rejected.isEmpty()) {
-                    System.err.println("[quill] Ignored " + rejected.size()
+                    QuillLog.info("Ignored " + rejected.size()
                             + " invalid build event(s).");
                 }
                 if (events.isEmpty()) {
@@ -143,7 +144,7 @@ public final class BuildEventConsumer {
                     persistBuildState(normalized, latest, newerInput.get());
                     delete(events.stream().map(BuildEvent::file).toList());
                     removeIfEmpty(directory);
-                    System.err.println("[quill] Ignored stale build event: "
+                    QuillLog.info("Ignored stale build event: "
                             + newerInput.get() + " changed after the build completed."
                             + " Build the project again before Quill refreshes its index.");
                     return null;
@@ -201,6 +202,7 @@ public final class BuildEventConsumer {
                     successful.booleanValue(), timestamp, captureScope.textValue(),
                     List.copyOf(failureMessages), List.copyOf(compilerDiagnostics)));
         } catch (IOException | RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return Optional.empty();
         }
     }

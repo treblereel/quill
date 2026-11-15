@@ -10,6 +10,7 @@ import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.MemberAnnotationRecord;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Who receives the Spring application events a method publishes. A call graph stops at
@@ -93,6 +94,7 @@ final class SpringEventDeliveries {
                     return parts[2] + "#publishEvent" + (parts.length > 4 ? parts[4] : "") + " line " + parts[1];
             }
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             // Unreadable evidence names no publish call.
         }
         return null;

@@ -18,6 +18,7 @@ import java.util.Set;
 import org.codehaus.plexus.util.xml.pull.MXParser;
 import org.codehaus.plexus.util.xml.pull.XmlPullParser;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Resolves external Maven dependencies without requiring reactor artifacts to be installed. */
 final class MavenClasspathResolver {
@@ -133,7 +134,7 @@ final class MavenClasspathResolver {
             String operation, ProcessResult result) {
         String detail = operation + " exited with code " + result.exitCode();
         if (!result.diagnostic().isBlank()) detail += ": " + result.diagnostic();
-        System.err.println("[quill] Warning: " + detail);
+        QuillLog.warn(detail);
         return DependencyIndexer.ClasspathGenerationResult.failure(detail);
     }
 

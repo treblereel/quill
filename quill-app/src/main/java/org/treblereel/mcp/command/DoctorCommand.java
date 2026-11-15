@@ -27,6 +27,7 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Static project checks by default; explicit MCP probing may refresh derived index state. */
 @Command(name = "doctor", mixinStandardHelpOptions = true,
@@ -378,6 +379,7 @@ public class DoctorCommand implements Callable<Integer> {
         try {
             candidate = Path.of(command);
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             broken.add(client + " (invalid path: " + command + ")");
             return;
         }

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.treblereel.mcp.QuillLauncher;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Owns the reversible project configuration installed around an index generation. */
 public final class ProjectConfiguration {
@@ -96,15 +97,15 @@ public final class ProjectConfiguration {
                     McpJsonInstaller.installProject(root, QuillLauncher.detect());
             if (result == McpJsonInstaller.Result.ADDED
                     || result == McpJsonInstaller.Result.REPLACED) {
-                System.err.println("[quill] Updated " + root.resolve(".mcp.json")
+                QuillLog.info("Updated " + root.resolve(".mcp.json")
                         + " with the Quill MCP server.");
             } else if (result == McpJsonInstaller.Result.UNSUPPORTED) {
-                System.err.println("[quill] Warning: could not update "
+                QuillLog.warn("could not update "
                         + root.resolve(".mcp.json") + ": unsupported structure");
             }
             return result;
         } catch (IOException error) {
-            System.err.println("[quill] Warning: could not update "
+            QuillLog.warn("could not update "
                     + root.resolve(".mcp.json") + ": " + error.getMessage());
             return McpJsonInstaller.Result.UNSUPPORTED;
         }
@@ -128,14 +129,14 @@ public final class ProjectConfiguration {
     private static void ensureInstructions(Path file, String managedBlock, String description) {
         try {
             if (Files.isSymbolicLink(file) || (Files.exists(file) && !Files.isRegularFile(file))) {
-                System.err.println("[quill] Warning: instructions are not a regular file: " + file);
+                QuillLog.warn("instructions are not a regular file: " + file);
                 return;
             }
             String content = Files.exists(file) ? Files.readString(file) : "";
             int start = content.indexOf(CLAUDE_BLOCK_START);
             int end = start < 0 ? -1 : content.indexOf(CLAUDE_BLOCK_END, start);
             if (!validMarkers(content)) {
-                System.err.println("[quill] Warning: malformed Quill markers in " + file
+                QuillLog.warn("malformed Quill markers in " + file
                         + "; repair the marker boundaries before refreshing instructions.");
                 return;
             }
@@ -151,9 +152,9 @@ public final class ProjectConfiguration {
             }
             if (content.equals(updated)) return;
             Files.writeString(file, updated);
-            System.err.println("[quill] Updated " + description + ".");
+            QuillLog.info("Updated " + description + ".");
         } catch (IOException error) {
-            System.err.println("[quill] Warning: could not update " + file + ": "
+            QuillLog.warn("could not update " + file + ": "
                     + error.getMessage());
         }
     }
@@ -170,7 +171,7 @@ public final class ProjectConfiguration {
         if (!Files.isRegularFile(file)) return false;
         String content = Files.readString(file);
         if (!validMarkers(content)) {
-            System.err.println("[quill] Warning: malformed Quill markers in " + file
+            QuillLog.warn("malformed Quill markers in " + file
                     + "; instructions were preserved.");
             return false;
         }

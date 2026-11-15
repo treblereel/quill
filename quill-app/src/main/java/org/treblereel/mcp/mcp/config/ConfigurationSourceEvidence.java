@@ -11,6 +11,7 @@ import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.core.QuarkusTestProfileOverrides;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Explicit, bounded current-source evidence; never evaluates expressions or reads environment values. */
 public final class ConfigurationSourceEvidence {
@@ -66,7 +67,7 @@ public final class ConfigurationSourceEvidence {
             if (value.contains("${")) { evidence.put("status", "expression_unresolved"); return; }
             if (value.length() > 80 || !scalar(value)) { evidence.put("status", "opaque_or_unsupported_value"); return; }
             evidence.put("status", "declared_scalar").put("declared_value", value).put("source_complete", true);
-        } catch (Exception unavailable) { evidence.put("status", "source_unavailable"); }
+        } catch (Exception unavailable) { QuillLog.swallowed(unavailable); evidence.put("status", "source_unavailable"); }
     }
     private String profileValue(ObjectNode evidence,String key,Path root,Path source,int line,String provenance) throws Exception {
         var info=Json.MAPPER.readTree(provenance);
@@ -98,11 +99,11 @@ public final class ConfigurationSourceEvidence {
         boolean stable = true;
         for (var entry : files.entrySet()) {
             try { stable &= entry.getValue().hash().equals(SourceFileHashes.hash(entry.getKey())); }
-            catch (Exception unavailable) { stable = false; }
+            catch (Exception unavailable) { QuillLog.swallowed(unavailable); stable = false; }
         }
         for(var entry:binaries.entrySet()) {
             try {stable &= entry.getValue().hash().equals(SourceFileHashes.hash(entry.getKey()));}
-            catch(Exception unavailable){stable=false;}
+            catch(Exception unavailable){QuillLog.swallowed(unavailable); stable=false;}
         }
         if (!stable) for (var reference : result.path("references")) {
             if (reference.has("declared_source")) ((ObjectNode) reference).putObject("declared_source")
@@ -115,6 +116,6 @@ public final class ConfigurationSourceEvidence {
     private static boolean scalar(String value) {
         if (SCALAR.matcher(value).matches()) return true;
         if (!value.startsWith("P")) return false;
-        try { Duration.parse(value); return true; } catch (Exception unsupported) { return false; }
+        try { Duration.parse(value); return true; } catch (Exception unsupported) { QuillLog.swallowed(unsupported); return false; }
     }
 }

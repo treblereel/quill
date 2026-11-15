@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** One bounded child JVM with a two-module compiler-model cache. */
 final class JavaWorkerClient implements AutoCloseable {
@@ -67,7 +68,7 @@ final class JavaWorkerClient implements AutoCloseable {
         } catch (InterruptedException interrupted) {
             close(); Thread.currentThread().interrupt(); return status("interrupted");
         } catch (TimeoutException timeout) { close(); return status("timeout"); }
-        catch (Exception failure) { close(); return status("worker_unavailable"); }
+        catch (Exception failure) { QuillLog.swallowed(failure); close(); return status("worker_unavailable"); }
     }
 
     private void start(JsonNode request) throws Exception {

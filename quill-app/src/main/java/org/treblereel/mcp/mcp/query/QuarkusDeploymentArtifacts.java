@@ -15,6 +15,7 @@ import java.util.jar.JarFile;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Build-time jars of the Quarkus extensions on a project's classpath: each extension's declared
@@ -110,6 +111,7 @@ final class QuarkusDeploymentArtifacts {
                 result.add(new String[] {depGroup, artifact, depVersion == null || depVersion.contains("${") ? version : depVersion});
             }
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return List.of();
         }
         return result;

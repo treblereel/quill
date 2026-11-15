@@ -16,6 +16,7 @@ import org.treblereel.mcp.mcp.tools.QuillTools;
 import org.treblereel.mcp.mcp.tools.Tool;
 import org.treblereel.mcp.mcp.tools.ToolArg;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Compact MCP entry point that discovers and invokes the full catalog on demand. */
 final class RouterTools {
@@ -153,6 +154,7 @@ final class RouterTools {
                     }
                 }
             } catch (Exception ignored) {
+                QuillLog.swallowed(ignored);
                 // Convert catalog validation and invocation failures to structured errors.
             }
             return error(invocation.text());

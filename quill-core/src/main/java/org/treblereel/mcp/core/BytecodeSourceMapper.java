@@ -13,6 +13,7 @@ import java.util.stream.Stream;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Opcodes;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Maps JVM classes to sources using the compiler-emitted SourceFile attribute. */
 final class BytecodeSourceMapper {
@@ -61,6 +62,7 @@ final class BytecodeSourceMapper {
                     ? sourceFile[0] : packagePath + "/" + sourceFile[0];
             return new ClassSource(className, relative);
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             // The regular indexer reports malformed bytecode; source mapping stays best effort.
             return null;
         }

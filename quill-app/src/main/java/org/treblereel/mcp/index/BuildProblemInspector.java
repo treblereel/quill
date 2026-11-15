@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Reads and normalizes diagnostics captured by the Maven or Gradle build integration. */
 public final class BuildProblemInspector {
@@ -306,6 +307,7 @@ public final class BuildProblemInspector {
             Path path = (provided.isAbsolute() ? provided : root.resolve(provided)).normalize();
             if (path.startsWith(root)) return root.relativize(path).toString().replace('\\', '/');
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             // Keep compiler-provided text when it is not a valid local path.
         }
         return cleaned;

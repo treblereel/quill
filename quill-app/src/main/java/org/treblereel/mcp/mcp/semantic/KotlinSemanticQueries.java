@@ -13,6 +13,7 @@ import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.mcp.project.KotlinWarmupCoordinator;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** K2 analysis in a bounded JVM child process; runtime preparation belongs to init. */
 public final class KotlinSemanticQueries {
@@ -39,7 +40,7 @@ public final class KotlinSemanticQueries {
                     // Closing MCP prevents a late registry resolution from reopening the worker.
                     if (!cancelled.get()) prewarm(projects);
                 }
-            } catch (RuntimeException unavailable) { /* Foreground retains normal preparation/fallback. */ }
+            } catch (RuntimeException unavailable) { QuillLog.swallowed(unavailable); /* Foreground retains normal preparation/fallback. */ }
         }, "quill-k2-startup");
         thread.setDaemon(true); thread.start();
         return () -> { cancelled.set(true); thread.interrupt(); };
@@ -203,7 +204,7 @@ public final class KotlinSemanticQueries {
             entries.forEach(classpath::add);
             return request;
         } catch (org.treblereel.mcp.kotlin.GradleSourceSelection.Invalid invalid) { return status(invalid.status); }
-        catch (Exception failure) { return status("unavailable"); }
+        catch (Exception failure) { QuillLog.swallowed(failure); return status("unavailable"); }
     }
 
     private static boolean optionalOutput(JsonNode request, Path path) {

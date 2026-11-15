@@ -11,6 +11,7 @@ import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.mcp.semantic.JavaSemanticQueries;
 import org.treblereel.mcp.mcp.semantic.JavaSyntaxRanges;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Compiler declaration ranges, or without captured compiler settings the declaration found in the file's
@@ -56,7 +57,7 @@ public final class MethodContextQueries {
             if (last-first>=400 || end-start>24_000) return result.put("status","source_range_exceeds_limit");
             return result.put("status","resolved").put("source_file",relative).put("source_sha256",expected)
                     .put("source",text.substring(start,end)).put("source_complete",true);
-        } catch(Exception unavailable) {return result.put("status","source_unavailable");}
+        } catch(Exception unavailable) {QuillLog.swallowed(unavailable); return result.put("status","source_unavailable");}
     }
     /** Statuses that say only that javac could not run; the file's syntax still answers. */
     private static final java.util.Set<String> COMPILER_ONLY=java.util.Set.of("source_set_unknown","compiler_settings_missing",
@@ -86,7 +87,7 @@ public final class MethodContextQueries {
         java.util.List<Integer> lines=new java.util.ArrayList<>();
         for(String row:rows) {
             try { for(JsonNode line:JSON.readTree(row)) if(line.isInt() && line.asInt()>0) lines.add(line.asInt()); }
-            catch(Exception ignored) { /* A malformed row places nothing. */ }
+            catch(Exception ignored) { QuillLog.swallowed(ignored); /* A malformed row places nothing. */ }
         }
         return lines;
     }

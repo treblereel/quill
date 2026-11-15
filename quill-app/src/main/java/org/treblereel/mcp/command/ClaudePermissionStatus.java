@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.mcp.server.ReadOnlyToolNames;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Static local evidence, not an attestation of a running Claude session's effective permissions. */
 final class ClaudePermissionStatus {
@@ -41,12 +42,13 @@ final class ClaudePermissionStatus {
                 collect(settings.path("permissions").path("deny"), denies);
                 collect(settings.path("permissions").path("ask"), asks);
             } catch (Exception error) {
+                QuillLog.swallowed(error);
                 invalid.add(".claude/" + file);
             }
         }
         List<String> owned = List.of();
         try { owned = ClaudeSettingsInstaller.ownedRules(root); }
-        catch (Exception error) { invalid.add(".claude/quill-permissions.json"); }
+        catch (Exception error) { QuillLog.swallowed(error); invalid.add(".claude/quill-permissions.json"); }
         boolean configured = false;
         Path mcp = root.resolve(".mcp.json");
         if (Files.exists(mcp)) {
@@ -56,7 +58,7 @@ final class ClaudePermissionStatus {
                 var server = configuration.path("mcpServers").path("quill");
                 configured = server.isObject() && server.path("command").isTextual()
                         && !server.path("command").asText().isBlank();
-            } catch (Exception error) { invalid.add(".mcp.json"); }
+            } catch (Exception error) { QuillLog.swallowed(error); invalid.add(".mcp.json"); }
         }
         var allowed = tools.stream().filter(tool -> matchesAny(allows, tool, true)).toList();
         return new Report(root.toString(), configured, ClaudeSettingsInstaller.isEnabled(root), tools.size(),

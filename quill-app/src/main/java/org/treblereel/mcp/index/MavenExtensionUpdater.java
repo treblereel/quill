@@ -8,6 +8,7 @@ import java.util.regex.Pattern;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.codehaus.plexus.util.xml.Xpp3DomBuilder;
 import org.eclipse.aether.util.version.GenericVersionScheme;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Refreshes an existing Maven integration before the MCP server accepts requests. */
 public final class MavenExtensionUpdater {
@@ -44,11 +45,11 @@ public final class MavenExtensionUpdater {
                 if (scheme.parseVersion(entry.version()).compareTo(scheme.parseVersion(required)) >= 0) return;
                 if (!Files.readString(file).equals(content)) throw new IOException("extensions.xml changed during update");
                 BuildIntegrationInstaller.atomicWrite(file, entry.update(content, required));
-                System.err.println("[quill] Updated Maven extension " + entry.version() + " -> "
+                QuillLog.info("Updated Maven extension " + entry.version() + " -> "
                         + required + " in " + file + "; applies to the next Maven invocation");
             }
         } catch (Exception failure) {
-            System.err.println("[quill] Could not update Maven extension for " + project + ": " + failure.getMessage());
+            QuillLog.info("Could not update Maven extension for " + project + ": " + failure.getMessage());
         }
     }
 

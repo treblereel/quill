@@ -5,6 +5,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
 import java.util.concurrent.*;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** SHA reuse only on local volumes with a nanosecond change-time and stable inode identity. */
 final class SourceContentCache {
@@ -35,7 +36,7 @@ final class SourceContentCache {
             if(VOLUMES.size()>128)VOLUMES.clear();
             var probe=VOLUMES.computeIfAbsent(device,ignored->CompletableFuture.supplyAsync(()->{
                 try{return LOCAL_VOLUMES.contains(Files.getFileStore(root).type().toLowerCase(Locale.ROOT));}
-                catch(IOException|RuntimeException unknown){return false;}
+                catch(IOException|RuntimeException unknown){QuillLog.swallowed(unknown); return false;}
             },VOLUME_PROBE));
             return awaitVolume(device,probe);
         }

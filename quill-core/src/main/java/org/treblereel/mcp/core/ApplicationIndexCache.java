@@ -24,6 +24,7 @@ import org.jboss.jandex.IndexReader;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.IndexWriter;
 import org.jboss.jandex.Indexer;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Content-addressed, fixed-shard cache for application Jandex indexes. */
 final class ApplicationIndexCache {
@@ -56,6 +57,7 @@ final class ApplicationIndexCache {
                     hits++;
                     continue;
                 } catch (IOException | RuntimeException ignored) {
+                    QuillLog.swallowed(ignored);
                     // Rebuild only the unreadable shard below.
                 }
             }
@@ -131,6 +133,7 @@ final class ApplicationIndexCache {
             }
             return result;
         } catch (IOException | RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return null;
         }
     }

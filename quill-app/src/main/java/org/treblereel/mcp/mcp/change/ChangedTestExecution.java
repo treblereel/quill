@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Whether test classes changed in the worktree have run since they changed. A compiling build says nothing about
@@ -70,6 +71,7 @@ final class ChangedTestExecution {
                 if (problems > 0) failed.add(className);
                 else if (tests - skipped <= 0) notExecuted.add(className);
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 row.put("status", "report_unreadable");
                 notExecuted.add(className);
             }
@@ -89,6 +91,7 @@ final class ChangedTestExecution {
         try (Stream<Path> tasks = Files.list(gradle)) {
             return tasks.map(task -> task.resolve(name)).filter(Files::isRegularFile).findFirst().orElse(null);
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return null;
         }
     }

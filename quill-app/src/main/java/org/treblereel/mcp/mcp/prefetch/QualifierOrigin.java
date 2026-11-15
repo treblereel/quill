@@ -10,6 +10,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.query.ExternalSymbolQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Which qualifiers of an injection point and of its candidate beans are written in source and
@@ -70,6 +71,7 @@ final class QualifierOrigin {
                     members.add(new String[] {name, member.path("annotations").toString().contains("Nonbinding") ? "nonbinding" : "binding"});
                 }
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 return null;
             }
         }
@@ -125,6 +127,7 @@ final class QualifierOrigin {
         try {
             return raw == null ? JSON.createArrayNode() : JSON.readTree(raw.toString());
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return JSON.createArrayNode();
         }
     }

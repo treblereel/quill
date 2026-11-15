@@ -12,6 +12,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Registers the project-local server; optional invocation permissions require separate consent. */
 public final class ClaudeSettingsInstaller {
@@ -37,7 +38,7 @@ public final class ClaudeSettingsInstaller {
             writeAtomically(file, root);
             return true;
         } catch (IOException error) {
-            System.err.println("[quill] Warning: could not update " + file + ": "
+            QuillLog.warn("could not update " + file + ": "
                     + error.getMessage());
             return false;
         }
@@ -137,7 +138,7 @@ public final class ClaudeSettingsInstaller {
             writeAtomically(file, root);
             return true;
         } catch (IOException error) {
-            System.err.println("[quill] Warning: could not update " + file + ": "
+            QuillLog.warn("could not update " + file + ": "
                     + error.getMessage());
             return false;
         }

@@ -20,6 +20,7 @@ import org.treblereel.mcp.workspace.query.WorkspaceRoute;
 import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Adds workspace provider routes and readiness to single-project dependency and bean answers. */
 final class WorkspaceEnrichment {
@@ -111,6 +112,7 @@ final class WorkspaceEnrichment {
             summary.put("complete", ambiguous == 0 && unresolved == 0);
             return root.toString();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return response;
         }
     }
@@ -328,6 +330,7 @@ final class WorkspaceEnrichment {
             }
             return root.toString();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return response;
         }
     }

@@ -12,6 +12,7 @@ import org.treblereel.mcp.model.MemberAnnotationRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.FrameworkEndpointRecord;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public final class JandexScanner {
 
@@ -170,7 +171,7 @@ public final class JandexScanner {
                 matchedSources, sourceTokenCache);
         Map<Path, Integer> tokenCounts = tokenResult.tokenCounts();
         if (sourceTokenCache != null && tokenResult.hits() > 0) {
-            System.err.println("[quill] Reusing source token counts for "
+            QuillLog.info("Reusing source token counts for "
                     + tokenResult.hits() + "/" + matchedSources.size() + " files...");
         }
         for (ClassInfo ci : knownClasses) {

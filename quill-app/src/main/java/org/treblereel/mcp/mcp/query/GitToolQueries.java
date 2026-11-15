@@ -25,6 +25,7 @@ import org.treblereel.mcp.db.GitRepository;
 import org.treblereel.mcp.model.*;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Builds Git history, hotspot, and co-change tool responses. */
 public final class GitToolQueries {
@@ -185,6 +186,7 @@ public final class GitToolQueries {
         try {
             return WorktreeSnapshotCache.shared().get(Path.of(projectRoot));
         } catch (RuntimeException e) {
+            QuillLog.swallowed(e);
             return WorktreeInspector.Snapshot.empty();
         }
     }

@@ -21,6 +21,7 @@ import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
 import org.treblereel.mcp.core.ProjectCoordinatesDiscovery;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Reads the dependency artifacts captured by Quill's Maven or Gradle classpath discovery. */
 public final class ProjectDependencyQueries {
@@ -320,6 +321,7 @@ public final class ProjectDependencyQueries {
             }
             return List.copyOf(jars);
         } catch (IOException | RuntimeException error) {
+            QuillLog.swallowed(error);
             return List.of();
         }
     }

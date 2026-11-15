@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** One serialized, bounded compiler process per Quill session. No analysis results are cached. */
 public final class KotlinWorkerClient implements AutoCloseable {
@@ -121,6 +122,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
             if (acquired) stop();
             Thread.currentThread().interrupt(); return status("interrupted");
         } catch (Exception failure) {
+            QuillLog.swallowed(failure);
             if (acquired) stop();
             return status("worker_failed");
         } finally {

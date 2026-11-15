@@ -25,6 +25,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.NameSimilarity;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Lazy, bounded lookup of declarations in resolved dependency JARs. */
 public final class ExternalSymbolQueries {
@@ -348,6 +349,7 @@ public final class ExternalSymbolQueries {
                 source.put("scope", "Companion source artifact; not proof that source matches compiled bytecode");
             }
         } catch (IOException | RuntimeException unavailable) {
+            QuillLog.swallowed(unavailable);
             result.put("source_status", "unreadable");
         }
     }
@@ -450,6 +452,7 @@ public final class ExternalSymbolQueries {
                     .filter(candidate -> candidate.className().equals(className))
                     .map(ClassRef::artifact).distinct().sorted().toList();
         } catch (RuntimeException unavailable) {
+            QuillLog.swallowed(unavailable);
             return List.of();
         }
     }
@@ -632,6 +635,7 @@ public final class ExternalSymbolQueries {
                 return indexer.complete().getClassByName(ref.className());
             }
         } catch (IOException | RuntimeException error) {
+            QuillLog.swallowed(error);
             return null;
         }
     }

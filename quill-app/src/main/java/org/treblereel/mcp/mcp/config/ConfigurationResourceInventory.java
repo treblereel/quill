@@ -11,6 +11,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Current resource inventory and bounded properties-key coverage; no process environment reads. */
 public final class ConfigurationResourceInventory {
@@ -93,7 +94,7 @@ public final class ConfigurationResourceInventory {
                 var entry=it.next();var row=(ObjectNode)entry.getValue();
                 if(!row.has("sha256"))continue;
                 try {Path path=root.resolve(entry.getKey());if(Files.isSymbolicLink(path) || !path.toRealPath().startsWith(root) || !row.path("sha256").asText().equals(SourceFileHashes.hash(path)))throw new IOException();}
-                catch(Exception changed){row.removeAll();row.put("status","unknown").put("reason","inputs_changed");result.put("status","partial");}
+                catch(Exception changed){QuillLog.swallowed(changed); row.removeAll();row.put("status","unknown").put("reason","inputs_changed");result.put("status","partial");}
             }
             var current=collect(db);
             if(!inventory.path("files").equals(current.path("files")) || !current.path("status").asText().equals("ready")){result.put("status","partial");result.withArray("unavailable").addObject().put("status","inventory_changed_or_partial");}

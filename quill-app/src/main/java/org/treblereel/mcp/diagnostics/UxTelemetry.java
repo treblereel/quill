@@ -103,6 +103,7 @@ public final class UxTelemetry {
             try {
                 return JSON.readTree(text.text());
             } catch (Exception ignored) {
+                QuillLog.swallowed(ignored);
                 return JSON.createObjectNode();
             }
         }
@@ -124,6 +125,7 @@ public final class UxTelemetry {
             }
             return bytes;
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return 0;
         }
     }

@@ -24,6 +24,7 @@ import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexGeneration;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public class ProjectRegistry implements AutoCloseable {
 
@@ -520,7 +521,7 @@ public class ProjectRegistry implements AutoCloseable {
                 ProjectInitializer.InitializationResult result =
                         ProjectInitializer.initializeDetailed(root, true);
                 if (result.successful()) return null;
-                System.err.println("[quill] Could not rebuild the outdated index of " + root + " (attempt "
+                QuillLog.info("Could not rebuild the outdated index of " + root + " (attempt "
                         + (failures + 1) + "); next attempt in "
                         + Duration.ofNanos(repairRetryNanos(failures + 1)).toMinutes() + " min: " + result.diagnostic());
                 return result.diagnostic();
@@ -593,6 +594,7 @@ public class ProjectRegistry implements AutoCloseable {
                 resolution.projects().forEach(entry ->
                         entry.read(context -> { ProjectDependencyQueries.prewarm(context, entry.root()); return null; }));
             } catch (RuntimeException ignored) {
+                QuillLog.swallowed(ignored);
                 // A normal request will report the same project-specific error.
             }
         });
@@ -601,6 +603,7 @@ public class ProjectRegistry implements AutoCloseable {
                 try {
                     WorktreeSnapshotCache.shared().get(project.root());
                 } catch (RuntimeException ignored) {
+                    QuillLog.swallowed(ignored);
                     // Live worktree metadata is optional and can be retried by a request.
                 }
             });
@@ -629,6 +632,7 @@ public class ProjectRegistry implements AutoCloseable {
             return message == null || message.isBlank()
                     ? current.getClass().getSimpleName() : message;
         } catch (RuntimeException messageFailure) {
+            QuillLog.swallowed(messageFailure);
             return current.getClass().getSimpleName();
         }
     }

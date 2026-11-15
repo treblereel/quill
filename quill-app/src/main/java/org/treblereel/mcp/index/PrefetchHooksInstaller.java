@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.*;
 import java.nio.file.*;
 import java.util.*;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Project-local hook wiring; records exact owned commands and preserves unrelated handlers. */
 public final class PrefetchHooksInstaller {
@@ -38,7 +39,7 @@ public final class PrefetchHooksInstaller {
             }
             ObjectNode data=JSON.createObjectNode();data.putArray("commands").add(command);
             ClaudeSettingsInstaller.writeAtomically(receipt,data);return true;
-        }catch(Exception unavailable){System.err.println("[quill] Prefetch hooks not updated: unsupported configuration or unavailable path.");return false;}
+        }catch(Exception unavailable){QuillLog.info("Prefetch hooks not updated: unsupported configuration or unavailable path.");return false;}
     }
     public static void uninstall(Path root) throws java.io.IOException {
         Path receipt=root.resolve(".quill/prefetch-hooks.json");if(!Files.isRegularFile(receipt))return;

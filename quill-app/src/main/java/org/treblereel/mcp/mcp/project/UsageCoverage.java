@@ -12,6 +12,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.index.CompiledOutputInspector;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Qualifies completeness inside the indexed snapshot; never proves global non-use. */
 public final class UsageCoverage {
@@ -94,7 +95,7 @@ public final class UsageCoverage {
         try {
             JsonNode node=JSON.readTree(metadata.getOrDefault(key,"null"));
             return node!=null && node.isArray() && node.valueStream().allMatch(JsonNode::isTextual) ? node : null;
-        } catch (Exception invalid) { return null; }
+        } catch (Exception invalid) { QuillLog.swallowed(invalid); return null; }
     }
     static JsonNode buildFreshness(BuildStatusInspector.Observation observation) {
         var report = observation.compiledSnapshot().inspect(null);
@@ -103,7 +104,7 @@ public final class UsageCoverage {
         result.set("stale_modules", JSON.valueToTree(report.staleModules()));
         Instant indexed;
         try { indexed = Instant.parse(observation.metadata().get("indexed_at")); }
-        catch (RuntimeException unavailable) { return result.put("state", "unknown"); }
+        catch (RuntimeException unavailable) { QuillLog.swallowed(unavailable); return result.put("state", "unknown"); }
         boolean changed = observation.classTimes().values().stream().anyMatch(time -> time > indexed.toEpochMilli());
         result.put("changed_after_index", changed && !Boolean.FALSE.equals(observation.fingerprintChanged()));
         if (Boolean.FALSE.equals(observation.fingerprintChanged())) result.put("content_matches_index", true);
@@ -124,7 +125,7 @@ public final class UsageCoverage {
             result.set("stale_modules",JSON.valueToTree(report.staleModules()));
             boolean changed=observation.changedAfterIndex();
             result.put("changed_after_index",changed); return result;
-        } catch (Exception unavailable) { return result.put("state","unknown"); }
+        } catch (Exception unavailable) { QuillLog.swallowed(unavailable); return result.put("state","unknown"); }
     }
     static JsonNode sourceFreshness(Map<String,String> metadata) {
         boolean inputs = metadata.containsKey("source_input_hashes");
@@ -151,6 +152,6 @@ public final class UsageCoverage {
             result.put("state",expected.equals(inputs ? SourceFileHashes.captureInputsCached(root,paths)
                     : jvm ? SourceFileHashes.captureJvmCached(root,paths) : SourceFileHashes.captureJavaCached(root,paths)) ? "matching" : "changed");
             return result;
-        } catch (Exception unavailable) { return result; }
+        } catch (Exception unavailable) { QuillLog.swallowed(unavailable); return result; }
     }
 }

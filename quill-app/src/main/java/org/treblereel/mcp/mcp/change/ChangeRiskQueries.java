@@ -20,6 +20,7 @@ import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.*;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Resolves class and file targets and calculates change-risk signals. */
 public final class ChangeRiskQueries {
@@ -136,6 +137,7 @@ public final class ChangeRiskQueries {
                 }
             }
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             // The exact database/worktree lookup below still handles portable path strings.
         }
 
@@ -190,6 +192,7 @@ public final class ChangeRiskQueries {
                             fileKind(projectPath), fileOrigin(projectPath), "current", null));
                 }
             } catch (RuntimeException ignored) {
+                QuillLog.swallowed(ignored);
                 // Invalid or inaccessible paths are reported through the regular lookup error.
             }
         }
@@ -445,6 +448,7 @@ public final class ChangeRiskQueries {
         try {
             return WorktreeSnapshotCache.shared().get(Path.of(projectRoot));
         } catch (RuntimeException error) {
+            QuillLog.swallowed(error);
             return WorktreeInspector.Snapshot.empty();
         }
     }

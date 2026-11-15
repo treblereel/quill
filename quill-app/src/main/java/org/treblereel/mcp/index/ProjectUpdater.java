@@ -13,6 +13,7 @@ import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Updates index generations independently of CLI parsing. */
 public final class ProjectUpdater {
@@ -35,7 +36,7 @@ public final class ProjectUpdater {
                 var sources = SourceFileHashes.captureInputsCached(normalized,
                         ProjectLayout.findIndexInputRoots(normalized, discovery.outputs()));
                 if (!compiledInputsMatch(normalized, base, discovery.classesDirectories(), classes, sources)) return false;
-                System.err.println("[quill] Refreshing commit " + head + " from unchanged compiled inputs; no build is started.");
+                QuillLog.info("Refreshing commit " + head + " from unchanged compiled inputs; no build is started.");
                 var result = ProjectInitializer.initializeLockedDetailed(normalized, true,
                         Boolean.parseBoolean(metadata.get("compiled_before_index")), base, true);
                 if (!result.successful()) throw new IllegalStateException(result.diagnostic());
@@ -68,6 +69,7 @@ public final class ProjectUpdater {
             return !metadata.get("state_fingerprint").equals(ProjectLayout.computeStateFingerprint(root, directories,
                     ClassFileSnapshot.fingerprint(directories), "unknown".equals(metadata.get("last_commit")) ? null : metadata.get("last_commit")));
         } catch (RuntimeException outputsInFlux) {
+            QuillLog.swallowed(outputsInFlux);
             // A build deleting or rewriting classes during the walk; the next observation settles it.
             return true;
         }
@@ -76,7 +78,7 @@ public final class ProjectUpdater {
     public static void updateAfterSuccessfulBuild(Path root) {
         Path normalized = root.toAbsolutePath().normalize();
         try {
-            update(normalized, false, message -> System.err.println("[quill] " + message), true);
+            update(normalized, false, message -> QuillLog.info(message), true);
         } catch (IOException e) {
             throw new IllegalStateException("Could not lock index for " + normalized, e);
         }
@@ -136,6 +138,7 @@ public final class ProjectUpdater {
                     meta.getOrDefault("compiled_before_index", "false"));
             return !compiledSnapshot && WorktreeInspector.inspect(root).structuralDirty();
         } catch (Exception e) {
+            QuillLog.swallowed(e);
             // A missing or unreadable freshness marker must not suppress a normal change check.
             return false;
         }
@@ -148,6 +151,7 @@ public final class ProjectUpdater {
             List<Path> classesDirs = ProjectInitializer.findClassesDirs(root);
             return hasProjectChanges(root, meta, classesDirs);
         } catch (Exception e) {
+            QuillLog.swallowed(e);
             return true;
         }
     }
@@ -165,6 +169,7 @@ public final class ProjectUpdater {
                     : indexedWorktree != null ? !indexedWorktree.equals(worktree.structuralFingerprint()) : worktree.structuralDirty();
             return !indexedFingerprint.equals(currentFingerprint) || worktreeChanged;
         } catch (Exception unavailable) {
+            QuillLog.swallowed(unavailable);
             return true;
         }
     }

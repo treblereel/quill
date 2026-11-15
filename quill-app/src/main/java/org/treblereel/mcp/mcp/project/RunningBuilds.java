@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Properties;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Builds the Quill Maven extension marked as running in {@code .quill/builds-running}. A marker
@@ -30,6 +31,7 @@ final class RunningBuilds {
                 else try { Files.deleteIfExists(marker); } catch (IOException ignored) { }
             }
         } catch (IOException | RuntimeException unreadable) {
+            QuillLog.swallowed(unreadable);
             return false;
         }
         return running;
@@ -47,6 +49,7 @@ final class RunningBuilds {
             // A reused pid belongs to a process that started after the marker was written.
             return process.info().startInstant().map(start -> !start.isAfter(started)).orElse(true);
         } catch (IOException | RuntimeException unreadable) {
+            QuillLog.swallowed(unreadable);
             // A marker still being written reads as incomplete; give it a moment before judging it stale.
             try { return Files.getLastModifiedTime(marker).toInstant().plusSeconds(10).isAfter(now); }
             catch (IOException gone) { return false; }

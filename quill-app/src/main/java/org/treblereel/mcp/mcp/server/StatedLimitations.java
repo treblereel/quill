@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Each caveat text reaches a client once per server: later answers leave out the caveats this
@@ -32,6 +33,7 @@ final class StatedLimitations {
         try {
             root = JSON.readTree(text);
         } catch (Exception notJson) {
+            QuillLog.swallowed(notJson);
             return text;
         }
         if (!(root instanceof ObjectNode object) || object.has("error_code") || object.has("error")) return text;

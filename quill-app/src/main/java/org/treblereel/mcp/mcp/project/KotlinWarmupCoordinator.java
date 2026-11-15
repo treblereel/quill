@@ -12,6 +12,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Watches the recently queried module while the worker can retain inactive FIR snapshots. A
@@ -163,7 +164,7 @@ public final class KotlinWarmupCoordinator implements AutoCloseable {
             JsonNode result = worker.apply(request);
             if (result.path("status").asText().equals("inputs_changed")) changed(expectedEpoch);
         } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-        catch (Exception unavailable) { /* A foreground query retains the existing fallback. */ }
+        catch (Exception unavailable) { QuillLog.swallowed(unavailable); /* A foreground query retains the existing fallback. */ }
         finally { if (acquired) operation.unlock(); }
     }
 

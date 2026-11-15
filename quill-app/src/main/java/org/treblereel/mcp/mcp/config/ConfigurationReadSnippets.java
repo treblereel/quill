@@ -10,6 +10,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Neighbouring source lines, not inferred method/branch ranges or runtime behaviour. */
 public final class ConfigurationReadSnippets {
@@ -77,6 +78,6 @@ public final class ConfigurationReadSnippets {
             }
             if(org.treblereel.mcp.index.BuildStatusInspector.freshness(db,0,0).structureStale()){files.removeAll();context.put("status","index_stale");return;}
             context.put("truncated",truncated).put("status",truncated || !unavailable.isEmpty()?"partial":"ready");
-        } catch(Exception unavailableSource) {files.removeAll();context.put("status","source_unavailable");}
+        } catch(Exception unavailableSource) {QuillLog.swallowed(unavailableSource); files.removeAll();context.put("status","source_unavailable");}
     }
 }

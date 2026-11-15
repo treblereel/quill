@@ -31,6 +31,7 @@ import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.mcp.query.UsageToolQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Cross-repository usages of a provider class or member, read from each consumer index. */
 final class WorkspaceUsageQueries {
@@ -634,6 +635,7 @@ final class WorkspaceUsageQueries {
             snapshot.put("live_freshness_evaluated", false);
             return root.toString();
         } catch (Exception invalid) {
+            QuillLog.swallowed(invalid);
             return response;
         }
     }
@@ -721,6 +723,7 @@ final class WorkspaceUsageQueries {
             root.put("answer_complete", workspaceResult.path("complete").asBoolean(false));
             return root.toString();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return response;
         }
     }

@@ -34,6 +34,7 @@ import org.jboss.jandex.Indexer;
 import org.jboss.jandex.IndexReader;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.IndexWriter;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public final class DependencyIndexer {
 
@@ -240,9 +241,9 @@ public final class DependencyIndexer {
         timings.put("dependency_cache_read", elapsedMillis(cacheReadStartedAt));
         boolean cacheHit = index != null;
         if (cacheHit) {
-            System.err.println("[quill] Reusing dependency index for " + jars.size() + " JARs...");
+            QuillLog.info("Reusing dependency index for " + jars.size() + " JARs...");
         } else {
-            System.err.println("[quill] Indexing " + jars.size() + " dependency JARs...");
+            QuillLog.info("Indexing " + jars.size() + " dependency JARs...");
             long jarIndexStartedAt = System.nanoTime();
             index = indexJars(jars);
             timings.put("dependency_jar_index", elapsedMillis(jarIndexStartedAt));
@@ -460,7 +461,7 @@ public final class DependencyIndexer {
             if (Files.isRegularFile(file) && Files.readString(file).trim().equals(fingerprint)) return;
             Files.writeString(file, fingerprint);
         } catch (IOException e) {
-            System.err.println("[quill] Warning: could not persist dependency classpath fingerprint for "
+            QuillLog.warn("could not persist dependency classpath fingerprint for "
                     + moduleDir + ": " + e.getMessage());
         }
     }
@@ -680,6 +681,7 @@ public final class DependencyIndexer {
                         try (InputStream is = jf.getInputStream(entry)) {
                             indexer.index(is);
                         } catch (Exception e) {
+                            QuillLog.swallowed(e);
                             // skip problematic class files
                         }
                     }
@@ -748,6 +750,7 @@ public final class DependencyIndexer {
             }
             return new ShardedIndex(readIndexShards(serializedShards));
         } catch (IOException | RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return null;
         }
     }

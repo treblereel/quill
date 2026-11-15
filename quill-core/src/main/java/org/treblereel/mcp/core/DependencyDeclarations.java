@@ -20,6 +20,7 @@ import org.apache.maven.model.Model;
 import org.apache.maven.model.Profile;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.apache.maven.model.io.xpp3.MavenXpp3ReaderEx;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Where a module's direct Maven dependencies are declared (file:line of their artifactId, the
@@ -156,6 +157,7 @@ public final class DependencyDeclarations {
         try (Reader reader = Files.newBufferedReader(pom, StandardCharsets.UTF_8)) {
             return new MavenXpp3ReaderEx().read(reader, false, new InputSource());
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return null;
         }
     }
@@ -165,6 +167,7 @@ public final class DependencyDeclarations {
         try (Reader reader = Files.newBufferedReader(pom, StandardCharsets.UTF_8)) {
             return new MavenXpp3Reader().read(reader, false);
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return null;
         }
     }

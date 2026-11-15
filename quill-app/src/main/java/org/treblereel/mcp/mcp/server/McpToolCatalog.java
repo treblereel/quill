@@ -31,6 +31,7 @@ import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.mcp.support.ToolResult;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public final class McpToolCatalog {
 
@@ -248,6 +249,7 @@ public final class McpToolCatalog {
             var info = exchange.getClientInfo();
             return info == null ? null : info.name() + "/" + info.version();
         } catch (RuntimeException unavailable) {
+            QuillLog.swallowed(unavailable);
             return null;
         }
     }
@@ -452,6 +454,7 @@ public final class McpToolCatalog {
             root.remove("next_step");
             return root.toString();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return text;
         }
     }
@@ -548,6 +551,7 @@ public final class McpToolCatalog {
                 return normalizeErrorEnvelope(object);
             }
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             // Catalog-generated failures are converted to a stable structured envelope.
         }
         if (!error) return JSON.createObjectNode().put("result", text);

@@ -13,6 +13,7 @@ import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * What the application index holds about a dependency class it references: its injection points
@@ -81,6 +82,7 @@ final class DependencyTypeAnswers {
                     root.set("external", external);
                 }
             } catch (Exception unavailable) {
+                QuillLog.swallowed(unavailable);
                 // Without the jar the application references still answer.
             }
         }

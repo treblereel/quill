@@ -9,6 +9,7 @@ import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.KotlinDeclarationTypes;
 import org.treblereel.mcp.model.KotlinValueParameter;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Conservative declaration deltas, not a complete JVM linkage or source-compatibility proof. */
 final class ApiCompatibilityQueries {
@@ -299,7 +300,7 @@ final class ApiCompatibilityQueries {
                 owner.members.put(key,new Member(member.key,member.signature,flags,member.annotations,member.types,
                         member.valid,true,entry));
             }
-        } catch(Exception malformed) {owner.jvmEvidence=null;}
+        } catch(Exception malformed) {QuillLog.swallowed(malformed); owner.jvmEvidence=null;}
     }
     private static Set<String> jvmFlags(int access,String kind) {
         Set<String> flags=new TreeSet<>();
@@ -385,7 +386,7 @@ final class ApiCompatibilityQueries {
             JsonNode node=orderedObjects(JSON.readTree(value));
             if(unordered && node.isArray()) {List<String> entries=new ArrayList<>();node.forEach(n->entries.add(n.toString()));Collections.sort(entries);return entries.toString();}
             return node.toString();
-        } catch(Exception malformed){return "unparsed:"+value;}
+        } catch(Exception malformed){QuillLog.swallowed(malformed); return "unparsed:"+value;}
     }
     private static JsonNode orderedObjects(JsonNode node) {
         if(node.isObject()) {
@@ -426,7 +427,7 @@ final class ApiCompatibilityQueries {
                     ObjectNode node=JSON.createObjectNode().put("baseline_class_id",r.id()).put("class_name",r.className())
                             .put("module",value(r.module())).put("source_set",value(r.sourceSet()));Set<String> parents=new TreeSet<>();
                     String superclass=r.superclass();if(superclass!=null && !superclass.isBlank())parents.add(superclass);
-                    try {JsonNode interfaces=JSON.readTree(r.interfaces());if(interfaces!=null && interfaces.isArray())interfaces.forEach(v->parents.add(v.asText()));}catch(Exception ignored){}
+                    try {JsonNode interfaces=JSON.readTree(r.interfaces());if(interfaces!=null && interfaces.isArray())interfaces.forEach(v->parents.add(v.asText()));}catch(Exception ignored){QuillLog.swallowed(ignored); }
                     for(String parent:parents)result.computeIfAbsent(parent,ignored->new ArrayList<>()).add(node);
                 });
         return result;

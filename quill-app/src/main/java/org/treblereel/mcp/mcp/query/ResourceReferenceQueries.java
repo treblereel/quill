@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Finds classpath resources and bytecode-visible consumers. */
 public final class ResourceReferenceQueries {
@@ -46,6 +47,7 @@ public final class ResourceReferenceQueries {
             appendMeta(result, reader, 0);
             return result.toString();
         } catch (RuntimeException error) {
+            QuillLog.swallowed(error);
             return errorResponse("Could not query indexed resource references");
         }
     }

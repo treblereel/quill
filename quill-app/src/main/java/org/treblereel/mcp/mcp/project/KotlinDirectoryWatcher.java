@@ -12,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Predicate;
 import org.slf4j.helpers.NOPLogger;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Event subscriptions only; the coordinator owns debounce and recovery. */
 final class KotlinDirectoryWatcher implements AutoCloseable {
@@ -171,7 +172,7 @@ final class KotlinDirectoryWatcher implements AutoCloseable {
     private void fail(long owner, String reason) {
         synchronized (this) {
             if (closed || failed || generation != owner) return;
-            System.err.println("[quill] Input watcher unavailable (" + reason + "); retrying in "
+            QuillLog.info("Input watcher unavailable (" + reason + "); retrying in "
                     + TimeUnit.NANOSECONDS.toMillis(retryDelay) + " ms");
             failed = true; healthPending = false; closeSubscription();
             failDeliveries();

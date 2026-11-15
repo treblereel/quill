@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Returns the ordered provider declarations captured from META-INF/services. */
 public final class ServiceDescriptorQueries {
@@ -27,6 +28,7 @@ public final class ServiceDescriptorQueries {
         try {
             registrations = JSON.readTree(detail);
         } catch (Exception error) {
+            QuillLog.swallowed(error);
             return errorResponse("Indexed service descriptor metadata is invalid");
         }
         Map<String, Descriptor> descriptors = new LinkedHashMap<>();

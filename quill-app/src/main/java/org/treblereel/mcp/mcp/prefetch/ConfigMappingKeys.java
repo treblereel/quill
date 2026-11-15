@@ -11,6 +11,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.config.ConfigurationSourceEvidence;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Expands an indexed {@code @ConfigMapping} interface into the keys SmallRye Config derives
@@ -106,6 +107,7 @@ final class ConfigMappingKeys {
                 values.put(annotation.path("annotationName").asText(), value.isMissingNode() ? "" : value.asText());
             }
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             // Member details are written by the indexer; an unreadable row keeps the method's default name.
         }
         return values;

@@ -27,6 +27,7 @@ import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Owns immutable SQLite index generations and the refs that publish them.
@@ -93,7 +94,7 @@ public final class ProjectIndexStore {
             clearRecovery(root);
             afterCommit.accept(refs);
         } catch (RuntimeException failure) {
-            System.err.println("[quill] Index activated; cleanup deferred: " + rootMessage(failure));
+            QuillLog.info("Index activated; cleanup deferred: " + rootMessage(failure));
         }
     }
 
@@ -156,7 +157,7 @@ public final class ProjectIndexStore {
                     }).reversed())
                     .toList();
         } catch (IOException e) {
-            System.err.println("[quill] Warning: could not inspect index cache: " + e.getMessage());
+            QuillLog.warn("could not inspect index cache: " + e.getMessage());
             return;
         }
 
@@ -205,6 +206,7 @@ public final class ProjectIndexStore {
                         outdated.add(database);
                     }
                 } catch (RuntimeException ignored) {
+                    QuillLog.swallowed(ignored);
                     // Corrupt databases follow the existing recovery path. A newer schema must
                     // remain untouched so the user can upgrade Quill without losing its index.
                 }
@@ -240,7 +242,7 @@ public final class ProjectIndexStore {
         try {
             return writeRefsOrThrow(refsPath, refs);
         } catch (RuntimeException e) {
-            System.err.println("[quill] Warning: could not write refs.json: " + rootMessage(e));
+            QuillLog.warn("could not write refs.json: " + rootMessage(e));
             return false;
         }
     }
@@ -262,6 +264,7 @@ public final class ProjectIndexStore {
             try {
                 Files.deleteIfExists(temp);
             } catch (IOException | RuntimeException ignored) {
+                QuillLog.swallowed(ignored);
                 // best effort
             }
         }
@@ -434,7 +437,7 @@ public final class ProjectIndexStore {
             String selected = head != null ? recovered.get(headRef(head)) : recovered.get("@worktree");
             if (selected == null) selected = candidates.get(0).indexId();
             writeRecovery(root, new RecoveryStatus(reason, selected, Instant.now().toString()));
-            if (refsChanged) System.err.println("[quill] Recovered index refs; using generation " + selected
+            if (refsChanged) QuillLog.info("Recovered index refs; using generation " + selected
                     + " (" + reason + ").");
         }
         return recovered;
@@ -475,6 +478,7 @@ public final class ProjectIndexStore {
             int version = org.treblereel.mcp.db.IndexSchema.inspectVersion(database);
             return version > 0 && version != org.treblereel.mcp.db.IndexSchema.VERSION;
         } catch (RuntimeException unreadable) {
+            QuillLog.swallowed(unreadable);
             return false;
         }
     }
@@ -587,7 +591,7 @@ public final class ProjectIndexStore {
             MAPPER.writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), values);
             atomicMoveWithRetry(temp, target);
         } catch (IOException e) {
-            System.err.println("[quill] Warning: could not record index recovery: " + e.getMessage());
+            QuillLog.warn("could not record index recovery: " + e.getMessage());
         } finally {
             try { Files.deleteIfExists(temp); } catch (IOException ignored) { }
         }

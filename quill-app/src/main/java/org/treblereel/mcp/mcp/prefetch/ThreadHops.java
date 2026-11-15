@@ -18,6 +18,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Where a method hands work to another thread (Mutiny runSubscriptionOn/emitOn, Reactor
@@ -252,6 +253,7 @@ final class ThreadHops {
         try {
             return ProjectDependencyQueries.resolvedJars(db, root);
         } catch (RuntimeException unavailable) {
+            QuillLog.swallowed(unavailable);
             return List.of();
         }
     }
@@ -262,6 +264,7 @@ final class ThreadHops {
         try {
             return Files.readAllLines(root.resolve(file));
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return List.of();
         }
     }

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Obtains the evaluated Gradle project structure without embedding Gradle in Quill. */
 public final class GradleProjectDiscovery {
@@ -103,13 +104,13 @@ public final class GradleProjectDiscovery {
                     .start();
             int exit = process.waitFor();
             if (exit != 0) {
-                System.err.println("[quill] Warning: Gradle project discovery exited with code " + exit);
+                QuillLog.warn("Gradle project discovery exited with code " + exit);
                 return incomplete();
             }
 
             ParsedManifest parsed = parseManifest(manifest);
             if (!parsed.valid()) {
-                System.err.println("[quill] Warning: Gradle project discovery returned an invalid manifest");
+                QuillLog.warn("Gradle project discovery returned an invalid manifest");
             } else if (writeClasspath) {
                 String buildFingerprint = DependencyIndexer.buildFingerprint(
                         normalizedRoot, BuildSystem.GRADLE, parsed.moduleDirectories());
@@ -123,10 +124,10 @@ public final class GradleProjectDiscovery {
         } catch (InterruptedException e) {
             terminate(process);
             Thread.currentThread().interrupt();
-            System.err.println("[quill] Warning: Gradle project discovery was interrupted");
+            QuillLog.warn("Gradle project discovery was interrupted");
             return incomplete();
         } catch (IOException | RuntimeException e) {
-            System.err.println("[quill] Warning: could not discover Gradle projects: " + e.getMessage());
+            QuillLog.warn("could not discover Gradle projects: " + e.getMessage());
             return incomplete();
         } finally {
             deleteTemporaryFile(initScript);
@@ -247,7 +248,7 @@ public final class GradleProjectDiscovery {
             Files.writeString(cacheFingerprint(projectRoot), cacheKey(buildFingerprint),
                     StandardCharsets.UTF_8);
         } catch (IOException e) {
-            System.err.println("[quill] Warning: could not cache Gradle project discovery: "
+            QuillLog.warn("could not cache Gradle project discovery: "
                     + e.getMessage());
         }
     }

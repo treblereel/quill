@@ -16,6 +16,7 @@ import org.treblereel.mcp.db.BeanRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.MetaEnvelope;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Builds one canonical diagnostic snapshot for human and machine-readable status output. */
 public final class ProjectDiagnostics {
@@ -72,6 +73,7 @@ public final class ProjectDiagnostics {
                 return new Unavailable("incompatible", "INDEX_INCOMPATIBLE",
                         safeMessage(incompatible));
             } catch (RuntimeException ignored) {
+                QuillLog.swallowed(ignored);
                 // Inspect the remaining generations before classifying all of them as corrupt.
             }
         }

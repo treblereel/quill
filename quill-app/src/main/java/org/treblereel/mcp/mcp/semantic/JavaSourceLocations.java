@@ -12,6 +12,7 @@ import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Per-response compiler evidence, kept separate from bytecode line evidence. */
 public final class JavaSourceLocations {
@@ -35,7 +36,7 @@ public final class JavaSourceLocations {
         root = metadata.containsKey("project_root") ? Path.of(metadata.get("project_root")).toAbsolutePath().normalize() : null;
         JsonNode evidence;
         try { evidence = JSON.readTree(metadata.getOrDefault("java_source_hashes", "{}")); }
-        catch (Exception unavailable) { evidence = JSON.createObjectNode(); }
+        catch (Exception unavailable) { QuillLog.swallowed(unavailable); evidence = JSON.createObjectNode(); }
         hashes = evidence == null || !evidence.isObject() ? JSON.createObjectNode() : evidence;
         fresh = !org.treblereel.mcp.index.BuildStatusInspector.freshness(db, 0, 0).structureStale();
     }
@@ -52,7 +53,7 @@ public final class JavaSourceLocations {
             if (!hashes.path(source).asText().equals(result.path("source_hash").asText())
                     || !hashes.path(source).asText().equals(SourceFileHashes.hash(file))) return status("source_changed_after_index");
             return result;
-        } catch (Exception unavailable) { return status("source_unavailable"); }
+        } catch (Exception unavailable) { QuillLog.swallowed(unavailable); return status("source_unavailable"); }
     }
     public void append(ObjectNode node, String source, String callerOwner, String callerName, String callerDescriptor,
             String owner, String name, String descriptor, String access, String symbolId, List<Integer> lines) {
@@ -94,7 +95,7 @@ public final class JavaSourceLocations {
         if (excerpts >= MAX_EXCERPTS || line < 1 || root == null) return null;
         List<String> text = lines.computeIfAbsent(source, ignored -> {
             try { return java.nio.file.Files.readAllLines(root.resolve(source).normalize()); }
-            catch (Exception unavailable) { return List.of(); }
+            catch (Exception unavailable) { QuillLog.swallowed(unavailable); return List.of(); }
         });
         if (line > text.size()) return null;
         excerpts++;

@@ -14,6 +14,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Compares existing classes as candidate hosts for a proposed responsibility. */
 public final class DesignImpactQueries {
@@ -96,6 +97,7 @@ public final class DesignImpactQueries {
         try {
             return JSON.readTree(json);
         } catch (Exception error) {
+            QuillLog.swallowed(error);
             return JSON.createObjectNode();
         }
     }

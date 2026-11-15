@@ -18,6 +18,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.UnusedClassCandidate;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Conservatively identifies classes with no indexed inbound evidence. */
 public final class UnusedClassQueries {
@@ -169,6 +170,7 @@ public final class UnusedClassQueries {
             }
             return new ServiceProviders(Set.copyOf(providers), true);
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return new ServiceProviders(Set.of(), false);
         }
     }

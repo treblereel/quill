@@ -14,6 +14,7 @@ import org.treblereel.mcp.index.BuildStatusInspector;
 import org.treblereel.mcp.index.ProjectUpdater;
 import org.treblereel.mcp.model.*;
 import org.treblereel.mcp.workspace.*;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Owns event-driven preparation; only completed observations are exposed to requests. */
 final class ProjectPreparation implements AutoCloseable {
@@ -146,7 +147,7 @@ final class ProjectPreparation implements AutoCloseable {
                 if (current != null && states.remove(project.root(), current)) current.close();
                 String message = ProjectRegistry.safeMessage(failure);
                 if (!Objects.equals(message, stateFailures.put(project.root(), message)))
-                    System.err.println("[quill] Cannot observe " + project.name() + ": " + message);
+                    QuillLog.info("Cannot observe " + project.name() + ": " + message);
                 continue;
             }
             stateFailures.remove(project.root());
@@ -174,7 +175,7 @@ final class ProjectPreparation implements AutoCloseable {
             states.values().forEach(State::tick);
         } catch (Throwable failure) {
             // An escaping throwable would cancel the fixed-delay task for good and leave every project pending.
-            System.err.println("[quill] Project observation failed: " + ProjectRegistry.safeMessage(failure));
+            QuillLog.info("Project observation failed: " + ProjectRegistry.safeMessage(failure));
             states.values().forEach(State::changed);
         }
     }
@@ -300,7 +301,7 @@ final class ProjectPreparation implements AutoCloseable {
                 for (Path path : paths) if (Files.isDirectory(path)) inputs.add(path.toRealPath());
                 for (Path module : layout.moduleDirectories()) if (Files.isDirectory(module)) modules.add(module.toRealPath());
                 for (var output : layout.outputs()) if (Files.isDirectory(output.directory())) buildOutputs.add(output.directory().toRealPath());
-            } catch (IOException | RuntimeException unavailable) { /* Resolution reports invalid layouts. */ }
+            } catch (IOException | RuntimeException unavailable) { QuillLog.swallowed(unavailable); /* Resolution reports invalid layouts. */ }
             var minimal = new ArrayList<Path>();
             inputs.stream().sorted(Comparator.comparingInt(Path::getNameCount)).forEach(path -> {
                 if (minimal.stream().noneMatch(path::startsWith)) minimal.add(path);
@@ -322,7 +323,7 @@ final class ProjectPreparation implements AutoCloseable {
             leading = leadership.tryLead();
             registry.backgroundRole(project.root(), leading);
             if (leading) events.configure(roots, this::relevant);
-            else System.err.println("[quill] Another Quill server leads background work for " + project.name()
+            else QuillLog.info("Another Quill server leads background work for " + project.name()
                     + "; this one serves queries from its published index");
             controls = controls(project.root(), git, !leading);
             try { schedule(); }
@@ -413,7 +414,7 @@ final class ProjectPreparation implements AutoCloseable {
             registry.backgroundRole(project.root(), now);
             controls = controls(project.root(), git, !now);
             if (now) {
-                System.err.println("[quill] Took over background work for " + project.name());
+                QuillLog.info("Took over background work for " + project.name());
                 events.configure(watchedRoots, this::relevant);
             } else {
                 events.configure(Set.of(), path -> false);
@@ -479,7 +480,7 @@ final class ProjectPreparation implements AutoCloseable {
                             retryDelay = Math.min(TimeUnit.SECONDS.toNanos(30), retryDelay * 2);
                         }
                     }
-                    System.err.println("[quill] Preparation failed for " + project.name() + ": " + failure);
+                    QuillLog.info("Preparation failed for " + project.name() + ": " + failure);
                     completion.completeExceptionally(failure);
                 } finally {
                     synchronized (this) { preparing = null; notifyAll(); }
@@ -568,7 +569,7 @@ final class ProjectPreparation implements AutoCloseable {
                         String id = result.projects().getFirst().observations().metadata().get("index_id");
                         if (!Objects.equals(id, announcedGeneration)) {
                             announcedGeneration = id;
-                            System.err.println("[quill] Prepared " + project.name() + " generation " + id);
+                            QuillLog.info("Prepared " + project.name() + " generation " + id);
                         }
                     }
                     retryAt = System.nanoTime() + retryDelay;

@@ -22,6 +22,7 @@ import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Discovers statically identifiable application and framework entry points. */
 public final class EntryPointQueries {
@@ -311,6 +312,7 @@ public final class EntryPointQueries {
                         List.of(), "high", service);
             }
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return unresolved;
         }
         return unresolved;

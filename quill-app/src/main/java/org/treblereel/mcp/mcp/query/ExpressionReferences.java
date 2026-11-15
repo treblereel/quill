@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Calls to a Spring bean's method written in annotation expressions, such as
@@ -38,6 +39,7 @@ final class ExpressionReferences {
                     if (name.matches()) names.add(name.group(1));
                 }
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 // A malformed qualifier list names no bean.
             }
         }
@@ -108,6 +110,7 @@ final class ExpressionReferences {
         try {
             return JSON.readTree(json);
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return JSON.createArrayNode();
         }
     }

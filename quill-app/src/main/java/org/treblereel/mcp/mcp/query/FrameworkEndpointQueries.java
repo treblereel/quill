@@ -22,6 +22,7 @@ import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Presents indexed Spring MVC and JAX-RS routes with direct call evidence. */
 public final class FrameworkEndpointQueries {
@@ -71,6 +72,7 @@ public final class FrameworkEndpointQueries {
                             .thenComparing(Endpoint::signature))
                     .toList();
         } catch (Exception error) {
+            QuillLog.swallowed(error);
             return errorResponse("Framework endpoint metadata is invalid; rebuild the Quill index");
         }
         int from = Math.min(offset, endpoints.size());

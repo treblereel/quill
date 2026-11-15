@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * A repeated change_session for the same targets states only what changed since this server
@@ -54,6 +55,7 @@ public final class ChangeSessionRepeats {
         try {
             parsed = JSON.readTree(response);
         } catch (Exception notJson) {
+            QuillLog.swallowed(notJson);
             return response;
         }
         if (!(parsed instanceof ObjectNode current) || current.has("error_code") || current.has("error")) return response;

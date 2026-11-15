@@ -11,6 +11,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.treblereel.mcp.core.MavenProjectDiscovery;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Conservative static closure for Maven's -am, including test/provided and build dependencies. */
 public final class MavenCompileScope {
@@ -77,6 +78,7 @@ public final class MavenCompileScope {
                 return new Scope(selected.stream().sorted().toList(), false, "static_maven_prerequisites");
             };
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return requested -> whole("unreadable_maven_model");
         }
     }

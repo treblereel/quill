@@ -16,6 +16,7 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Produces a read-only, agent-oriented view of build and compiled-snapshot freshness. */
 public final class BuildStatusInspector {
@@ -255,6 +256,7 @@ public final class BuildStatusInspector {
         try {
             return Instant.parse(value);
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return null;
         }
     }

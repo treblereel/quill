@@ -14,6 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Documented framework behaviour for the annotations a selected method carries, with the
@@ -64,6 +65,7 @@ public final class FrameworkContracts {
         try {
             parameters = org.objectweb.asm.Type.getArgumentTypes(descriptor);
         } catch (RuntimeException malformed) {
+            QuillLog.swallowed(malformed);
             parameters = new org.objectweb.asm.Type[0];
         }
         for (JsonNode annotation : JSON.readTree(details)) {
@@ -147,6 +149,7 @@ public final class FrameworkContracts {
                     .map(org.treblereel.mcp.core.ConfigurationScanner.DeclaredProperty::value)
                     .filter(value -> WORD.matcher(value).matches()).findFirst().orElse(null);
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return null;
         }
     }

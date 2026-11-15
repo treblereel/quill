@@ -14,6 +14,7 @@ import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.mcp.project.KotlinWarmupCoordinator;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Compiler-confirmed Java navigation from successful build capture; never executes a build. */
 public final class JavaSemanticQueries {
@@ -47,7 +48,7 @@ public final class JavaSemanticQueries {
                             db.independentRead(context -> prepare(context, root, file, -1)));
                 }
             }
-} catch (RuntimeException unavailable) { /* Foreground retains preparation and fallback. */ }
+} catch (RuntimeException unavailable) { QuillLog.swallowed(unavailable); /* Foreground retains preparation and fallback. */ }
         }, "quill-java-startup");
         thread.setDaemon(true); thread.start();
         return () -> { cancelled.set(true); thread.interrupt(); };
@@ -82,7 +83,7 @@ public final class JavaSemanticQueries {
                 if (indexed.isPresent() && indexed.get().module() != null)
                     module = normalizedRoot.resolve(indexed.get().module()).normalize();
             }
-        } catch (RuntimeException unavailable) { /* Capture discovery remains available without index context. */ }
+        } catch (RuntimeException unavailable) { QuillLog.swallowed(unavailable); /* Capture discovery remains available without index context. */ }
         return prepare(root, file, offset, module);
     }
     static JsonNode prepare(Path root, Path file, int offset) { return prepare(root, file, offset, null); }
@@ -191,7 +192,7 @@ public final class JavaSemanticQueries {
                 classpath.add(entry.toString());
             }
             return request;
-        } catch (Exception unavailable) { return status("compiler_settings_unavailable"); }
+        } catch (Exception unavailable) { QuillLog.swallowed(unavailable); return status("compiler_settings_unavailable"); }
     }
     private static boolean hasCapture(Path module) throws IOException {
         Path output = module.resolve("build");

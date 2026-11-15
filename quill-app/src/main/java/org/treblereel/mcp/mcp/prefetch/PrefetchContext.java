@@ -16,6 +16,7 @@ import org.treblereel.mcp.mcp.change.MethodImpactQueries;
 import org.treblereel.mcp.mcp.support.ResponseCompaction;
 import org.treblereel.mcp.mcp.query.StructureToolQueries;
 import org.treblereel.mcp.mcp.query.SymbolToolQueries;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Generic identifier lookup, never a classifier of question wording or benchmark tasks. */
 public final class PrefetchContext {
@@ -187,7 +188,7 @@ public final class PrefetchContext {
             if(projectRoot!=null && row.sourceFile()!=null){
                 file=sources.computeIfAbsent(row.sourceFile(),path->{
                     try{return java.nio.file.Files.readAllLines(java.nio.file.Path.of(projectRoot).resolve(path));}
-                    catch(Exception unreadable){return List.of();}
+                    catch(Exception unreadable){QuillLog.swallowed(unreadable); return List.of();}
                 });
             }
             for(JsonNode number:JSON.readTree(String.valueOf(row.evidenceLines()))){

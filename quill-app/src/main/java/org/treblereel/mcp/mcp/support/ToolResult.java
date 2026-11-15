@@ -3,6 +3,7 @@ package org.treblereel.mcp.mcp.support;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * One tool answer, parsed once at the MCP boundary. A JSON object answer stays a tree while the
@@ -45,6 +46,7 @@ public sealed interface ToolResult {
             JsonNode parsed = Json.MAPPER.readTree(raw);
             if (parsed instanceof ObjectNode object) return new JsonAnswer(object);
         } catch (Exception notJson) {
+            QuillLog.swallowed(notJson);
             // A brace that does not open valid JSON is ordinary text.
         }
         return new Text(raw, false);

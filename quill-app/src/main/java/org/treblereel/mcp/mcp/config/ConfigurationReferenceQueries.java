@@ -18,6 +18,7 @@ import org.treblereel.mcp.db.ReferenceRepository.Resolution;
 import org.treblereel.mcp.db.ReferenceRepository.ResolutionKey;
 import org.treblereel.mcp.mcp.support.ArgumentAliases;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Searches normalized configuration definitions and their consumers. */
 public final class ConfigurationReferenceQueries {
@@ -137,6 +138,7 @@ public final class ConfigurationReferenceQueries {
             appendMeta(result, reader, 0);
             return result.toString();
         } catch (Exception error) {
+            QuillLog.swallowed(error);
             return errorResponse("Could not query indexed configuration references");
         }
     }

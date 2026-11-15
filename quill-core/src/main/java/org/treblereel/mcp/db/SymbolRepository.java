@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jdbi.v3.core.Handle;
 import org.treblereel.mcp.model.*;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Read-only symbol queries; the caller owns the handle and transaction. */
 public final class SymbolRepository {
@@ -550,7 +551,7 @@ public final class SymbolRepository {
         return handle.createQuery("SELECT data FROM kotlin_source_debug WHERE class_id=:id")
                 .bind("id", classId).mapTo(String.class).findOne().flatMap(data -> {
             try { return Optional.of(JSON.readValue(data, org.treblereel.mcp.core.KotlinSourceDebug.Info.class)); }
-            catch (Exception invalid) { return Optional.empty(); }
+            catch (Exception invalid) { QuillLog.swallowed(invalid); return Optional.empty(); }
         });
     }
 
@@ -720,6 +721,7 @@ public final class SymbolRepository {
             var parsed = JSON.readTree(json);
             return parsed.isArray() ? parsed.size() : null;
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return null;
         }
     }

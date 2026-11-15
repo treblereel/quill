@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * The configuration phase, default and declaring extension of framework keys, read from the
@@ -80,6 +81,7 @@ final class QuarkusConfigPhases {
                     documented.putIfAbsent(key, line);
                 }
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 // A jar without a readable model documents nothing; other jars still do.
             }
         }

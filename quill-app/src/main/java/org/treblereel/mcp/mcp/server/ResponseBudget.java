@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Enforces a final safety budget across every successful MCP JSON response. */
 public final class ResponseBudget {
@@ -50,6 +51,7 @@ public final class ResponseBudget {
             if (!(parsed instanceof ObjectNode root)) return json;
             return truncate(root, json, maxBytes, tool, arguments);
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return json;
         }
     }
@@ -92,6 +94,7 @@ public final class ResponseBudget {
             budget.put("response_bytes", bytes(root.toString()));
             return root.toString();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return json;
         }
     }

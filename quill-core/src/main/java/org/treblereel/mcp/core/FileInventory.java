@@ -15,6 +15,7 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.FileRecord;
 import org.treblereel.mcp.model.GitFileStats;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Builds stable project/repository path identities for source, generated and historical files. */
 public final class FileInventory {
@@ -190,6 +191,7 @@ public final class FileInventory {
         try {
             absolute = projectRoot.resolve(projectPath).toAbsolutePath().normalize();
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return SourceContext.UNKNOWN;
         }
         Path owner = moduleDirectories.stream()

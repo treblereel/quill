@@ -21,6 +21,7 @@ import org.treblereel.mcp.db.IndexRepository.ComparisonSnapshot;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Compares the active immutable index with an earlier local generation. */
 public final class IndexComparisonQueries {
@@ -171,6 +172,7 @@ public final class IndexComparisonQueries {
                 result.add(new Generation(path, indexId, metadata));
             }
 } catch (RuntimeException ignored) {
+    QuillLog.swallowed(ignored);
                 // Old schema versions and corrupt generations are not valid comparison baselines.
             }
         }

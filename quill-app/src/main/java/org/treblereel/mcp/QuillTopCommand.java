@@ -114,6 +114,7 @@ public class QuillTopCommand implements Callable<Integer> {
         }
         if (mcp) {
             DebugTrace.configure(debug || debugEnvironmentEnabled(), diagnosticRoot());
+            if (debug) org.treblereel.mcp.diagnostics.QuillLog.enableDebug();
             UxTelemetry.configure(telemetry || telemetryEnvironmentEnabled(), diagnosticRoot(),
                     toolProfiles);
             ProjectRegistry registry;

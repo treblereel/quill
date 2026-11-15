@@ -9,6 +9,7 @@ import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.mcp.query.MethodContextQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Atomic upgrade of neighbouring read windows to whole methods, ranged by javac or by the file's syntax. */
 final class ConfigurationMethodSource {
@@ -99,7 +100,7 @@ final class ConfigurationMethodSource {
                 Path root=Path.of(db.index.getMetadata().get("project_root")).toRealPath();
                 for(var file:prior.path("files"))if(!file.path("source_sha256").asText().equals(SourceFileHashes.hash(root.resolve(file.path("file").asText()))))throw new IllegalStateException();
                 if(org.treblereel.mcp.index.BuildStatusInspector.freshness(db,0,0).structureStale())throw new IllegalStateException();
-            }catch(Exception changed){prior.putArray("files");prior.put("status","inputs_changed");}
+            }catch(Exception changed){QuillLog.swallowed(changed); prior.putArray("files");prior.put("status","inputs_changed");}
         }
     }
     static String dedent(String source){

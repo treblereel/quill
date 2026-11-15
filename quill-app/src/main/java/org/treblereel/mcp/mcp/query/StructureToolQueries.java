@@ -42,6 +42,7 @@ import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Structural code and dependency graph queries. */
 public final class StructureToolQueries {
@@ -783,6 +784,7 @@ public final class StructureToolQueries {
                     || value.path("offset").asInt(-1) < 0) return -1;
             return value.path("offset").asInt();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return -1;
         }
     }

@@ -10,6 +10,7 @@ import org.treblereel.mcp.QuillTopCommand;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.KotlinGradleCapture;
 import org.treblereel.mcp.core.JavaGradleCapture;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Installs and removes the build-result notification owned by Quill. */
 public final class BuildIntegrationInstaller {
@@ -37,7 +38,7 @@ public final class BuildIntegrationInstaller {
                 case GRADLE -> installGradle(root);
             };
         } catch (Exception e) {
-            System.err.println("[quill] Could not install build integration: " + e.getMessage());
+            QuillLog.info("Could not install build integration: " + e.getMessage());
             return Result.FAILED;
         }
     }
@@ -56,7 +57,7 @@ public final class BuildIntegrationInstaller {
             }
             return removed ? Result.REMOVED : Result.NOT_FOUND;
         } catch (IOException e) {
-            System.err.println("[quill] Could not remove build integration: " + e.getMessage());
+            QuillLog.info("Could not remove build integration: " + e.getMessage());
             return Result.FAILED;
         }
     }

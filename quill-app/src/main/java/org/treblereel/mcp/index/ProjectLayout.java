@@ -18,6 +18,7 @@ import org.treblereel.mcp.core.DependencyIndexer;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.MavenProjectDiscovery;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Discovers compiled project layout and fingerprints the build inputs it represents. */
 public final class ProjectLayout {
@@ -319,6 +320,7 @@ public final class ProjectLayout {
         try {
             relative = path.toAbsolutePath().normalize();
         } catch (RuntimeException error) {
+            QuillLog.swallowed(error);
             return false;
         }
         for (int i = 0; i + 3 < relative.getNameCount(); i++) {

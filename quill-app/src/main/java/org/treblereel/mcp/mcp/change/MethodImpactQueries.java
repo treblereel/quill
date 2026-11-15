@@ -9,6 +9,7 @@ import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.query.MethodOverrideQueries;
 import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Direct selected-member references, without embedding the same graph in several test views. */
 public final class MethodImpactQueries {
@@ -50,7 +51,7 @@ public final class MethodImpactQueries {
                     && usage.path("evidence_lines").path(0).canConvertToInt()){
                 var text=sources.computeIfAbsent(source,s->{
                     try{return java.nio.file.Files.readAllLines(java.nio.file.Path.of(projectRoot).resolve(s));}
-                    catch(Exception unreadable){return List.of();}});
+                    catch(Exception unreadable){QuillLog.swallowed(unreadable); return List.of();}});
                 String use=CallerResultUse.describe(text,usage.path("evidence_lines").path(0).asInt(),refs.path("name").asText());
                 if(use!=null){row.put("result_use",use);resultUses++;}
             }

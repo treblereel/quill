@@ -19,6 +19,7 @@ import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.change.TestImpactQueries;
 import org.treblereel.mcp.mcp.query.UsageToolQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Provider change risk extended with downstream repository reachability. */
 final class WorkspaceRiskQueries {
@@ -90,6 +91,7 @@ final class WorkspaceRiskQueries {
                                 reader, List.of(provider.className()), true, 3, 1, 0));
                         impactedTests = tests.path("total").asInt();
                     } catch (Exception ignored) {
+                        QuillLog.swallowed(ignored);
                         // The dependency edge remains valid even when detailed evidence is absent.
                     }
                 }

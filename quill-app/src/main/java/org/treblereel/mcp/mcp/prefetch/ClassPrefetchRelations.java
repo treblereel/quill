@@ -17,6 +17,7 @@ import org.treblereel.mcp.mcp.query.BeanEvidence;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.config.ConfigurationSourceEvidence;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * The CDI and test relations a class fact needs for a first-turn answer, one line per relation:
@@ -179,6 +180,7 @@ final class ClassPrefetchRelations {
                                     + " " + source(event) + (during.isEmpty() || "IN_PROGRESS".equals(during) ? "" : " during=" + during) + ")");
                         }
                     } catch (Exception unreadable) {
+                        QuillLog.swallowed(unreadable);
                         // An unreadable member row only drops that observer.
                     }
                 });
@@ -216,6 +218,7 @@ final class ClassPrefetchRelations {
             });
             return set.isEmpty() ? "" : "(" + String.join(", ", set) + ")";
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return "";
         }
     }
@@ -343,6 +346,7 @@ final class ClassPrefetchRelations {
             }
             return compact.append(')').toString();
         } catch (RuntimeException unreadable) {
+            QuillLog.swallowed(unreadable);
             return call;
         }
     }

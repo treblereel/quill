@@ -18,6 +18,7 @@ import org.treblereel.mcp.mcp.query.ExternalSymbolQueries;
 import org.treblereel.mcp.mcp.config.FrameworkContracts;
 import org.treblereel.mcp.mcp.query.MethodContextQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * What a method fact needs beyond its callers for a first-turn answer, one line per relation:
@@ -144,6 +145,7 @@ public final class MethodPrefetchRelations {
         try {
             lines = java.nio.file.Files.readAllLines(root.resolve(sourceFile));
         } catch (java.io.IOException | RuntimeException unreadable) {
+            QuillLog.swallowed(unreadable);
             return;
         }
         java.util.regex.Pattern word = java.util.regex.Pattern.compile("(?<![\\w$])" + java.util.regex.Pattern.quote(name) + "(?![\\w$])");
@@ -210,6 +212,7 @@ public final class MethodPrefetchRelations {
                 if (List.of("jakarta.enterprise.event.Observes", "javax.enterprise.event.Observes").contains(annotation.path("annotationName").asText()))
                     event = annotation.path("parameterType").asText(null);
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             return;
         }
         if (event == null || event.isBlank()) return;
@@ -225,6 +228,7 @@ public final class MethodPrefetchRelations {
                             && annotation.path("targetKind").asText().equals("METHOD_PARAMETER"))
                         priority = annotation.path("values").path("value").asInt(DEFAULT_OBSERVER_PRIORITY);
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 // An unreadable row keeps the default priority.
             }
             observers.add(new Observer(row.className() + "#" + row.name(),
@@ -296,6 +300,7 @@ public final class MethodPrefetchRelations {
             try {
                 for (JsonNode annotation : JSON.readTree(String.valueOf(member.annotations()))) line.append(" @").append(annotation.asText());
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 // Annotations are a convenience here; the type and users still stand.
             }
             // V41 CQ-035: a config-injected field's key and main value, which agents otherwise grep for.
@@ -421,6 +426,7 @@ public final class MethodPrefetchRelations {
                             + (parts.length > 4 ? javaSignature(parts[4]) : "") + " [external]");
                 }
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 // Evidence rows are written by the indexer; an unreadable row only drops its external calls.
             }
         }
@@ -461,6 +467,7 @@ public final class MethodPrefetchRelations {
                         return "declared by " + current + " (" + details.path("artifact").asText() + ")";
                 type = details.path("superclass").asText(null);
             } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
                 break;
             }
         }
@@ -596,6 +603,7 @@ public final class MethodPrefetchRelations {
         try {
             if (requiredQualifiers != null) JSON.readTree(String.valueOf(requiredQualifiers)).forEach(q -> required.add(q.asText()));
         } catch (Exception unreadable) {
+            QuillLog.swallowed(unreadable);
             // Unreadable qualifiers leave the providers unfiltered.
         }
         List<String> providers = db.beans.findExternalProviders(type).stream()
@@ -605,6 +613,7 @@ public final class MethodPrefetchRelations {
                         JSON.readTree(String.valueOf(row.qualifiers())).forEach(q -> offered.add(q.asText()));
                         return offered.containsAll(required);
                     } catch (Exception unreadable) {
+                        QuillLog.swallowed(unreadable);
                         return true;
                     }
                 })

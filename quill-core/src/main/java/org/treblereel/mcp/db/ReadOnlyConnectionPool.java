@@ -9,6 +9,7 @@ import java.sql.SQLTimeoutException;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Small generation-local pool. Leases remain isolated; retirement closes idle and returned readers.
@@ -74,6 +75,7 @@ final class ReadOnlyConnectionPool implements Runnable {
                                 try {
                                     resource.close();
                                 } catch (Exception ignored) {
+                                    QuillLog.swallowed(ignored);
                                 }
                             resources.clear();
                         }

@@ -63,6 +63,7 @@ import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.MethodCallRecord;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public class ProjectInitializer {
     private static final int MAX_GIT_COMMITS = 5_000;
@@ -380,7 +381,7 @@ public class ProjectInitializer {
         String initialInputFingerprint = initialWorktree.indexInputFingerprint();
         timings.finish("worktree_snapshot");
 
-        System.err.println("[quill] Indexing " + root.getFileName() + " (" + classesDirs.size() + " class dirs)...");
+        QuillLog.info("Indexing " + root.getFileName() + " (" + classesDirs.size() + " class dirs)...");
         BuildSystem buildSystem = BuildSystem.detect(root);
         Map<Path, Path> classDirectoryOwners = compiledOutputs.stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -427,7 +428,7 @@ public class ProjectInitializer {
                             ProjectIndexStore.sourceTokenCache(root),
                             ProjectIndexStore.applicationIndexCache(root));
             if (scanResult.cacheHits() > 0) {
-                System.err.println("[quill] Reusing application index shards "
+                QuillLog.info("Reusing application index shards "
                         + scanResult.cacheHits() + "/" + scanResult.cacheShards() + "...");
             }
 
@@ -441,7 +442,7 @@ public class ProjectInitializer {
         }
         timings.restart();
         if (depResult.status() != DependencyIndexer.Status.COMPLETE) {
-            System.err.println("[quill] Warning: dependency index "
+            QuillLog.warn("dependency index "
                     + depResult.status().name().toLowerCase() + " (" + depResult.detail() + ")");
         }
 
@@ -695,7 +696,7 @@ public class ProjectInitializer {
                 timings.record("database_delta", writeTimings.deltaMillis());
                 timings.record("database_transaction_overhead",
                         writeTimings.transactionOverheadMillis());
-                System.err.println("[quill] SQLite delta: " + writeTimings.rowsInserted()
+                QuillLog.info("SQLite delta: " + writeTimings.rowsInserted()
                         + " inserted, " + writeTimings.rowsDeleted() + " deleted, "
                         + writeTimings.rowsUnchanged() + " unchanged.");
             }
@@ -763,7 +764,7 @@ public class ProjectInitializer {
 
         String depStatus = depResult.status() == DependencyIndexer.Status.COMPLETE
                 ? "" : " [deps: " + depResult.status().name().toLowerCase() + "]";
-        System.err.println("[quill] Done: " + classes.size() + " classes, "
+        QuillLog.info("Done: " + classes.size() + " classes, "
                 + remappedBeans.size() + " beans"
                 + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
                 + depStatus + ".");
@@ -911,21 +912,21 @@ public class ProjectInitializer {
                     if (!captured.isBlank()) {
                         capturedVersion = true;
                         String selected = org.treblereel.mcp.kotlin.KotlinRuntime.selectVersion(captured);
-                        if (selected == null) System.err.println("[quill] K2 " + captured + " is unsupported; semantic analysis will use indexed fallback");
+                        if (selected == null) QuillLog.info("K2 " + captured + " is unsupported; semantic analysis will use indexed fallback");
                         else versions.add(selected);
                     }
                 }
             } catch (IOException failure) {
-                System.err.println("[quill] Could not read captured Kotlin compiler settings: " + failure.getMessage());
+                QuillLog.info("Could not read captured Kotlin compiler settings: " + failure.getMessage());
             }
         }
         if (!capturedVersion) versions.add(org.treblereel.mcp.kotlin.KotlinRuntime.version());
         for (String selected : versions) {
             try {
                 org.treblereel.mcp.kotlin.KotlinRuntime.prepareVersion(selected);
-                System.err.println("[quill] K2 " + selected + " runtime ready");
+                QuillLog.info("K2 " + selected + " runtime ready");
             } catch (IOException failure) {
-                System.err.println("[quill] K2 " + selected + " runtime unavailable; Kotlin metadata analysis remains available. "
+                QuillLog.info("K2 " + selected + " runtime unavailable; Kotlin metadata analysis remains available. "
                         + failure.getMessage());
             }
         }
@@ -1100,7 +1101,7 @@ public class ProjectInitializer {
         boolean stateMatches = expectedState.equals(ProjectLayout.computeStateFingerprint(root, classesDirs));
         boolean sourcesMatch = jvmSources.equals(org.treblereel.mcp.core.SourceFileHashes.captureInputsCached(root, sourceRoots));
         if (!worktreeMatches || !stateMatches || !sourcesMatch)
-            System.err.println("[quill] Publication input checks: worktree=" + worktreeMatches
+            QuillLog.info("Publication input checks: worktree=" + worktreeMatches
                     + ", compiled state=" + stateMatches + ", JVM sources=" + sourcesMatch);
         return worktreeMatches && stateMatches && sourcesMatch;
     }

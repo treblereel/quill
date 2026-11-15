@@ -30,6 +30,7 @@ import org.treblereel.mcp.mcp.semantic.KotlinMemberNames;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Ranks tests that are statically or historically coupled to changed classes. */
 public final class TestImpactQueries {
@@ -406,6 +407,7 @@ public final class TestImpactQueries {
         try {
             return JSON.readTree(value).valueStream().map(node -> node.asText()).toList();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return List.of();
         }
     }

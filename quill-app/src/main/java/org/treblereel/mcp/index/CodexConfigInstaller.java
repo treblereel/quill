@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Optional;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public final class CodexConfigInstaller {
 
@@ -33,7 +34,7 @@ public final class CodexConfigInstaller {
         try {
             String updated = appendBlock("", projectRoot, binary, APPROVAL_MODE);
             writeAtomically(config, updated);
-            System.err.println("[quill] Created " + config + " with the Quill MCP server.");
+            QuillLog.info("Created " + config + " with the Quill MCP server.");
             return Result.ADDED;
         } catch (IOException e) {
             warn(config, e.getMessage());
@@ -63,7 +64,7 @@ public final class CodexConfigInstaller {
                 String updated = appendBlock(removeQuillServer(content), projectRoot, binary,
                         approvalMode(content));
                 writeAtomically(config, updated);
-                System.err.println("[quill] Repaired the Quill launcher in " + config + ".");
+                QuillLog.info("Repaired the Quill launcher in " + config + ".");
                 return Result.REPLACED;
             }
             if (definesInlineMcpServers(content)) {
@@ -73,7 +74,7 @@ public final class CodexConfigInstaller {
 
             String updated = appendBlock(content, projectRoot, binary, APPROVAL_MODE);
             writeAtomically(config, updated);
-            System.err.println("[quill] Added the Quill MCP server to " + config + ".");
+            QuillLog.info("Added the Quill MCP server to " + config + ".");
             return Result.ADDED;
         } catch (IOException e) {
             warn(config, e.getMessage());
@@ -114,7 +115,7 @@ public final class CodexConfigInstaller {
         }
         try {
             writeAtomically(config, appendWorkspaceBlock("", projectRoot, workspaceRoot, binary, APPROVAL_MODE));
-            System.err.println("[quill] Created " + config
+            QuillLog.info("Created " + config
                     + " with the workspace-aware Quill MCP server.");
             return Result.ADDED;
         } catch (IOException e) {
@@ -239,6 +240,7 @@ public final class CodexConfigInstaller {
                     && replacement.isAbsolute() && Files.isRegularFile(replacement)
                     && Files.isExecutable(replacement);
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return false;
         }
     }
@@ -515,6 +517,6 @@ public final class CodexConfigInstaller {
     }
 
     private static void warn(Path config, String message) {
-        System.err.println("[quill] Warning: could not update " + config + ": " + message);
+        QuillLog.warn("could not update " + config + ": " + message);
     }
 }

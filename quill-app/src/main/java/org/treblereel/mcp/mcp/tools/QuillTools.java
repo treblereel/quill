@@ -24,6 +24,7 @@ import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.project.WorktreeStatusQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** MCP-facing facade that routes requests and delegates query construction. */
 public final class QuillTools {
@@ -1128,6 +1129,7 @@ public final class QuillTools {
             ProjectAvailabilityResponses.append(root, "project_warnings", issues);
             return root.toString();
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return json;
         }
     }

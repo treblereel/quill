@@ -51,6 +51,13 @@ public final class ResponseCompaction {
             return text;
         }
         if (!(root instanceof ObjectNode object) || object.has("error_code") || object.has("error")) return text;
+        apply(object, tool, arguments);
+        return object.toString();
+    }
+
+    /** Compacts a parsed answer in place; error answers are left as they are. */
+    public static void apply(ObjectNode object, String tool, Map<String, Object> arguments) {
+        if (object.has("error_code") || object.has("error")) return;
         if (!UNCHANGED.contains(tool)) {
             if (!full(arguments)) {
                 if (object.path("_meta") instanceof ObjectNode meta && meta.path("stale_warning").isBoolean()
@@ -65,7 +72,6 @@ public final class ResponseCompaction {
         dropRepeatedMeta(object, object.get("_meta"));
         dropRestatedPaging(object);
         stateRepeatsOnce(object, "", new java.util.HashMap<>());
-        return object.toString();
     }
 
     /** The lossless part of {@link #apply}, for packets that never pass through the tool catalog. */

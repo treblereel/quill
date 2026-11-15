@@ -33,11 +33,30 @@ public final class ResponseBudget {
         return apply(json, maxBytes, null, Map.of());
     }
 
+    /**
+     * Serializes a parsed answer and fits it into the configured budget, trimming the answer in
+     * place when it is too large.
+     */
+    public static String apply(ObjectNode root, String tool, Map<String, Object> arguments) {
+        String json = root.toString();
+        int maxBytes = configuredMaxBytes();
+        return bytes(json) <= maxBytes ? json : truncate(root, json, maxBytes, tool, arguments);
+    }
+
     private static String apply(String json, int maxBytes, String tool, Map<String, Object> arguments) {
         if (json == null || bytes(json) <= maxBytes) return json;
         try {
             JsonNode parsed = JSON.readTree(json);
             if (!(parsed instanceof ObjectNode root)) return json;
+            return truncate(root, json, maxBytes, tool, arguments);
+        } catch (Exception ignored) {
+            return json;
+        }
+    }
+
+    private static String truncate(ObjectNode root, String json, int maxBytes, String tool,
+            Map<String, Object> arguments) {
+        try {
             int originalBytes = bytes(json);
             Map<String, Integer> omitted = new LinkedHashMap<>();
             ObjectNode budget = root.putObject("_response_budget");

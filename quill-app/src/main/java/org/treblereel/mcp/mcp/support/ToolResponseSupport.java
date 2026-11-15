@@ -261,6 +261,12 @@ public final class ToolResponseSupport {
         }
     }
 
+    /** {@link #queryEvidence(String, String, java.util.Map, boolean, int)} applied to a parsed answer in place. */
+    public static void queryEvidence(ObjectNode root, String tool, java.util.Map<String, Object> arguments,
+            boolean full, int offset) {
+        presentQueryEvidence(root, tool, JSON.valueToTree(arguments), full, offset);
+    }
+
     private static ObjectNode evidenceRequest(String tool, ObjectNode arguments, int offset) {
         var request = JSON.createObjectNode().put("tool", tool);
         var args = arguments.deepCopy().put("evidence_detail", "full").put("evidence_offset", offset);

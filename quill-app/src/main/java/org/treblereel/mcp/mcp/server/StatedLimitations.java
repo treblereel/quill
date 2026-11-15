@@ -35,11 +35,17 @@ final class StatedLimitations {
             return text;
         }
         if (!(root instanceof ObjectNode object) || object.has("error_code") || object.has("error")) return text;
+        return stateOnce(object) ? object.toString() : text;
+    }
+
+    /** Removes limitations this client already saw from a parsed answer; true when any were removed. */
+    synchronized boolean stateOnce(ObjectNode object) {
+        if (object.has("error_code") || object.has("error")) return false;
         int[] removed = {0};
         walk(object, removed);
-        if (removed[0] == 0) return text;
+        if (removed[0] == 0) return false;
         object.put("limitations_stated_earlier", removed[0]);
-        return object.toString();
+        return true;
     }
 
     private void walk(JsonNode node, int[] removed) {

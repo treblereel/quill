@@ -19,6 +19,7 @@ import org.treblereel.mcp.mcp.change.ContextQueries;
 import org.treblereel.mcp.mcp.query.ExternalSymbolQueries;
 import org.treblereel.mcp.mcp.query.PositionSymbolQueries;
 import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
+import org.treblereel.mcp.mcp.support.ToolResult;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.project.WorktreeStatusQueries;
@@ -33,9 +34,6 @@ public final class QuillTools {
      * large default page is resent with every later model request of the session.
      */
     static final int DEFAULT_PAGE_SIZE = 25;
-    private static final Set<String> NOT_FOUND_PREFIXES = Set.of(
-            "{\"error\":\"Class not found\"",
-            "{\"error\":\"Not a bean:");
 
     private final ProjectRegistry registry;
     private final ProjectQueryExecutor executor;
@@ -1135,20 +1133,8 @@ public final class QuillTools {
     }
 
     private static boolean isNotFoundError(String json) {
-        if (json == null) return false;
-        try {
-            JsonNode parsed = JSON.readTree(json);
-            if ("CLASS_NOT_FOUND".equals(parsed.path("error_code").asText())) return true;
-            if (parsed.path("annotation_indexed").isBoolean()
-                    && !parsed.path("annotation_indexed").asBoolean()) return true;
-            String message = parsed.path("message").asText();
-            if (!message.isBlank()) {
-                return message.startsWith("Not a bean:");
-            }
-        } catch (Exception ignored) {
-            // Fall through for older internal query payloads that are not valid JSON.
-        }
-        return NOT_FOUND_PREFIXES.stream().anyMatch(json::startsWith);
+        return ToolResult.of(json) instanceof ToolResult.JsonAnswer answer
+                && ToolResult.isNotFound(answer.body());
     }
 
     private static String errorResponse(String message) {

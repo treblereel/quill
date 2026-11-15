@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp.server;
 
+import org.treblereel.mcp.mcp.support.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -140,7 +141,7 @@ final class RouterTools {
             trace.event("tool_selected", Map.of("tool", name, "argument_names",
                     arguments == null ? java.util.List.of()
                             : arguments.keySet().stream().sorted().toList()));
-            McpToolCatalog.Invocation invocation =
+            ToolResult invocation =
                     McpToolCatalog.invokeMethod(tools, method, arguments);
             trace.event("tool_completed", Map.of("tool", name, "is_error", invocation.error()));
             if (!invocation.error()) return invocation.text();

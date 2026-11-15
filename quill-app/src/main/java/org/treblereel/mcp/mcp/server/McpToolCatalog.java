@@ -28,6 +28,8 @@ import org.treblereel.mcp.mcp.support.ResponseCompaction;
 import org.treblereel.mcp.mcp.tools.Tool;
 import org.treblereel.mcp.mcp.tools.ToolArg;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.mcp.support.ToolResult;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.treblereel.mcp.core.Json;
 
 public final class McpToolCatalog {
@@ -336,14 +338,22 @@ public final class McpToolCatalog {
                     "tool", method.getName(),
                     "argument_names", arguments == null
                             ? List.of() : arguments.keySet().stream().sorted().toList()));
-            Invocation invocation = invokeMethod(tools, method, arguments);
+            ToolResult invocation = invokeMethod(tools, method, arguments);
             trace.event("tool_result", Map.of(
                     "tool", method.getName(), "is_error", invocation.error()));
-            String text = invocation.text();
-            if (!invocation.error() && (graphOutput(method.getName()) || graphOutput(routedTool(method, arguments)))) {
+            boolean error = invocation.error();
+            String answered = invocation.text();
+            String text = answered;
+            if (!error && (graphOutput(method.getName()) || graphOutput(routedTool(method, arguments)))) {
                 text = GraphMetadata.compact(text);
             }
-            return result(withoutUnavailableNextStep(text, profile), invocation.error(), structured);
+            text = withoutUnavailableNextStep(text, profile);
+            // Both steps return their input unchanged when they do nothing; the parsed tree is then current.
+            if (text == answered && structured && invocation instanceof ToolResult.JsonAnswer answer) {
+                return McpSchema.CallToolResult.builder().isError(error)
+                        .structuredContent(normalizeErrorEnvelope(answer.body())).build();
+            }
+            return result(text, error, structured);
         } catch (RuntimeException e) {
             trace.failure(e);
             return result("Tool failed: " + ProjectRegistry.safeMessage(e), true, structured);
@@ -354,7 +364,7 @@ public final class McpToolCatalog {
 
     private static boolean graphOutput(String name) {return name != null && java.util.Set.of("get_call_hierarchy", "get_context", "analyze_execution_order").contains(name);}
 
-    public static Invocation invokeMethod(
+    public static ToolResult invokeMethod(
             Object tools, Method method, Map<String, Object> arguments) {
         Map<String, Object> args = guessedArguments(method, withAliases(method.getName(),
                 arguments == null ? Map.of() : arguments));
@@ -371,17 +381,17 @@ public final class McpToolCatalog {
             if (coverageEvidence) {
                 Object detail = args.get("evidence_detail");
                 if (detail != null && (!(detail instanceof String) || !Set.of("summary", "full").contains(detail)))
-                    return new Invocation("Invalid evidence_detail: expected summary or full", true);
+                    return ToolResult.failure("Invalid evidence_detail: expected summary or full");
                 if (detail != null) evidenceDetail = (String) detail;
                 if (args.get("evidence_offset") != null) evidenceOffset = (Integer) convert(args.get("evidence_offset"), Integer.class);
                 if (evidenceOffset < 0 || evidenceOffset > 0 && !evidenceDetail.equals("full"))
-                    return new Invocation("evidence_offset must be nonnegative and requires evidence_detail=full", true);
+                    return ToolResult.failure("evidence_offset must be nonnegative and requires evidence_detail=full");
             }
             Optional<String> unknown = args.keySet().stream()
                     .filter(name -> !acceptedArguments.contains(name)).findFirst();
             if (unknown.isPresent()) {
-                return new Invocation("Unknown argument: " + unknown.get() + ". Accepted arguments: "
-                        + String.join(", ", acceptedArguments.stream().sorted().toList()), true);
+                return ToolResult.failure("Unknown argument: " + unknown.get() + ". Accepted arguments: "
+                        + String.join(", ", acceptedArguments.stream().sorted().toList()));
             }
             for (int i = 0; i < parameters.length; i++) {
                 Parameter parameter = parameters[i];
@@ -391,44 +401,43 @@ public final class McpToolCatalog {
                             value, optionalArgument(parameter.getParameterizedType())));
                 } else {
                     if (value == null) {
-                        return new Invocation(
-                                "Missing required argument: " + parameter.getName(), true);
+                        return ToolResult.failure("Missing required argument: " + parameter.getName());
                     }
                 }
                 ToolArg arg = parameter.getAnnotation(ToolArg.class);
                 if (value != null && arg != null && arg.allowed().length > 0
                         && (!(value instanceof String string)
                                 || !List.of(arg.allowed()).contains(string))) {
-                    return new Invocation("Invalid argument " + parameter.getName()
-                            + ": expected one of " + String.join(", ", arg.allowed()), true);
+                    return ToolResult.failure("Invalid argument " + parameter.getName()
+                            + ": expected one of " + String.join(", ", arg.allowed()));
                 }
                 if (!isOptional(parameter.getParameterizedType())) {
                     values[i] = convert(value, parameter.getType());
                 }
             }
-            String text = (String) method.invoke(tools, values);
-            if (queryEvidence) text = ToolResponseSupport.queryEvidence(text, method.getName(), args,
+            ToolResult result = ToolResult.of((String) method.invoke(tools, values));
+            if (!(result instanceof ToolResult.JsonAnswer answer)) return result;
+            ObjectNode root = answer.body();
+            if (queryEvidence) ToolResponseSupport.queryEvidence(root, method.getName(), args,
                     evidenceDetail.equals("full"), evidenceOffset);
             if (method.getAnnotation(Tool.class).structured()) {
                 // A routed call was compacted under its own tool name by the nested invocation.
                 if (!"execute_tool".equals(method.getName())) {
-                    text = ResponseCompaction.apply(text, method.getName(), args);
+                    ResponseCompaction.apply(root, method.getName(), args);
                     if (!"full".equals(args.get("detail")) && !"full".equals(args.get("evidence_detail")))
-                        text = StatedLimitations.of(tools).stateOnce(text);
+                        StatedLimitations.of(tools).stateOnce(root);
                 }
-                text = ResponseBudget.apply(text, method.getName(), args);
+                // Trims the tree in place when the serialized answer exceeds the budget.
+                ResponseBudget.apply(root, method.getName(), args);
             }
-            return new Invocation(text, isToolError(text));
+            return answer;
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
-            return new Invocation(
-                    "Tool failed: " + ProjectRegistry.safeMessage(cause), true);
+            return ToolResult.failure("Tool failed: " + ProjectRegistry.safeMessage(cause));
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            return new Invocation("Tool failed: " + ProjectRegistry.safeMessage(e), true);
+            return ToolResult.failure("Tool failed: " + ProjectRegistry.safeMessage(e));
         }
     }
-
-    public record Invocation(String text, boolean error) {}
 
     /**
      * Drops a next_step that names a tool the active profile does not expose, so an error never
@@ -631,15 +640,5 @@ public final class McpToolCatalog {
         if (raw == Boolean.class || raw == boolean.class) return "boolean";
         if (raw == Map.class) return "object";
         return "string";
-    }
-
-    private static boolean isToolError(String text) {
-        if (text == null || text.isBlank() || text.charAt(0) != '{') return false;
-        try {
-            var parsed = JSON.readTree(text);
-            return parsed.has("error_code") || parsed.has("error");
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 }

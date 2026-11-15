@@ -1,28 +1,27 @@
 package org.treblereel.mcp.mcp.tools;
 
-import org.treblereel.mcp.workspace.WorkspaceProjectScope;
-
-import org.treblereel.mcp.db.IndexFixture;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.db.IndexFixture;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.diagnostics.DebugTrace;
-import org.treblereel.mcp.model.ExternalBeanRecord;
-import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
+import org.treblereel.mcp.model.ExternalBeanRecord;
+import org.treblereel.mcp.workspace.WorkspaceManifestStore;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 
 class WorkspaceToolQueriesTest {
 
@@ -36,24 +35,30 @@ class WorkspaceToolQueriesTest {
     void setUp() throws Exception {
         WorkspaceManifestStore.initialize(workspace, 1);
         createRepository("engine", "engine-api", "io.casehub.engine.EngineService", "");
-        createRepository("platform", "platform-api", "io.casehub.platform.PlatformService", """
+        createRepository(
+                "platform",
+                "platform-api",
+                "io.casehub.platform.PlatformService",
+                """
                 <dependencies><dependency><groupId>io.casehub</groupId>
                   <artifactId>engine-api</artifactId><version>1.0</version>
                 </dependency></dependencies>
                 """);
-        var platform = QuillDatabase.create(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> {
-            handle.execute("""
+        var platform = QuillDatabase.create(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            """
                     INSERT INTO classes(class_name, kind, source_file, is_bean, origin, module, source_set)
                     VALUES ('io.casehub.engine.EngineService', 'CLASS', NULL, 0,
                             'dependency', '.', 'main')
                     """);
-            handle.execute("""
+                    handle.execute(
+                            """
                     INSERT INTO dependencies(from_class_id, to_class_id, kind, evidence_lines)
                     VALUES (1, 2, 'CONSTRUCTS', '[21]')
                     """);
-        });
+                });
         registry = new ProjectRegistry(new WorkspaceProjectScope(workspace));
         tools = new QuillTools(registry);
     }
@@ -72,7 +77,9 @@ class WorkspaceToolQueriesTest {
         assertEquals(1, project.path("indexed_classes").asInt());
         assertEquals("unknown", project.path("framework").asText());
         assertTrue(project.has("index_freshness"));
-        assertEquals("engine", project.path("details_request").path("arguments").path("project").asText());
+        assertEquals(
+                "engine",
+                project.path("details_request").path("arguments").path("project").asText());
         assertFalse(project.has("architecture_hubs"));
         JsonNode last = compact(1, 1);
         assertEquals("platform", last.path("projects").get(0).path("name").asText());
@@ -85,7 +92,9 @@ class WorkspaceToolQueriesTest {
     void compactOverviewIncludesUnbuiltProjectsWithoutInventingCounts() throws Exception {
         Path root = Files.createDirectories(workspace.resolve("unbuilt"));
         Files.createDirectories(root.resolve(".git"));
-        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>unbuilt</artifactId><version>1</version></project>");
+        Files.writeString(
+                root.resolve("pom.xml"),
+                "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>unbuilt</artifactId><version>1</version></project>");
         tools = new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(workspace)));
         JsonNode result = compact(20, 0);
         assertEquals(3, result.path("total").asInt());
@@ -106,24 +115,51 @@ class WorkspaceToolQueriesTest {
     @Test
     void compactOverviewRequiresWorkspaceAndRejectsConflictingArguments() throws Exception {
         QuillTools single = new QuillTools(new ProjectRegistry());
-        JsonNode result = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
-                Optional.of("compact"), Optional.empty(), Optional.empty()));
+        JsonNode result =
+                single.get_overview(
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("compact"),
+                        Optional.empty(),
+                        Optional.empty());
         assertEquals("WORKSPACE_MODE_REQUIRED", result.path("error_code").asText());
         assertTrue(result.path("retryable").asBoolean());
         assertEquals("single_project", result.path("server_mode").asText());
         assertEquals("get_overview", result.path("retry_with").path("tool").asText());
         assertEquals("full", result.path("retry_with").path("arguments").path("view").asText());
-        assertTrue(JSON.readTree(tools.get_overview(Optional.of(true), Optional.empty(),
-                Optional.of("compact"), Optional.empty(), Optional.empty())).has("error"));
-        assertTrue(JSON.readTree(tools.get_overview(Optional.empty(), Optional.of("engine"),
-                Optional.of("compact"), Optional.empty(), Optional.empty())).has("error"));
-        assertTrue(JSON.readTree(tools.get_overview(Optional.empty(), Optional.empty(),
-                Optional.of("full"), Optional.of(1), Optional.empty())).has("error"));
+        assertTrue(
+                tools.get_overview(
+                                Optional.of(true),
+                                Optional.empty(),
+                                Optional.of("compact"),
+                                Optional.empty(),
+                                Optional.empty())
+                        .has("error"));
+        assertTrue(
+                tools.get_overview(
+                                Optional.empty(),
+                                Optional.of("engine"),
+                                Optional.of("compact"),
+                                Optional.empty(),
+                                Optional.empty())
+                        .has("error"));
+        assertTrue(
+                tools.get_overview(
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.of("full"),
+                                Optional.of(1),
+                                Optional.empty())
+                        .has("error"));
     }
 
     private JsonNode compact(int limit, int offset) throws Exception {
-        return JSON.readTree(tools.get_overview(Optional.empty(), Optional.empty(),
-                Optional.of("compact"), Optional.of(limit), Optional.of(offset)));
+        return tools.get_overview(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of("compact"),
+                Optional.of(limit),
+                Optional.of(offset));
     }
 
     @Test
@@ -131,14 +167,24 @@ class WorkspaceToolQueriesTest {
         ProjectRegistry singleRegistry = new ProjectRegistry();
         singleRegistry.register(workspace.resolve("engine"));
         QuillTools single = new QuillTools(singleRegistry);
-        JsonNode failed = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
-                Optional.of("compact"), Optional.of(20), Optional.of(0)));
+        JsonNode failed =
+                single.get_overview(
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("compact"),
+                        Optional.of(20),
+                        Optional.of(0));
         JsonNode arguments = failed.path("retry_with").path("arguments");
         assertTrue(failed.path("retryable").asBoolean());
         assertFalse(arguments.has("limit"));
         assertFalse(arguments.has("offset"));
-        JsonNode retried = JSON.readTree(single.get_overview(Optional.empty(), Optional.empty(),
-                Optional.of(arguments.path("view").asText()), Optional.empty(), Optional.empty()));
+        JsonNode retried =
+                single.get_overview(
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(arguments.path("view").asText()),
+                        Optional.empty(),
+                        Optional.empty());
         assertTrue(retried.has("architecture_hubs"));
         assertEquals(1, retried.path("project").path("classes").asInt());
         assertFalse(retried.has("error_code"));
@@ -148,9 +194,14 @@ class WorkspaceToolQueriesTest {
 
     @Test
     void legacyOverviewStillReturnsFullProjectEvidence() throws Exception {
-        JsonNode legacy = JSON.readTree(tools.get_overview(Optional.of(false), Optional.empty()));
-        JsonNode explicit = JSON.readTree(tools.get_overview(Optional.of(false), Optional.empty(),
-                Optional.of("full"), Optional.empty(), Optional.empty()));
+        JsonNode legacy = tools.get_overview(Optional.of(false), Optional.empty());
+        JsonNode explicit =
+                tools.get_overview(
+                        Optional.of(false),
+                        Optional.empty(),
+                        Optional.of("full"),
+                        Optional.empty(),
+                        Optional.empty());
         assertEquals(legacy, explicit);
         assertEquals(2, legacy.path("projects").size());
         assertTrue(legacy.path("projects").get(0).path("data").has("architecture_hubs"));
@@ -158,8 +209,9 @@ class WorkspaceToolQueriesTest {
 
     @Test
     void listsIndexedRepositoriesAndModuleCoordinates() throws Exception {
-        JsonNode result = JSON.readTree(tools.list_workspace_repositories(
-                Optional.of(true), Optional.empty(), Optional.empty()));
+        JsonNode result =
+                tools.list_workspace_repositories(
+                        Optional.of(true), Optional.empty(), Optional.empty());
 
         assertEquals(2, result.path("total").asInt());
         assertEquals(2, result.path("repositories").size());
@@ -169,9 +221,13 @@ class WorkspaceToolQueriesTest {
 
     @Test
     void returnsCrossRepositoryDependencyEdges() throws Exception {
-        JsonNode result = JSON.readTree(tools.get_workspace_dependencies(
-                Optional.of("platform"), Optional.of("providers"), Optional.of(true),
-                Optional.empty(), Optional.empty()));
+        JsonNode result =
+                tools.get_workspace_dependencies(
+                        Optional.of("platform"),
+                        Optional.of("providers"),
+                        Optional.of(true),
+                        Optional.empty(),
+                        Optional.empty());
 
         assertEquals(1, result.path("total").asInt());
         JsonNode edge = result.path("dependencies").get(0);
@@ -182,73 +238,107 @@ class WorkspaceToolQueriesTest {
 
     @Test
     void resolvesCoordinatesAndClassesToRepositoryCandidates() throws Exception {
-        JsonNode coordinate = JSON.readTree(
-                tools.resolve_workspace_entity("io.casehub:engine-api"));
-        JsonNode className = JSON.readTree(
-                tools.resolve_workspace_entity("io.casehub.engine.EngineService"));
+        JsonNode coordinate = tools.resolve_workspace_entity("io.casehub:engine-api");
+        JsonNode className = tools.resolve_workspace_entity("io.casehub.engine.EngineService");
 
         assertEquals("resolved", coordinate.path("resolution").asText());
-        assertEquals("engine", coordinate.path("candidates").get(0)
-                .path("repository").asText());
+        assertEquals("engine", coordinate.path("candidates").get(0).path("repository").asText());
         assertEquals("resolved", className.path("resolution").asText());
         assertEquals("class", className.path("candidates").get(0).path("kind").asText());
-        assertEquals("engine", className.path("candidates").get(0)
-                .path("repository").asText());
+        assertEquals("engine", className.path("candidates").get(0).path("repository").asText());
     }
 
     @Test
     void enrichesDependencyBeansWithWorkspaceProvider() throws Exception {
-        var platform = QuillDatabase.openWritable(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        IndexFixture.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
-                1, "io.casehub.engine.RemoteEngineBean", "CLASS", "@ApplicationScoped",
-                List.of("@Default"), List.of(), false, false, null, List.of(), null,
-                List.of("io.casehub.engine.RemoteEngineBean"), "cdi",
-                "io.casehub:engine-api:1.0", "/tmp/engine-api-1.0.jar", List.of())));
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        IndexFixture.writeExternalBeans(
+                platform,
+                List.of(
+                        new ExternalBeanRecord(
+                                1,
+                                "io.casehub.engine.RemoteEngineBean",
+                                "CLASS",
+                                "@ApplicationScoped",
+                                List.of("@Default"),
+                                List.of(),
+                                false,
+                                false,
+                                null,
+                                List.of(),
+                                null,
+                                List.of("io.casehub.engine.RemoteEngineBean"),
+                                "cdi",
+                                "io.casehub:engine-api:1.0",
+                                "/tmp/engine-api-1.0.jar",
+                                List.of())));
 
-        JsonNode result = JSON.readTree(tools.list_beans(
-                Optional.of("RemoteEngineBean"), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-                Optional.of("dependency"), Optional.empty(), Optional.empty(),
-                Optional.of("platform")));
+        JsonNode result =
+                tools.list_beans(
+                        Optional.of("RemoteEngineBean"),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("dependency"),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("platform"));
 
         JsonNode bean = result.path("beans").get(0);
         assertEquals("engine", bean.path("provider_repository").asText());
         assertEquals("build_required", bean.path("provider_status").asText());
         assertEquals(".", bean.path("provider_module").asText());
         assertTrue(result.path("workspace_provider_resolution").path("complete").asBoolean());
-        assertFalse(result.path("workspace_provider_resolution")
-                .path("additional_workspace_lookup_required").asBoolean(true));
-        assertEquals("engine", result.path("workspace_provider_resolution")
-                .path("providers").get(0).path("repository").asText());
+        assertFalse(
+                result.path("workspace_provider_resolution")
+                        .path("additional_workspace_lookup_required")
+                        .asBoolean(true));
+        assertEquals(
+                "engine",
+                result.path("workspace_provider_resolution")
+                        .path("providers")
+                        .get(0)
+                        .path("repository")
+                        .asText());
     }
 
     @Test
     void enrichesProjectArtifactsWithWorkspaceProviderAndReadiness() throws Exception {
-        String response = """
+        String response =
+                """
                 {"dependencies":[{"id":"io.casehub:engine-api:1.0",
                   "used_by_modules":["."]}]}
                 """;
 
-        JsonNode result = JSON.readTree(new WorkspaceToolQueries(registry)
-                .enrichProjectDependencies(response, "platform"));
+        JsonNode result =
+                new WorkspaceToolQueries(registry)
+                        .enrichProjectDependencies(
+                                (ObjectNode) JSON.readTree(response), "platform");
 
-        JsonNode resolution = result.path("dependencies").get(0)
-                .path("workspace_resolution");
+        JsonNode resolution = result.path("dependencies").get(0).path("workspace_resolution");
         assertEquals("resolved", resolution.path("status").asText());
         assertEquals("engine", resolution.path("provider_repository").asText());
         assertEquals(".", resolution.path("provider_module").asText());
         assertEquals("build_required", resolution.path("provider_index_status").asText());
-        assertEquals("declared_dependency",
+        assertEquals(
+                "declared_dependency",
                 resolution.path("candidates").get(0).path("evidence").asText());
-        assertEquals(1, result.path("workspace_provider_resolution")
-                .path("mapped_dependency_count").asInt());
+        assertEquals(
+                1,
+                result.path("workspace_provider_resolution")
+                        .path("mapped_dependency_count")
+                        .asInt());
     }
 
     @Test
     void workspaceToolsAreExplicitInSingleProjectMode() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools(new ProjectRegistry())
-                .list_workspace_repositories(Optional.empty(), Optional.empty(), Optional.empty()));
+        JsonNode result =
+                new QuillTools(new ProjectRegistry())
+                        .list_workspace_repositories(
+                                Optional.empty(), Optional.empty(), Optional.empty());
 
         assertEquals("workspace_mode_required", result.path("error").asText());
         assertFalse(result.path("message").asText().isBlank());
@@ -260,16 +350,17 @@ class WorkspaceToolQueriesTest {
         WorkspaceManifestStore.initialize(isolated, 1);
         Path repository = Files.createDirectories(isolated.resolve("broken"));
         Files.createDirectories(repository.resolve(".git"));
-        Files.writeString(repository.resolve("pom.xml"), """
+        Files.writeString(
+                repository.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>broken</artifactId><version>1</version>
                 </project>
                 """);
-        QuillTools isolatedTools = new QuillTools(
-                new ProjectRegistry(new WorkspaceProjectScope(isolated)));
+        QuillTools isolatedTools =
+                new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(isolated)));
 
-        JsonNode result = JSON.readTree(isolatedTools.get_overview(
-                Optional.of(false), Optional.of("broken")));
+        JsonNode result = isolatedTools.get_overview(Optional.of(false), Optional.of("broken"));
 
         assertEquals("build_required", result.path("error").asText(), result.toString());
         assertEquals("build_required", result.path("status").asText());
@@ -280,43 +371,53 @@ class WorkspaceToolQueriesTest {
         assertEquals("classes_missing", result.path("reason").asText());
         assertEquals("build", result.path("action").asText());
         assertTrue(result.path("recommended_action").asText().contains("quick_compile"));
-        assertEquals("quick_compile", result.path("verification_plan").path("commands").get(0).path("scope").asText());
+        assertEquals(
+                "quick_compile",
+                result.path("verification_plan").path("commands").get(0).path("scope").asText());
     }
 
     @Test
     void repositoryCatalogExposesBuildRequiredState() throws Exception {
         Path repository = Files.createDirectories(workspace.resolve("unbuilt"));
         Files.createDirectories(repository.resolve(".git"));
-        Files.writeString(repository.resolve("pom.xml"), """
+        Files.writeString(
+                repository.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>unbuilt</artifactId><version>1</version>
                 </project>
                 """);
 
-        QuillTools refreshed = new QuillTools(
-                new ProjectRegistry(new WorkspaceProjectScope(workspace)));
-        JsonNode result = JSON.readTree(refreshed.list_workspace_repositories(
-                Optional.empty(), Optional.of(10), Optional.empty()));
-        JsonNode unbuilt = java.util.stream.StreamSupport.stream(
-                        result.path("repositories").spliterator(), false)
-                .filter(node -> "unbuilt".equals(node.path("name").asText()))
-                .findFirst().orElseThrow();
+        QuillTools refreshed =
+                new QuillTools(new ProjectRegistry(new WorkspaceProjectScope(workspace)));
+        JsonNode result =
+                refreshed.list_workspace_repositories(
+                        Optional.empty(), Optional.of(10), Optional.empty());
+        JsonNode unbuilt =
+                java.util.stream.StreamSupport.stream(
+                                result.path("repositories").spliterator(), false)
+                        .filter(node -> "unbuilt".equals(node.path("name").asText()))
+                        .findFirst()
+                        .orElseThrow();
 
         assertEquals("build_required", unbuilt.path("status").asText());
-        assertEquals("mcp_client",
-                unbuilt.path("availability").path("decision_owner").asText());
+        assertEquals("mcp_client", unbuilt.path("availability").path("decision_owner").asText());
         assertFalse(unbuilt.path("availability").path("build_was_started").asBoolean(true));
     }
 
     @Test
     void findsUsagesOnlyInRepositoriesDependingOnTheProvider() throws Exception {
-        JsonNode result = JSON.readTree(tools.find_workspace_usages(
-                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
-                Optional.empty(), Optional.empty(), Optional.empty()));
+        JsonNode result =
+                tools.find_workspace_usages(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("engine"),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty());
 
         assertEquals("engine", result.path("provider").path("repository").asText());
-        assertEquals("io.casehub:engine-api",
-                result.path("provider").path("coordinate").asText());
+        assertEquals("io.casehub:engine-api", result.path("provider").path("coordinate").asText());
         assertEquals(1, result.path("candidate_consumer_count").asInt());
         assertEquals(1, result.path("queried_consumer_count").asInt());
         assertEquals(0, result.path("unavailable_consumer_count").asInt());
@@ -324,8 +425,9 @@ class WorkspaceToolQueriesTest {
         JsonNode consumer = result.path("consumers").get(0);
         assertEquals("platform", consumer.path("repository").asText());
         assertEquals(1, consumer.path("usage").path("usage_group_count").asInt());
-        assertEquals("constructor_call", consumer.path("usage").path("usages")
-                .get(0).path("usage_kind").asText());
+        assertEquals(
+                "constructor_call",
+                consumer.path("usage").path("usages").get(0).path("usage_kind").asText());
     }
 
     @Test
@@ -348,7 +450,8 @@ class WorkspaceToolQueriesTest {
         JsonNode usage = consumer.path("usage");
         assertEquals(1, usage.path("usage_group_count").asInt());
         assertEquals(2, usage.path("usage_occurrence_count").asInt());
-        assertEquals("io.casehub.platform.PlatformService",
+        assertEquals(
+                "io.casehub.platform.PlatformService",
                 usage.path("usages").get(0).path("class").asText());
         assertEquals("run", usage.path("usages").get(0).path("caller_method").asText());
         assertEquals("()V", usage.path("usages").get(0).path("caller_descriptor").asText());
@@ -356,28 +459,42 @@ class WorkspaceToolQueriesTest {
     }
 
     @Test
-    void findsFieldAccessWithoutConfusingSameNamedFieldsOrDependencyInternalCalls() throws Exception {
+    void findsFieldAccessWithoutConfusingSameNamedFieldsOrDependencyInternalCalls()
+            throws Exception {
         installMemberFixture("1.0");
         var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        for (var db : List.of(engine, platform)) db.useHandle(handle -> {
-            int id = db == engine ? 1 : 2;
-            handle.createUpdate("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        for (var db : List.of(engine, platform))
+            db.useHandle(
+                    handle -> {
+                        int id = db == engine ? 1 : 2;
+                        handle.createUpdate(
+                                        """
                     INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
                                               parameter_types,modifiers,annotations)
                     VALUES (:id,'FIELD','state','state:int','I','int','[]','public','[]'),
                            (:id,'FIELD','state','state:long','J','long','[]','public','[]')""")
-                    .bind("id", id).execute();
-        });
-        platform.useHandle(handle -> {
-            handle.execute("""
+                                .bind("id", id)
+                                .execute();
+                    });
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            """
                     INSERT INTO field_accesses(from_class_id,from_method,from_descriptor,
                         to_class_id,field_name,field_descriptor,access_kind,occurrence_count,evidence_lines)
                     VALUES (1,'run','()V',2,'state','I','read_field',1,'[41]'),
                            (1,'run','()V',2,'state','J','read_field',1,'[42]'),
                            (2,'internal','()V',2,'state','I','read_field',1,'[43]')""");
-        });
-        var cls = engine.withHandle(repositoryHandle1 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle1).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
+                });
+        var cls =
+                engine.withHandle(
+                                repositoryHandle1 ->
+                                        new org.treblereel.mcp.db.SymbolRepository(
+                                                        repositoryHandle1)
+                                                .findClassByName("io.casehub.engine.EngineService"))
+                        .orElseThrow();
         JsonNode result = memberUsages(SymbolContract.id(cls, "FIELD", "state", "I"), 20);
         JsonNode usage = result.path("consumers").get(0).path("usage");
         assertEquals(1, usage.path("usage_group_count").asInt(), result.toString());
@@ -389,41 +506,76 @@ class WorkspaceToolQueriesTest {
     void findsExactConstructorCallsByJvmDescriptor() throws Exception {
         installMemberFixture("1.0");
         var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        for (var db : List.of(engine, platform)) db.useHandle(handle -> {
-            int id = db == engine ? 1 : 2;
-            handle.createUpdate("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        for (var db : List.of(engine, platform))
+            db.useHandle(
+                    handle -> {
+                        int id = db == engine ? 1 : 2;
+                        handle.createUpdate(
+                                        """
                     INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
                                               parameter_types,modifiers,annotations)
                     VALUES (:id,'CONSTRUCTOR','<init>','EngineService(int)','(I)V','void',
-                            '["int"]','public','[]')""").bind("id", id).execute();
-        });
-        platform.useHandle(handle -> handle.execute("""
+                            '["int"]','public','[]')""")
+                                .bind("id", id)
+                                .execute();
+                    });
+        platform.useHandle(
+                handle ->
+                        handle.execute(
+                                """
                 INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
                     to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
                 VALUES (1,'create','()V',2,'<init>','(I)V','SPECIAL',1,'[61]')"""));
-        var cls = engine.withHandle(repositoryHandle2 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle2).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
+        var cls =
+                engine.withHandle(
+                                repositoryHandle2 ->
+                                        new org.treblereel.mcp.db.SymbolRepository(
+                                                        repositoryHandle2)
+                                                .findClassByName("io.casehub.engine.EngineService"))
+                        .orElseThrow();
         JsonNode result = memberUsages(SymbolContract.id(cls, "CONSTRUCTOR", "<init>", "(I)V"), 20);
         assertEquals("constructor", result.path("kind").asText(), result.toString());
         assertEquals(1, result.path("total").asInt());
-        assertEquals(61, result.path("consumers").get(0).path("usage")
-                .path("usages").get(0).path("evidence_lines").get(0).asInt());
+        assertEquals(
+                61,
+                result.path("consumers")
+                        .get(0)
+                        .path("usage")
+                        .path("usages")
+                        .get(0)
+                        .path("evidence_lines")
+                        .get(0)
+                        .asInt());
     }
 
     @Test
     void completeIndexWithNoMatchingCallsReturnsZeroUsages() throws Exception {
         installMemberFixture("1.0");
         var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        for (var db : List.of(engine, platform)) db.useHandle(handle -> {
-            int id = db == engine ? 1 : 2;
-            handle.createUpdate("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        for (var db : List.of(engine, platform))
+            db.useHandle(
+                    handle -> {
+                        int id = db == engine ? 1 : 2;
+                        handle.createUpdate(
+                                        """
                     INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
                                               parameter_types,modifiers,annotations)
                     VALUES (:id,'METHOD','unused','unused():void','()V','void',
-                            '[]','public','[]')""").bind("id", id).execute();
-        });
-        var cls = engine.withHandle(repositoryHandle3 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle3).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
+                            '[]','public','[]')""")
+                                .bind("id", id)
+                                .execute();
+                    });
+        var cls =
+                engine.withHandle(
+                                repositoryHandle3 ->
+                                        new org.treblereel.mcp.db.SymbolRepository(
+                                                        repositoryHandle3)
+                                                .findClassByName("io.casehub.engine.EngineService"))
+                        .orElseThrow();
         JsonNode result = memberUsages(SymbolContract.id(cls, "METHOD", "unused", "()V"), 20);
         assertEquals(0, result.path("total").asInt(), result.toString());
         assertEquals(1, result.path("resolved_consumer_count").asInt());
@@ -436,10 +588,12 @@ class WorkspaceToolQueriesTest {
         JsonNode result = memberUsages(symbol, 20);
         assertEquals(0, result.path("total").asInt(), result.toString());
         assertFalse(result.path("complete").asBoolean(true));
-        assertEquals("version_mismatch", result.path("unresolved_consumers").get(0)
-                .path("status").asText());
-        assertEquals("binary_behind_checkout", result.path("unresolved_consumers").get(0)
-                .path("version_status").asText());
+        assertEquals(
+                "version_mismatch",
+                result.path("unresolved_consumers").get(0).path("status").asText());
+        assertEquals(
+                "binary_behind_checkout",
+                result.path("unresolved_consumers").get(0).path("version_status").asText());
     }
 
     @Test
@@ -448,12 +602,14 @@ class WorkspaceToolQueriesTest {
         Path shadow = workspace.resolve("cache/other/shadow/1.0/shadow-1.0.jar");
         writeClassJar(shadow);
         Path classpath = workspace.resolve("platform/target/quill-classpath.txt");
-        Files.writeString(classpath, shadow + java.io.File.pathSeparator
-                + Files.readString(classpath));
+        Files.writeString(
+                classpath, shadow + java.io.File.pathSeparator + Files.readString(classpath));
         JsonNode result = memberUsages(symbol, 20);
         assertEquals(0, result.path("total").asInt());
-        assertEquals("consumer_binary_class_shadowed", result.path("unresolved_consumers")
-                .get(0).path("status").asText(), result.toString());
+        assertEquals(
+                "consumer_binary_class_shadowed",
+                result.path("unresolved_consumers").get(0).path("status").asText(),
+                result.toString());
     }
 
     @Test
@@ -462,13 +618,15 @@ class WorkspaceToolQueriesTest {
         Path shadow = workspace.resolve("platform/target/shadow-classes");
         Path classFile = shadow.resolve("io/casehub/engine/EngineService.class");
         Files.createDirectories(classFile.getParent());
-        Files.write(classFile, new byte[]{0});
+        Files.write(classFile, new byte[] {0});
         Path classpath = workspace.resolve("platform/target/quill-classpath.txt");
-        Files.writeString(classpath, shadow + java.io.File.pathSeparator
-                + Files.readString(classpath));
+        Files.writeString(
+                classpath, shadow + java.io.File.pathSeparator + Files.readString(classpath));
         JsonNode result = memberUsages(symbol, 20);
-        assertEquals("consumer_binary_class_shadowed", result.path("unresolved_consumers")
-                .get(0).path("status").asText(), result.toString());
+        assertEquals(
+                "consumer_binary_class_shadowed",
+                result.path("unresolved_consumers").get(0).path("status").asText(),
+                result.toString());
         assertFalse(result.path("complete").asBoolean(true));
     }
 
@@ -478,61 +636,90 @@ class WorkspaceToolQueriesTest {
         Path mainClasspath = workspace.resolve("platform/target/quill-classpath.txt");
         Path testClasspath = workspace.resolve("platform/target/quill-test-classpath.txt");
         Files.writeString(testClasspath, Files.readString(mainClasspath));
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> {
-            handle.execute("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            """
                     INSERT INTO classes(class_name,kind,origin,module,source_set)
                     VALUES ('io.casehub.platform.PlatformTest','CLASS','source','.','test')""");
-            handle.execute("""
+                    handle.execute(
+                            """
                     INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
                         to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
                     VALUES (3,'testRun','()V',2,'execute','(I)V','VIRTUAL',1,'[53]')""");
-        });
+                });
         JsonNode result = memberUsages(symbol, 20);
         assertEquals(2, result.path("candidate_consumer_count").asInt(), result.toString());
         assertEquals(2, result.path("total").asInt());
         assertEquals("test", result.path("consumers").get(1).path("source_set").asText());
-        assertEquals(53, result.path("consumers").get(1).path("usage")
-                .path("usages").get(0).path("evidence_lines").get(0).asInt());
+        assertEquals(
+                53,
+                result.path("consumers")
+                        .get(1)
+                        .path("usage")
+                        .path("usages")
+                        .get(0)
+                        .path("evidence_lines")
+                        .get(0)
+                        .asInt());
     }
 
     @Test
     void missingTestClasspathMakesTestUsageCoverageUnknown() throws Exception {
         String symbol = installMemberFixture("1.0");
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> handle.execute("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle ->
+                        handle.execute(
+                                """
                 INSERT INTO classes(class_name,kind,origin,module,source_set)
                 VALUES ('io.casehub.platform.PlatformTest','CLASS','source','.','test')"""));
         JsonNode result = memberUsages(symbol, 20);
         assertEquals(2, result.path("candidate_consumer_count").asInt(), result.toString());
-        assertEquals("test", result.path("unresolved_consumers").get(0)
-                .path("source_set").asText());
-        assertEquals("version_unknown", result.path("unresolved_consumers").get(0)
-                .path("status").asText());
+        assertEquals(
+                "test", result.path("unresolved_consumers").get(0).path("source_set").asText());
+        assertEquals(
+                "version_unknown",
+                result.path("unresolved_consumers").get(0).path("status").asText());
         assertFalse(result.path("complete").asBoolean(true));
     }
 
     @Test
     void duplicateIndexedBinaryClassAndMissingClasspathStayUnknown() throws Exception {
         String symbol = installMemberFixture("1.0");
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> handle.execute("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle ->
+                        handle.execute(
+                                """
                 INSERT INTO classes(class_name,kind,origin,module,source_set)
                 VALUES ('io.casehub.engine.EngineService','CLASS','dependency','.','main')"""));
         JsonNode duplicate = memberUsages(symbol, 20);
-        assertEquals("consumer_binary_class_ambiguous", duplicate.path("unresolved_consumers")
-                .get(0).path("status").asText());
+        assertEquals(
+                "consumer_binary_class_ambiguous",
+                duplicate.path("unresolved_consumers").get(0).path("status").asText());
         Files.delete(workspace.resolve("platform/target/quill-classpath.txt"));
         JsonNode missing = memberUsages(symbol, 20);
-        assertEquals("version_unknown", missing.path("unresolved_consumers")
-                .get(0).path("status").asText());
+        assertEquals(
+                "version_unknown",
+                missing.path("unresolved_consumers").get(0).path("status").asText());
     }
 
     @Test
     void missingProviderMemberAndMalformedSymbolIdReturnExplicitErrors() throws Exception {
         installMemberFixture("1.0");
         var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
-        var cls = engine.withHandle(repositoryHandle4 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle4).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
+        var cls =
+                engine.withHandle(
+                                repositoryHandle4 ->
+                                        new org.treblereel.mcp.db.SymbolRepository(
+                                                        repositoryHandle4)
+                                                .findClassByName("io.casehub.engine.EngineService"))
+                        .orElseThrow();
         JsonNode missing = memberUsages(SymbolContract.id(cls, "METHOD", "missing", "()V"), 20);
         assertEquals("SYMBOL_NOT_FOUND", missing.path("error_code").asText());
         JsonNode malformed = memberUsages("quill:symbol:v2:bad", 20);
@@ -542,127 +729,175 @@ class WorkspaceToolQueriesTest {
     @Test
     void incompleteIndexOrMissingBinaryMemberIsUnknownRatherThanNoUsages() throws Exception {
         String symbol = installMemberFixture("1.0");
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> handle.execute("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle ->
+                        handle.execute(
+                                """
                 UPDATE metadata SET value='degraded' WHERE key='dependency_index'"""));
         JsonNode incomplete = memberUsages(symbol, 20);
-        assertEquals("dependency_index_incomplete", incomplete.path("unresolved_consumers")
-                .get(0).path("status").asText());
-        platform.useHandle(handle -> {
-            handle.execute("UPDATE metadata SET value='complete' WHERE key='dependency_index'");
-            handle.execute("DELETE FROM class_members WHERE class_id=2 AND descriptor='(I)V'");
-        });
+        assertEquals(
+                "dependency_index_incomplete",
+                incomplete.path("unresolved_consumers").get(0).path("status").asText());
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            "UPDATE metadata SET value='complete' WHERE key='dependency_index'");
+                    handle.execute(
+                            "DELETE FROM class_members WHERE class_id=2 AND descriptor='(I)V'");
+                });
         JsonNode missing = memberUsages(symbol, 20);
-        assertEquals("consumer_binary_member_missing", missing.path("unresolved_consumers")
-                .get(0).path("status").asText());
+        assertEquals(
+                "consumer_binary_member_missing",
+                missing.path("unresolved_consumers").get(0).path("status").asText());
         assertEquals(0, missing.path("total").asInt());
     }
 
     @Test
     void exactMemberPageReportsTruncationWithoutClaimingCompleteness() throws Exception {
         String symbol = installMemberFixture("1.0");
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> handle.execute("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle ->
+                        handle.execute(
+                                """
                 INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
                     to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
                 VALUES (1,'other','()V',2,'execute','(I)V','VIRTUAL',1,'[34]')"""));
         JsonNode result = memberUsages(symbol, 1);
         assertEquals(1, result.path("truncated_consumer_count").asInt());
         assertFalse(result.path("complete").asBoolean(true));
-        assertEquals(2, result.path("consumers").get(0).path("usage")
-                .path("total").asInt());
-        assertTrue(result.path("consumers").get(0).path("usage")
-                .path("has_more").asBoolean());
+        assertEquals(2, result.path("consumers").get(0).path("usage").path("total").asInt());
+        assertTrue(result.path("consumers").get(0).path("usage").path("has_more").asBoolean());
         JsonNode continuation = result.path("next_usage_page_request");
         assertEquals("find_workspace_usages", continuation.path("tool").asText());
         assertEquals(1, continuation.path("arguments").path("consumer_offset").asInt());
-        JsonNode next = JSON.readTree(tools.find_workspace_usages(symbol,
-                Optional.of("engine"), Optional.empty(), Optional.of(20), Optional.of(1),
-                Optional.of(1), Optional.empty()));
-        assertEquals(1, next.path("consumers").get(0).path("usage")
-                .path("showing").asInt());
-        assertFalse(next.path("consumers").get(0).path("usage")
-                .path("has_more").asBoolean());
+        JsonNode next =
+                tools.find_workspace_usages(
+                        symbol,
+                        Optional.of("engine"),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.of(1),
+                        Optional.of(1),
+                        Optional.empty());
+        assertEquals(1, next.path("consumers").get(0).path("usage").path("showing").asInt());
+        assertFalse(next.path("consumers").get(0).path("usage").path("has_more").asBoolean());
         assertFalse(next.has("next_usage_page_request"));
     }
 
     private JsonNode memberUsages(String symbol, int consumerLimit) throws Exception {
-        return JSON.readTree(tools.find_workspace_usages(symbol, Optional.of("engine"),
-                Optional.empty(), Optional.of(20), Optional.of(consumerLimit), Optional.empty()));
+        return tools.find_workspace_usages(
+                symbol,
+                Optional.of("engine"),
+                Optional.empty(),
+                Optional.of(20),
+                Optional.of(consumerLimit),
+                Optional.empty());
     }
 
     private String installMemberFixture(String binaryVersion) throws Exception {
-        Path jar = workspace.resolve("cache/io/casehub/engine-api/" + binaryVersion
-                + "/engine-api-" + binaryVersion + ".jar");
+        Path jar =
+                workspace.resolve(
+                        "cache/io/casehub/engine-api/"
+                                + binaryVersion
+                                + "/engine-api-"
+                                + binaryVersion
+                                + ".jar");
         writeClassJar(jar);
         Path classpath = workspace.resolve("platform/target/quill-classpath.txt");
         Files.createDirectories(classpath.getParent());
         Files.writeString(classpath, jar.toString());
         var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
-        engine.useHandle(handle -> {
-            handle.execute("INSERT INTO metadata(key,value) VALUES ('compiled_before_index','true')");
-            handle.execute("""
+        engine.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO metadata(key,value) VALUES ('compiled_before_index','true')");
+                    handle.execute(
+                            """
                 INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
                                           parameter_types,modifiers,annotations)
                 VALUES (1,'METHOD','execute','execute(int):void','(I)V','void',
                         '["int"]','public','[]'),
                        (1,'METHOD','execute','execute(String):void','(Ljava/lang/String;)V',
                         'void','["java.lang.String"]','public','[]')""");
-        });
-        var platform = QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> {
-            handle.execute("INSERT INTO metadata(key,value) VALUES ('dependency_index','complete')");
-            handle.execute("INSERT INTO metadata(key,value) VALUES ('compiled_before_index','true')");
-            handle.execute("""
+                });
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO metadata(key,value) VALUES ('dependency_index','complete')");
+                    handle.execute(
+                            "INSERT INTO metadata(key,value) VALUES ('compiled_before_index','true')");
+                    handle.execute(
+                            """
                     INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,
                                               parameter_types,modifiers,annotations)
                     VALUES (2,'METHOD','execute','execute(int):void','(I)V','void',
                             '["int"]','public','[]'),
                            (2,'METHOD','execute','execute(String):void','(Ljava/lang/String;)V',
                             'void','["java.lang.String"]','public','[]')""");
-            handle.execute("""
+                    handle.execute(
+                            """
                     INSERT INTO method_calls(from_class_id,from_method,from_descriptor,to_class_id,
                         to_method,to_descriptor,invocation_kind,occurrence_count,evidence_lines)
                     VALUES (1,'run','()V',2,'execute','(I)V','VIRTUAL',2,'[33]'),
                            (1,'run','()V',2,'execute','(Ljava/lang/String;)V','VIRTUAL',1,'[35]')""");
-        });
-        var cls = engine.withHandle(repositoryHandle5 -> new org.treblereel.mcp.db.SymbolRepository(repositoryHandle5).findClassByName("io.casehub.engine.EngineService")).orElseThrow();
+                });
+        var cls =
+                engine.withHandle(
+                                repositoryHandle5 ->
+                                        new org.treblereel.mcp.db.SymbolRepository(
+                                                        repositoryHandle5)
+                                                .findClassByName("io.casehub.engine.EngineService"))
+                        .orElseThrow();
         return SymbolContract.id(cls, "METHOD", "execute", "(I)V");
     }
 
     private static void writeClassJar(Path jar) throws Exception {
         Files.createDirectories(jar.getParent());
         try (var archive = new java.util.jar.JarOutputStream(Files.newOutputStream(jar))) {
-            archive.putNextEntry(new java.util.jar.JarEntry(
-                    "io/casehub/engine/EngineService.class"));
-            archive.write(new byte[]{0});
+            archive.putNextEntry(
+                    new java.util.jar.JarEntry("io/casehub/engine/EngineService.class"));
+            archive.write(new byte[] {0});
             archive.closeEntry();
         }
     }
 
     @Test
     void boundsUsageDetailsPerConsumerAndReportsTruncation() throws Exception {
-        var platform = QuillDatabase.openWritable(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> {
-            handle.execute("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            """
                     INSERT INTO classes(class_name, kind, source_file, is_bean, module, source_set)
                     VALUES ('io.casehub.platform.FirstCaller', 'CLASS',
                             'src/main/java/io/casehub/platform/FirstCaller.java', 0, '.', 'main'),
                            ('io.casehub.platform.SecondCaller', 'CLASS',
                             'src/main/java/io/casehub/platform/SecondCaller.java', 0, '.', 'main')
                     """);
-            handle.execute("""
+                    handle.execute(
+                            """
                     INSERT INTO dependencies(from_class_id, to_class_id, kind, evidence_lines)
                     SELECT id, 2, 'CALLS', '[33]' FROM classes
                     WHERE class_name IN ('io.casehub.platform.FirstCaller',
                                          'io.casehub.platform.SecondCaller')
                     """);
-        });
+                });
 
-        JsonNode result = JSON.readTree(tools.find_workspace_usages(
-                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
-                Optional.of(20), Optional.of(2), Optional.empty()));
+        JsonNode result =
+                tools.find_workspace_usages(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("engine"),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.of(2),
+                        Optional.empty());
 
         assertEquals(2, result.path("consumer_usage_limit").asInt());
         assertEquals(1, result.path("truncated_consumer_count").asInt());
@@ -678,78 +913,123 @@ class WorkspaceToolQueriesTest {
     void reportsConsumersThatCannotResolveWorkspaceTarget() throws Exception {
         removePlatformDependencyClass();
 
-        JsonNode result = JSON.readTree(tools.find_workspace_usages(
-                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
-                Optional.of(20), Optional.of(5), Optional.empty()));
+        JsonNode result =
+                tools.find_workspace_usages(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("engine"),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.of(5),
+                        Optional.empty());
 
         assertEquals(1, result.path("queried_consumer_count").asInt());
         assertEquals(0, result.path("resolved_consumer_count").asInt());
         assertEquals(1, result.path("unresolved_consumer_count").asInt());
         assertFalse(result.path("complete").asBoolean(true));
-        assertEquals("platform", result.path("unresolved_consumers").get(0)
-                .path("repository").asText());
+        assertEquals(
+                "platform", result.path("unresolved_consumers").get(0).path("repository").asText());
         JsonNode unresolved = result.path("unresolved_consumers").get(0);
-        assertEquals("artifact_dependency_without_class_evidence", unresolved
-                .path("status").asText());
-        assertEquals("artifact_dependency_only", unresolved
-                .path("target_resolution").asText());
-        assertTrue(unresolved.path("message").asText()
-                .contains("Artifact dependency alone does not prove use"));
-        assertEquals(List.of("local_class_index", "external_bean_index",
-                        "external_type_index"),
+        assertEquals(
+                "artifact_dependency_without_class_evidence", unresolved.path("status").asText());
+        assertEquals("artifact_dependency_only", unresolved.path("target_resolution").asText());
+        assertTrue(
+                unresolved
+                        .path("message")
+                        .asText()
+                        .contains("Artifact dependency alone does not prove use"));
+        assertEquals(
+                List.of("local_class_index", "external_bean_index", "external_type_index"),
                 JSON.convertValue(unresolved.path("resolution_strategies_checked"), List.class));
-        assertEquals("io.casehub:engine-api", unresolved
-                .path("dependency_evidence").path("coordinate").asText());
-        assertEquals(".", unresolved.path("dependency_evidence")
-                .path("consumer_module").asText());
-        assertEquals("declared_dependency", unresolved.path("dependency_evidence")
-                .path("evidence").asText());
+        assertEquals(
+                "io.casehub:engine-api",
+                unresolved.path("dependency_evidence").path("coordinate").asText());
+        assertEquals(".", unresolved.path("dependency_evidence").path("consumer_module").asText());
+        assertEquals(
+                "declared_dependency",
+                unresolved.path("dependency_evidence").path("evidence").asText());
         assertTrue(unresolved.path("limitations").isArray());
     }
 
     @Test
     void treatsExternalFrameworkBeanDiscoveryAsWorkspaceUsage() throws Exception {
-        var platform = QuillDatabase.openWritable(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        IndexFixture.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
-                1, "io.casehub.engine.EngineService", "CLASS", "@ApplicationScoped",
-                List.of("@Default"), List.of(), false, false, null, List.of(), null,
-                List.of("io.casehub.engine.EngineService"), "cdi",
-                "io.casehub:engine-api:1.0", "/tmp/engine-api-1.0.jar", List.of())));
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        IndexFixture.writeExternalBeans(
+                platform,
+                List.of(
+                        new ExternalBeanRecord(
+                                1,
+                                "io.casehub.engine.EngineService",
+                                "CLASS",
+                                "@ApplicationScoped",
+                                List.of("@Default"),
+                                List.of(),
+                                false,
+                                false,
+                                null,
+                                List.of(),
+                                null,
+                                List.of("io.casehub.engine.EngineService"),
+                                "cdi",
+                                "io.casehub:engine-api:1.0",
+                                "/tmp/engine-api-1.0.jar",
+                                List.of())));
         removePlatformDependencyClass();
 
-        JsonNode result = JSON.readTree(tools.find_workspace_usages(
-                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.empty(),
-                Optional.of(20), Optional.of(5), Optional.empty()));
+        JsonNode result =
+                tools.find_workspace_usages(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("engine"),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.of(5),
+                        Optional.empty());
 
         assertEquals(1, result.path("resolved_consumer_count").asInt());
         assertEquals(0, result.path("unresolved_consumer_count").asInt());
         JsonNode usage = result.path("consumers").get(0).path("usage");
         assertEquals("external_bean_index", usage.path("target_resolution").asText());
-        assertEquals("bean_discovery", usage.path("usages").get(0)
-                .path("usage_kind").asText());
-        assertEquals("io.casehub:engine-api:1.0", usage.path("usages").get(0)
-                .path("artifact").asText());
+        assertEquals("bean_discovery", usage.path("usages").get(0).path("usage_kind").asText());
+        assertEquals(
+                "io.casehub:engine-api:1.0", usage.path("usages").get(0).path("artifact").asText());
         assertFalse(usage.has("_meta"));
-        assertFalse(usage.path("index_snapshot")
-                .path("live_freshness_evaluated").asBoolean(true));
+        assertFalse(usage.path("index_snapshot").path("live_freshness_evaluated").asBoolean(true));
     }
 
     @Test
     void doesNotReportUnresolvedWhenUsageKindFiltersOutBeanDiscovery() throws Exception {
-        var platform = QuillDatabase.openWritable(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        IndexFixture.writeExternalBeans(platform, List.of(new ExternalBeanRecord(
-                1, "io.casehub.engine.EngineService", "CLASS", "@ApplicationScoped",
-                List.of("@Default"), List.of(), false, false, null, List.of(), null,
-                List.of("io.casehub.engine.EngineService"), "cdi",
-                "io.casehub:engine-api:1.0", "/tmp/engine-api-1.0.jar", List.of())));
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        IndexFixture.writeExternalBeans(
+                platform,
+                List.of(
+                        new ExternalBeanRecord(
+                                1,
+                                "io.casehub.engine.EngineService",
+                                "CLASS",
+                                "@ApplicationScoped",
+                                List.of("@Default"),
+                                List.of(),
+                                false,
+                                false,
+                                null,
+                                List.of(),
+                                null,
+                                List.of("io.casehub.engine.EngineService"),
+                                "cdi",
+                                "io.casehub:engine-api:1.0",
+                                "/tmp/engine-api-1.0.jar",
+                                List.of())));
         removePlatformDependencyClass();
 
-        JsonNode result = JSON.readTree(tools.find_workspace_usages(
-                "io.casehub.engine.EngineService", Optional.of("engine"),
-                Optional.of("type_reference"), Optional.of(20), Optional.of(5),
-                Optional.empty()));
+        JsonNode result =
+                tools.find_workspace_usages(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("engine"),
+                        Optional.of("type_reference"),
+                        Optional.of(20),
+                        Optional.of(5),
+                        Optional.empty());
 
         assertEquals(1, result.path("resolved_consumer_count").asInt());
         assertEquals(0, result.path("unresolved_consumer_count").asInt());
@@ -759,51 +1039,59 @@ class WorkspaceToolQueriesTest {
 
     @Test
     void resolvesWorkspaceUsageFromExternalTypeSignatures() throws Exception {
-        var platform = QuillDatabase.openWritable(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> {
-            handle.execute("""
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            """
                     INSERT INTO classes(class_name, kind, source_file, is_bean, origin,
                                         module, source_set)
                     VALUES ('io.casehub.platform.EngineAdapter', 'CLASS',
                             'src/main/java/io/casehub/platform/EngineAdapter.java', 0,
                             'source', '.', 'main')
                     """);
-            handle.execute("""
+                    handle.execute(
+                            """
                     INSERT INTO class_external_deps(class_id, external_type, usage_kind)
                     SELECT id, 'io.casehub.engine.EngineService', 'FIELD'
                     FROM classes WHERE class_name = 'io.casehub.platform.EngineAdapter'
                     """);
-        });
+                });
         removePlatformDependencyClass();
 
-        JsonNode result = JSON.readTree(tools.find_workspace_usages(
-                "io.casehub.engine.EngineService", Optional.of("engine"),
-                Optional.of("type_reference"), Optional.of(20), Optional.of(5),
-                Optional.empty()));
+        JsonNode result =
+                tools.find_workspace_usages(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("engine"),
+                        Optional.of("type_reference"),
+                        Optional.of(20),
+                        Optional.of(5),
+                        Optional.empty());
 
         assertEquals(1, result.path("resolved_consumer_count").asInt());
         assertEquals(0, result.path("unresolved_consumer_count").asInt());
         JsonNode usage = result.path("consumers").get(0).path("usage");
         assertEquals("external_type_index", usage.path("target_resolution").asText());
-        assertEquals("io.casehub.platform.EngineAdapter",
+        assertEquals(
+                "io.casehub.platform.EngineAdapter",
                 usage.path("usages").get(0).path("class").asText());
-        assertEquals("type_reference",
-                usage.path("usages").get(0).path("usage_kind").asText());
-        assertEquals("EXTERNAL_FIELD",
-                usage.path("usages").get(0).path("indexed_kind").asText());
+        assertEquals("type_reference", usage.path("usages").get(0).path("usage_kind").asText());
+        assertEquals("EXTERNAL_FIELD", usage.path("usages").get(0).path("indexed_kind").asText());
     }
 
     @Test
     void assessesProviderAndDownstreamRisk() throws Exception {
-        JsonNode result = JSON.readTree(tools.assess_workspace_change_risk(
-                "io.casehub.engine.EngineService", Optional.of("engine"), Optional.of(3)));
+        JsonNode result =
+                tools.assess_workspace_change_risk(
+                        "io.casehub.engine.EngineService", Optional.of("engine"), Optional.of(3));
 
         assertEquals("engine", result.path("provider_repository").asText());
         assertEquals(1, result.path("direct_consumer_count").asInt());
         assertEquals(0, result.path("transitive_consumer_count").asInt());
-        assertTrue(result.path("workspace_risk_score").asDouble()
-                >= result.path("provider_risk").path("risk_score").asDouble());
+        assertTrue(
+                result.path("workspace_risk_score").asDouble()
+                        >= result.path("provider_risk").path("risk_score").asDouble());
         JsonNode downstream = result.path("downstream").get(0);
         assertEquals("platform", downstream.path("repository").asText());
         assertEquals(1, downstream.path("depth").asInt());
@@ -812,10 +1100,16 @@ class WorkspaceToolQueriesTest {
 
     @Test
     void continuesDependencyClassQueryInProviderRepository() throws Exception {
-        JsonNode result = JSON.readTree(tools.get_dependencies(
-                "io.casehub.engine.EngineService", Optional.of("outbound"), Optional.of(1),
-                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
-                Optional.of("platform")));
+        JsonNode result =
+                tools.get_dependencies(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("outbound"),
+                        Optional.of(1),
+                        Optional.of(true),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("platform"));
 
         assertEquals("dependency", result.path("origin").asText());
         JsonNode traversal = result.path("workspace_traversal");
@@ -823,51 +1117,67 @@ class WorkspaceToolQueriesTest {
         assertEquals("resolved", traversal.path("status").asText());
         assertFalse(traversal.path("complete").asBoolean(true));
         assertEquals("engine", traversal.path("provider").path("repository").asText());
-        assertEquals("stale", traversal.path("provider")
-                .path("index_freshness").path("status").asText());
-        assertEquals("source",
-                traversal.path("provider").path("data").path("origin").asText());
-        assertEquals("platform", traversal.path("routes").get(0)
-                .path("from_repository").asText());
-        assertEquals("engine", traversal.path("routes").get(0)
-                .path("to_repository").asText());
-        assertEquals("stale", traversal.path("routes").get(0)
-                .path("index_freshness").path("status").asText());
+        assertEquals(
+                "stale",
+                traversal.path("provider").path("index_freshness").path("status").asText());
+        assertEquals("source", traversal.path("provider").path("data").path("origin").asText());
+        assertEquals("platform", traversal.path("routes").get(0).path("from_repository").asText());
+        assertEquals("engine", traversal.path("routes").get(0).path("to_repository").asText());
+        assertEquals(
+                "stale",
+                traversal.path("routes").get(0).path("index_freshness").path("status").asText());
     }
 
     @Test
     void routesLocalClassNotFoundToWorkspaceProvider() throws Exception {
-        var platform = QuillDatabase.openWritable(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> {
-            handle.execute("DELETE FROM dependencies WHERE to_class_id IN "
-                    + "(SELECT id FROM classes WHERE "
-                    + "class_name = 'io.casehub.engine.EngineService' "
-                    + "AND origin = 'dependency')");
-            handle.execute("DELETE FROM classes WHERE "
-                    + "class_name = 'io.casehub.engine.EngineService' "
-                    + "AND origin = 'dependency'");
-        });
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            "DELETE FROM dependencies WHERE to_class_id IN "
+                                    + "(SELECT id FROM classes WHERE "
+                                    + "class_name = 'io.casehub.engine.EngineService' "
+                                    + "AND origin = 'dependency')");
+                    handle.execute(
+                            "DELETE FROM classes WHERE "
+                                    + "class_name = 'io.casehub.engine.EngineService' "
+                                    + "AND origin = 'dependency'");
+                });
 
-        JsonNode result = JSON.readTree(tools.get_dependencies(
-                "io.casehub.engine.EngineService", Optional.of("outbound"), Optional.of(1),
-                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
-                Optional.of("platform")));
+        JsonNode result =
+                tools.get_dependencies(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("outbound"),
+                        Optional.of(1),
+                        Optional.of(true),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("platform"));
 
         assertFalse(result.has("error"), result.toString());
         assertEquals("workspace_provider", result.path("origin").asText());
         assertEquals("not_found", result.path("local_resolution").path("status").asText());
-        assertEquals("engine", result.path("workspace_traversal")
-                .path("provider").path("repository").asText());
-        assertEquals("source", result.path("workspace_traversal")
-                .path("provider").path("data").path("origin").asText());
+        assertEquals(
+                "engine",
+                result.path("workspace_traversal").path("provider").path("repository").asText());
+        assertEquals(
+                "source",
+                result.path("workspace_traversal")
+                        .path("provider")
+                        .path("data")
+                        .path("origin")
+                        .asText());
     }
 
     @Test
     void routesStructuralClassQueriesToWorkspaceProvider() throws Exception {
-        var engine = QuillDatabase.openWritable(
-                workspace.resolve("engine/.quill/engine-index.db"));
-        engine.useHandle(handle -> handle.execute("""
+        var engine = QuillDatabase.openWritable(workspace.resolve("engine/.quill/engine-index.db"));
+        engine.useHandle(
+                handle ->
+                        handle.execute(
+                                """
                 INSERT INTO class_members
                   (class_id, kind, name, signature, type_name, parameter_types,
                    modifiers, annotations)
@@ -877,35 +1187,70 @@ class WorkspaceToolQueriesTest {
                 """));
         removePlatformDependencyClass();
 
-        JsonNode implementations = JSON.readTree(tools.find_implementations(
-                "io.casehub.engine.EngineService", Optional.of(true), Optional.of(20),
-                Optional.empty(), Optional.of("platform")));
-        JsonNode hierarchy = JSON.readTree(tools.get_type_hierarchy(
-                "io.casehub.engine.EngineService", Optional.of("both"), Optional.of(5),
-                Optional.of(20), Optional.empty(), Optional.of("platform")));
-        JsonNode overrides = JSON.readTree(tools.find_method_overrides(
-                "io.casehub.engine.EngineService", Optional.of("execute"), Optional.empty(),
-                Optional.of(true), Optional.of(20), Optional.empty(),
-                Optional.of("platform")));
-        JsonNode details = JSON.readTree(tools.get_symbol_details(
-                "io.casehub.engine.EngineService", Optional.of(true), Optional.empty(),
-                Optional.of(20), Optional.empty(), Optional.of("platform")));
-        JsonNode symbolUsages = JSON.readTree(tools.find_symbol_usages(
-                "io.casehub.engine.EngineService", Optional.of("execute"),
-                Optional.of("method"),
-                Optional.empty(), Optional.empty(), Optional.of(20), Optional.empty(),
-                Optional.of("platform")));
-        JsonNode calls = JSON.readTree(tools.get_call_hierarchy(
-                "io.casehub.engine.EngineService", Optional.of("execute"), Optional.empty(),
-                Optional.of("both"), Optional.of(false), Optional.of(3), Optional.empty(), Optional.of(20),
-                Optional.empty(), Optional.of("platform")));
-        JsonNode injections = JSON.readTree(tools.list_injection_points(
-                "io.casehub.engine.EngineService", Optional.of("platform")));
-        JsonNode risk = JSON.readTree(tools.assess_change_risk(
-                "io.casehub.engine.EngineService", Optional.of("platform")));
-        JsonNode external = JSON.readTree(tools.list_external_dependencies(
-                Optional.of("io.casehub.engine.EngineService"), Optional.empty(),
-                Optional.of(20), Optional.of("platform")));
+        JsonNode implementations =
+                tools.find_implementations(
+                        "io.casehub.engine.EngineService",
+                        Optional.of(true),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.of("platform"));
+        JsonNode hierarchy =
+                tools.get_type_hierarchy(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("both"),
+                        Optional.of(5),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.of("platform"));
+        JsonNode overrides =
+                tools.find_method_overrides(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("execute"),
+                        Optional.empty(),
+                        Optional.of(true),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.of("platform"));
+        JsonNode details =
+                tools.get_symbol_details(
+                        "io.casehub.engine.EngineService",
+                        Optional.of(true),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.of("platform"));
+        JsonNode symbolUsages =
+                tools.find_symbol_usages(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("execute"),
+                        Optional.of("method"),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.of("platform"));
+        JsonNode calls =
+                tools.get_call_hierarchy(
+                        "io.casehub.engine.EngineService",
+                        Optional.of("execute"),
+                        Optional.empty(),
+                        Optional.of("both"),
+                        Optional.of(false),
+                        Optional.of(3),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.of("platform"));
+        JsonNode injections =
+                tools.list_injection_points(
+                        "io.casehub.engine.EngineService", Optional.of("platform"));
+        JsonNode risk =
+                tools.assess_change_risk(
+                        "io.casehub.engine.EngineService", Optional.of("platform"));
+        JsonNode external =
+                tools.list_external_dependencies(
+                        Optional.of("io.casehub.engine.EngineService"), Optional.empty(),
+                        Optional.of(20), Optional.of("platform"));
 
         assertWorkspaceStructuralRoute(implementations, "find_implementations");
         assertWorkspaceStructuralRoute(hierarchy, "get_type_hierarchy");
@@ -916,83 +1261,113 @@ class WorkspaceToolQueriesTest {
         assertWorkspaceStructuralRoute(injections, "list_injection_points");
         assertWorkspaceStructuralRoute(risk, "assess_change_risk");
         assertWorkspaceStructuralRoute(external, "list_external_dependencies");
-        assertEquals("io.casehub.engine.EngineService", hierarchy.path("workspace_result")
-                .path("data").path("target").asText());
-        assertEquals(0, overrides.path("workspace_result")
-                .path("data").path("override_count").asInt());
+        assertEquals(
+                "io.casehub.engine.EngineService",
+                hierarchy.path("workspace_result").path("data").path("target").asText());
+        assertEquals(
+                0, overrides.path("workspace_result").path("data").path("override_count").asInt());
     }
 
     @Test
     void locatesUnindexedProviderSourceAndReportsBuildRequired() throws Exception {
-        Path source = workspace.resolve(
-                "engine/src/main/java/io/casehub/engine/UnbuiltService.java");
+        Path source =
+                workspace.resolve("engine/src/main/java/io/casehub/engine/UnbuiltService.java");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package io.casehub.engine; class UnbuiltService {}");
 
-        JsonNode result = JSON.readTree(tools.get_dependencies(
-                "io.casehub.engine.UnbuiltService", Optional.of("outbound"), Optional.of(1),
-                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
-                Optional.of("platform")));
+        JsonNode result =
+                tools.get_dependencies(
+                        "io.casehub.engine.UnbuiltService",
+                        Optional.of("outbound"),
+                        Optional.of(1),
+                        Optional.of(true),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("platform"));
 
         JsonNode traversal = result.path("workspace_traversal");
         assertEquals("provider_index_incomplete", traversal.path("status").asText());
         assertFalse(traversal.path("complete").asBoolean(true));
         assertEquals("engine", traversal.path("provider").path("repository").asText());
-        assertEquals("src/main/java/io/casehub/engine/UnbuiltService.java",
+        assertEquals(
+                "src/main/java/io/casehub/engine/UnbuiltService.java",
                 traversal.path("provider").path("source_file").asText());
-        assertEquals("build_required", traversal.path("project_warnings").get(0)
-                .path("status").asText());
+        assertEquals(
+                "build_required",
+                traversal.path("project_warnings").get(0).path("status").asText());
     }
 
     @Test
     void routesOrdinaryFindUsagesWhenClassIsAbsentLocally() throws Exception {
-        Path source = workspace.resolve(
-                "engine/src/main/java/io/casehub/engine/SourceOnlyService.java");
+        Path source =
+                workspace.resolve("engine/src/main/java/io/casehub/engine/SourceOnlyService.java");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package io.casehub.engine; class SourceOnlyService {}");
-        JsonNode result = JSON.readTree(tools.find_usages(
-                "io.casehub.engine.SourceOnlyService", Optional.empty(), Optional.empty(),
-                Optional.of(20), Optional.empty(), Optional.of("platform")));
+        JsonNode result =
+                tools.find_usages(
+                        "io.casehub.engine.SourceOnlyService",
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.of("platform"));
 
         assertFalse(result.has("error"), result.toString());
         assertEquals("workspace_provider", result.path("origin").asText());
-        assertEquals("engine", result.path("workspace_usage")
-                .path("provider").path("repository").asText());
-        assertEquals("build_required", result.path("workspace_usage")
-                .path("provider_warnings").get(0).path("status").asText());
+        assertEquals(
+                "engine",
+                result.path("workspace_usage").path("provider").path("repository").asText());
+        assertEquals(
+                "build_required",
+                result.path("workspace_usage")
+                        .path("provider_warnings")
+                        .get(0)
+                        .path("status")
+                        .asText());
     }
 
     @Test
     void routesSourceOnlyKotlinProviderWhenClassIsAbsentLocally() throws Exception {
-        Path source = workspace.resolve(
-                "engine/src/main/kotlin/io/casehub/engine/KotlinService.kt");
+        Path source =
+                workspace.resolve("engine/src/main/kotlin/io/casehub/engine/KotlinService.kt");
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package io.casehub.engine\nclass KotlinService");
 
-        JsonNode result = JSON.readTree(tools.get_dependencies(
-                "io.casehub.engine.KotlinService", Optional.of("outbound"), Optional.of(1),
-                Optional.of(true), Optional.of(20), Optional.empty(), Optional.empty(),
-                Optional.of("platform")));
+        JsonNode result =
+                tools.get_dependencies(
+                        "io.casehub.engine.KotlinService",
+                        Optional.of("outbound"),
+                        Optional.of(1),
+                        Optional.of(true),
+                        Optional.of(20),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of("platform"));
 
         assertFalse(result.has("error"), result.toString());
         assertEquals("workspace_provider", result.path("origin").asText());
-        assertEquals("src/main/kotlin/io/casehub/engine/KotlinService.kt",
-                result.path("workspace_traversal").path("provider")
-                        .path("source_file").asText(), result.toString());
+        assertEquals(
+                "src/main/kotlin/io/casehub/engine/KotlinService.kt",
+                result.path("workspace_traversal").path("provider").path("source_file").asText(),
+                result.toString());
     }
 
     private void removePlatformDependencyClass() {
-        var platform = QuillDatabase.openWritable(
-                workspace.resolve("platform/.quill/platform-index.db"));
-        platform.useHandle(handle -> {
-            handle.execute("DELETE FROM dependencies WHERE to_class_id IN "
-                    + "(SELECT id FROM classes WHERE "
-                    + "class_name = 'io.casehub.engine.EngineService' "
-                    + "AND origin = 'dependency')");
-            handle.execute("DELETE FROM classes WHERE "
-                    + "class_name = 'io.casehub.engine.EngineService' "
-                    + "AND origin = 'dependency'");
-        });
+        var platform =
+                QuillDatabase.openWritable(workspace.resolve("platform/.quill/platform-index.db"));
+        platform.useHandle(
+                handle -> {
+                    handle.execute(
+                            "DELETE FROM dependencies WHERE to_class_id IN "
+                                    + "(SELECT id FROM classes WHERE "
+                                    + "class_name = 'io.casehub.engine.EngineService' "
+                                    + "AND origin = 'dependency')");
+                    handle.execute(
+                            "DELETE FROM classes WHERE "
+                                    + "class_name = 'io.casehub.engine.EngineService' "
+                                    + "AND origin = 'dependency'");
+                });
     }
 
     private static void assertWorkspaceStructuralRoute(JsonNode result, String operation) {
@@ -1001,12 +1376,22 @@ class WorkspaceToolQueriesTest {
         assertEquals("not_found", result.path("local_resolution").path("status").asText());
         assertEquals(operation, result.path("workspace_result").path("operation").asText());
         assertEquals("resolved", result.path("workspace_result").path("status").asText());
-        assertEquals("engine", result.path("workspace_result")
-                .path("provider").path("repository").asText());
-        assertEquals("stale", result.path("workspace_result")
-                .path("provider").path("index_freshness").path("status").asText());
-        assertFalse(result.path("workspace_result")
-                .path("provider").path("index_freshness").path("complete").asBoolean(true));
+        assertEquals(
+                "engine",
+                result.path("workspace_result").path("provider").path("repository").asText());
+        assertEquals(
+                "stale",
+                result.path("workspace_result")
+                        .path("provider")
+                        .path("index_freshness")
+                        .path("status")
+                        .asText());
+        assertFalse(
+                result.path("workspace_result")
+                        .path("provider")
+                        .path("index_freshness")
+                        .path("complete")
+                        .asBoolean(true));
         assertFalse(result.path("answer_complete").asBoolean(true));
     }
 
@@ -1015,25 +1400,33 @@ class WorkspaceToolQueriesTest {
         removePlatformDependencyClass();
         DebugTrace.configure(true, workspace);
         try {
-            tools.get_type_hierarchy("io.casehub.engine.EngineService", Optional.of("both"),
-                    Optional.of(5), Optional.of(20), Optional.empty(),
+            tools.get_type_hierarchy(
+                    "io.casehub.engine.EngineService",
+                    Optional.of("both"),
+                    Optional.of(5),
+                    Optional.of(20),
+                    Optional.empty(),
                     Optional.of("platform"));
         } finally {
             DebugTrace.configure(false, workspace);
         }
 
-        List<JsonNode> events = Files.readAllLines(
-                workspace.resolve(".quill/debug/quill-debug.jsonl")).stream()
-                .map(line -> {
-                    try {
-                        return JSON.readTree(line);
-                    } catch (Exception invalid) {
-                        throw new IllegalStateException(invalid);
-                    }
-                }).toList();
-        JsonNode selected = events.stream()
-                .filter(event -> "route_selected".equals(event.path("event").asText()))
-                .findFirst().orElseThrow();
+        List<JsonNode> events =
+                Files.readAllLines(workspace.resolve(".quill/debug/quill-debug.jsonl")).stream()
+                        .map(
+                                line -> {
+                                    try {
+                                        return JSON.readTree(line);
+                                    } catch (Exception invalid) {
+                                        throw new IllegalStateException(invalid);
+                                    }
+                                })
+                        .toList();
+        JsonNode selected =
+                events.stream()
+                        .filter(event -> "route_selected".equals(event.path("event").asText()))
+                        .findFirst()
+                        .orElseThrow();
         assertEquals("get_type_hierarchy", selected.path("operation").asText());
         assertEquals("platform", selected.path("consumer_repository").asText());
         assertEquals("engine", selected.path("provider_repository").asText());
@@ -1044,26 +1437,37 @@ class WorkspaceToolQueriesTest {
             throws Exception {
         Path root = Files.createDirectories(workspace.resolve(name));
         Files.createDirectories(root.resolve(".git"));
-        Files.writeString(root.resolve("pom.xml"), """
+        Files.writeString(
+                root.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>io.casehub</groupId><artifactId>%s</artifactId><version>1.0</version>
                   %s
                 </project>
-                """.formatted(artifact, extra));
+                """
+                        .formatted(artifact, extra));
         Path quill = Files.createDirectories(root.resolve(".quill"));
         String indexId = name + "-index";
         var jdbi = QuillDatabase.create(quill.resolve(indexId + ".db"));
-        jdbi.useHandle(handle -> {
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', ?)", indexId);
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('indexed_at', '2026-09-18T00:00:00Z')");
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('last_commit', 'unknown')");
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('project_root', ?)",
-                    root.toString());
-            handle.execute("""
+        jdbi.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('index_id', ?)", indexId);
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('indexed_at', '2026-09-18T00:00:00Z')");
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('last_commit', 'unknown')");
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('project_root', ?)",
+                            root.toString());
+                    handle.execute(
+                            """
                     INSERT INTO classes(class_name, kind, source_file, is_bean, module, source_set)
                     VALUES (?, 'CLASS', ?, 0, '.', 'main')
-                    """, className, "src/main/java/" + className.replace('.', '/') + ".java");
-        });
+                    """,
+                            className,
+                            "src/main/java/" + className.replace('.', '/') + ".java");
+                });
         Files.writeString(quill.resolve("refs.json"), "{\"@worktree\":\"" + indexId + "\"}");
     }
 }

@@ -7,8 +7,8 @@ import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * One tool answer, parsed once at the MCP boundary. A JSON object answer stays a tree while the
- * catalog post-processes it; anything else, including the catalog's own argument and
- * invocation failures, is plain text.
+ * catalog post-processes it; anything else, including the catalog's own argument and invocation
+ * failures, is plain text.
  */
 public sealed interface ToolResult {
 
@@ -18,7 +18,9 @@ public sealed interface ToolResult {
     /** The answer as sent to the client. */
     String text();
 
-    /** A JSON object answer; it is an error when it carries error_code or the legacy error field. */
+    /**
+     * A JSON object answer; it is an error when it carries error_code or the legacy error field.
+     */
     record JsonAnswer(ObjectNode body) implements ToolResult {
         @Override
         public boolean error() {
@@ -37,6 +39,12 @@ public sealed interface ToolResult {
     /** A failure reported by the catalog before or while invoking a tool. */
     static ToolResult failure(String message) {
         return new Text(message, true);
+    }
+
+    /** A tool method's return value: an answer tree is taken as it is, text is parsed. */
+    static ToolResult of(Object value) {
+        if (value instanceof ObjectNode answer) return new JsonAnswer(answer);
+        return of(value == null ? null : value.toString());
     }
 
     /** Parses a tool's raw answer; only text starting with an object brace is read as JSON. */

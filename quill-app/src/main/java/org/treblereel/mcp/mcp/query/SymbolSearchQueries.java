@@ -2,7 +2,7 @@ package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -10,56 +10,88 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.SymbolRepository.SymbolSearchResult;
 import org.treblereel.mcp.mcp.semantic.KotlinProperties;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
-import org.treblereel.mcp.core.Json;
 
 /** Searches indexed type and member declarations without reading source files. */
 public final class SymbolSearchQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
-    private static final Set<String> KINDS = Set.of(
-            "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD",
-            "FIELD", "CONSTRUCTOR", "METHOD", "PROPERTY");
+    private static final Set<String> KINDS =
+            Set.of(
+                    "CLASS",
+                    "INTERFACE",
+                    "ANNOTATION",
+                    "ENUM",
+                    "RECORD",
+                    "FIELD",
+                    "CONSTRUCTOR",
+                    "METHOD",
+                    "PROPERTY");
 
-    public String searchSymbols(ReadQueryContext reader, String pattern, String kind, int limit, int offset) {
+    public ObjectNode searchSymbols(
+            ReadQueryContext reader, String pattern, String kind, int limit, int offset) {
         return searchSymbols(reader, pattern, kind, null, limit, offset);
     }
 
-    public String searchSymbols(ReadQueryContext reader, String pattern, String kind, String language,
-            int limit, int offset) {
+    public ObjectNode searchSymbols(
+            ReadQueryContext reader,
+            String pattern,
+            String kind,
+            String language,
+            int limit,
+            int offset) {
         if (pattern == null || pattern.isBlank()) {
-            return errorResponse("MISSING_PATTERN", "Search pattern must not be blank");
+            return errorNode("MISSING_PATTERN", "Search pattern must not be blank");
         }
         String normalizedKind = normalizeKind(kind);
         if (normalizedKind != null && !KINDS.contains(normalizedKind)) {
-            return errorResponse("INVALID_ARGUMENT", "Invalid kind: expected class, interface, annotation, enum, "
-                    + "record, field, constructor, method, property, or all");
+            return errorNode(
+                    "INVALID_ARGUMENT",
+                    "Invalid kind: expected class, interface, annotation, enum, "
+                            + "record, field, constructor, method, property, or all");
         }
-        String normalizedLanguage = language == null || language.isBlank()
-                || "all".equalsIgnoreCase(language) ? null
+        String normalizedLanguage =
+                language == null || language.isBlank() || "all".equalsIgnoreCase(language)
+                        ? null
                         : language.trim().toLowerCase(Locale.ROOT);
-        if (normalizedLanguage != null
-                && !Set.of("java", "kotlin").contains(normalizedLanguage)) {
-            return errorResponse("INVALID_ARGUMENT", "Invalid language: expected java, kotlin, or all");
+        if (normalizedLanguage != null && !Set.of("java", "kotlin").contains(normalizedLanguage)) {
+            return errorNode("INVALID_ARGUMENT", "Invalid language: expected java, kotlin, or all");
         }
         if ("PROPERTY".equals(normalizedKind)) {
-            String expression = java.util.Arrays.stream(pattern.trim().split("\\*", -1))
-                    .map(java.util.regex.Pattern::quote).collect(java.util.stream.Collectors.joining(".*"));
-            var matcher = java.util.regex.Pattern.compile(expression, java.util.regex.Pattern.CASE_INSENSITIVE);
-            var properties = "java".equals(normalizedLanguage) ? java.util.List.<KotlinProperties.Property>of()
-                    : reader.symbols.findAllClasses().stream()
-                        .filter(cls -> "current".equals(cls.lifecycle()) && !"orphan_output".equals(cls.origin()))
-                        .flatMap(cls -> KotlinProperties.list(reader, cls).stream())
-                        .filter(property -> matcher.matcher(property.name()).find())
-                        .sorted(java.util.Comparator.comparing(KotlinProperties.Property::name)
-                            .thenComparing(property -> property.owner().className())
-                            .thenComparing(KotlinProperties.Property::descriptor)).toList();
+            String expression =
+                    java.util.Arrays.stream(pattern.trim().split("\\*", -1))
+                            .map(java.util.regex.Pattern::quote)
+                            .collect(java.util.stream.Collectors.joining(".*"));
+            var matcher =
+                    java.util.regex.Pattern.compile(
+                            expression, java.util.regex.Pattern.CASE_INSENSITIVE);
+            var properties =
+                    "java".equals(normalizedLanguage)
+                            ? java.util.List.<KotlinProperties.Property>of()
+                            : reader.symbols.findAllClasses().stream()
+                                    .filter(
+                                            cls ->
+                                                    "current".equals(cls.lifecycle())
+                                                            && !"orphan_output"
+                                                                    .equals(cls.origin()))
+                                    .flatMap(cls -> KotlinProperties.list(reader, cls).stream())
+                                    .filter(property -> matcher.matcher(property.name()).find())
+                                    .sorted(
+                                            java.util.Comparator.comparing(
+                                                            KotlinProperties.Property::name)
+                                                    .thenComparing(
+                                                            property ->
+                                                                    property.owner().className())
+                                                    .thenComparing(
+                                                            KotlinProperties.Property::descriptor))
+                                    .toList();
             ObjectNode root = JSON.createObjectNode();
-            root.put("pattern", pattern.trim()); root.put("kind", "property");
+            root.put("pattern", pattern.trim());
+            root.put("kind", "property");
             if (normalizedLanguage == null) root.putNull("language_filter");
             else root.put("language_filter", normalizedLanguage);
             var page = properties.stream().skip(offset).limit(limit).toList();
@@ -67,9 +99,11 @@ public final class SymbolSearchQueries {
             page.forEach(property -> property.append(symbols.addObject()));
             appendPage(root, page.size(), properties.size(), limit, offset);
             appendMeta(root, reader, 0);
-            return root.toString();
+            return root;
         }
-        var matches = reader.symbols.searchSymbols(pattern.trim(), normalizedKind, normalizedLanguage, limit, offset);
+        var matches =
+                reader.symbols.searchSymbols(
+                        pattern.trim(), normalizedKind, normalizedLanguage, limit, offset);
         int total = reader.symbols.countSymbols(pattern.trim(), normalizedKind, normalizedLanguage);
 
         ObjectNode root = JSON.createObjectNode();
@@ -88,9 +122,14 @@ public final class SymbolSearchQueries {
             node.put("declaring_class", match.className());
             node.put("class_kind", match.classKind().toLowerCase(Locale.ROOT));
             if (match.sourceFile() == null) node.putNull("source");
-            else node.put("source", Set.of("CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD")
-                    .contains(match.symbolKind()) && match.sourceLine() > 0
-                    ? match.sourceFile() + ":" + match.sourceLine() : match.sourceFile());
+            else
+                node.put(
+                        "source",
+                        Set.of("CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD")
+                                                .contains(match.symbolKind())
+                                        && match.sourceLine() > 0
+                                ? match.sourceFile() + ":" + match.sourceLine()
+                                : match.sourceFile());
             node.put("origin", match.origin());
             if (match.module() == null) node.putNull("module");
             else node.put("module", match.module());
@@ -104,15 +143,22 @@ public final class SymbolSearchQueries {
                 node.put("modifiers", match.modifiers());
                 node.set("annotations", JSON.valueToTree(match.annotations()));
             }
-            SymbolContract.append(node, match.className(), match.symbolKind(),
-                    match.symbolName(), match.descriptor(), match.semanticName(),
-                    match.sourceFile(), match.sourceLine(), "kotlin".equals(match.language()));
+            SymbolContract.append(
+                    node,
+                    match.className(),
+                    match.symbolKind(),
+                    match.symbolName(),
+                    match.descriptor(),
+                    match.semanticName(),
+                    match.sourceFile(),
+                    match.sourceLine(),
+                    "kotlin".equals(match.language()));
             appendKotlinSemantics(node, match);
             if (countedClasses.add(match.classId())) naiveTokens += match.sourceTokens();
         }
         appendPage(root, matches.size(), total, limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
     private static void appendKotlinSemantics(ObjectNode node, SymbolSearchResult match) {
@@ -120,8 +166,10 @@ public final class SymbolSearchQueries {
         node.put("kotlin_kind", match.semanticKind().toLowerCase(Locale.ROOT));
         node.put("kotlin_name", match.semanticName());
         node.put("source_kind", match.semanticKind().toLowerCase(Locale.ROOT));
-        node.put("jvm_role", SymbolContract.jvmRole(
-                match.semanticKind(), match.symbolKind(), match.descriptor()));
+        node.put(
+                "jvm_role",
+                SymbolContract.jvmRole(
+                        match.semanticKind(), match.symbolKind(), match.descriptor()));
         if (match.isSuspend()) node.put("suspend", true);
         if (match.extension()) node.put("extension", true);
         if (match.hasDefaultParameters()) node.put("default_parameters", true);

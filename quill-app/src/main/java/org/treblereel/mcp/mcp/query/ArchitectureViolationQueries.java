@@ -2,7 +2,7 @@ package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -17,10 +17,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
-import org.treblereel.mcp.core.Json;
 
 /** Evaluates explicit package or module dependency boundaries against indexed bytecode. */
 public final class ArchitectureViolationQueries {
@@ -28,22 +28,38 @@ public final class ArchitectureViolationQueries {
     private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> SCOPES = Set.of("package", "module");
 
-    public String findArchitectureViolations(ReadQueryContext reader, String scope, String from,
-            List<String> forbidden, List<String> dependencyKinds,
-            boolean includeGenerated, boolean includeTests, int limit, int offset) {
-        String normalizedScope = scope == null
-                ? "package" : scope.strip().toLowerCase(Locale.ROOT);
+    public ObjectNode findArchitectureViolations(
+            ReadQueryContext reader,
+            String scope,
+            String from,
+            List<String> forbidden,
+            List<String> dependencyKinds,
+            boolean includeGenerated,
+            boolean includeTests,
+            int limit,
+            int offset) {
+        String normalizedScope = scope == null ? "package" : scope.strip().toLowerCase(Locale.ROOT);
         if (!SCOPES.contains(normalizedScope)) {
-            return errorResponse("Invalid scope: expected package or module");
+            return errorNode("Invalid scope: expected package or module");
         }
-        if (from == null || from.isBlank()) return errorResponse("The from pattern is required");
-        List<String> targets = forbidden == null ? List.of() : forbidden.stream()
-                .filter(value -> value != null && !value.isBlank()).map(String::strip).distinct()
-                .toList();
-        if (targets.isEmpty()) return errorResponse("At least one forbidden pattern is required");
-        List<String> kinds = dependencyKinds == null ? List.of() : dependencyKinds.stream()
-                .filter(value -> value != null && !value.isBlank())
-                .map(value -> value.strip().toUpperCase(Locale.ROOT)).distinct().toList();
+        if (from == null || from.isBlank()) return errorNode("The from pattern is required");
+        List<String> targets =
+                forbidden == null
+                        ? List.of()
+                        : forbidden.stream()
+                                .filter(value -> value != null && !value.isBlank())
+                                .map(String::strip)
+                                .distinct()
+                                .toList();
+        if (targets.isEmpty()) return errorNode("At least one forbidden pattern is required");
+        List<String> kinds =
+                dependencyKinds == null
+                        ? List.of()
+                        : dependencyKinds.stream()
+                                .filter(value -> value != null && !value.isBlank())
+                                .map(value -> value.strip().toUpperCase(Locale.ROOT))
+                                .distinct()
+                                .toList();
 
         Pattern sourcePattern;
         List<Pattern> targetPatterns = new ArrayList<>();
@@ -51,37 +67,55 @@ public final class ArchitectureViolationQueries {
             sourcePattern = compileGlob(from.strip(), normalizedScope);
             for (String target : targets) targetPatterns.add(compileGlob(target, normalizedScope));
         } catch (IllegalArgumentException invalidPattern) {
-            return errorResponse(invalidPattern.getMessage());
+            return errorNode(invalidPattern.getMessage());
         }
 
         List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<Integer, ClassRecord> classesById = new HashMap<>();
         classes.forEach(cls -> classesById.put(cls.id(), cls));
-        List<ClassRecord> eligibleClasses = classes.stream()
-                .filter(cls -> includeGenerated || !"generated".equals(cls.origin()))
-                .filter(cls -> includeTests || !cls.inTestSourceSet())
-                .toList();
-        long matchedSourceClasses = eligibleClasses.stream()
-                .map(cls -> boundary(cls, normalizedScope)).filter(java.util.Objects::nonNull)
-                .filter(value -> sourcePattern.matcher(value).matches()).count();
-        long matchedForbiddenClasses = eligibleClasses.stream()
-                .map(cls -> boundary(cls, normalizedScope)).filter(java.util.Objects::nonNull)
-                .filter(value -> targetPatterns.stream()
-                        .anyMatch(pattern -> pattern.matcher(value).matches()))
-                .count();
+        List<ClassRecord> eligibleClasses =
+                classes.stream()
+                        .filter(cls -> includeGenerated || !"generated".equals(cls.origin()))
+                        .filter(cls -> includeTests || !cls.inTestSourceSet())
+                        .toList();
+        long matchedSourceClasses =
+                eligibleClasses.stream()
+                        .map(cls -> boundary(cls, normalizedScope))
+                        .filter(java.util.Objects::nonNull)
+                        .filter(value -> sourcePattern.matcher(value).matches())
+                        .count();
+        long matchedForbiddenClasses =
+                eligibleClasses.stream()
+                        .map(cls -> boundary(cls, normalizedScope))
+                        .filter(java.util.Objects::nonNull)
+                        .filter(
+                                value ->
+                                        targetPatterns.stream()
+                                                .anyMatch(
+                                                        pattern ->
+                                                                pattern.matcher(value).matches()))
+                        .count();
         if (matchedSourceClasses == 0) {
             ObjectNode error = JSON.createObjectNode();
             error.put("error", "Source boundary pattern matched no indexed classes");
             error.put("scope", normalizedScope);
             error.put("from", from.strip());
-            error.set("available_boundaries", JSON.valueToTree(eligibleClasses.stream()
-                    .map(cls -> boundary(cls, normalizedScope))
-                    .filter(java.util.Objects::nonNull).distinct().sorted().limit(20).toList()));
+            error.set(
+                    "available_boundaries",
+                    JSON.valueToTree(
+                            eligibleClasses.stream()
+                                    .map(cls -> boundary(cls, normalizedScope))
+                                    .filter(java.util.Objects::nonNull)
+                                    .distinct()
+                                    .sorted()
+                                    .limit(20)
+                                    .toList()));
             appendMeta(error, reader, 0);
-            return error.toString();
+            return error;
         }
         List<Violation> violations = new ArrayList<>();
-        for (DependencyRecord dependency : reader.usages.findCurrentDependencyGraph(null, includeGenerated, includeTests)) {
+        for (DependencyRecord dependency :
+                reader.usages.findCurrentDependencyGraph(null, includeGenerated, includeTests)) {
             ClassRecord source = classesById.get(dependency.fromClassId());
             ClassRecord target = classesById.get(dependency.toClassId());
             if (source == null || target == null) continue;
@@ -90,7 +124,8 @@ public final class ArchitectureViolationQueries {
             }
             String sourceBoundary = boundary(source, normalizedScope);
             String targetBoundary = boundary(target, normalizedScope);
-            if (sourceBoundary == null || targetBoundary == null
+            if (sourceBoundary == null
+                    || targetBoundary == null
                     || !sourcePattern.matcher(sourceBoundary).matches()) continue;
             String matched = null;
             for (int index = 0; index < targetPatterns.size(); index++) {
@@ -100,15 +135,24 @@ public final class ArchitectureViolationQueries {
                 }
             }
             if (matched != null) {
-                violations.add(new Violation(source, target, sourceBoundary, targetBoundary,
-                        dependency.kind(), dependency.occurrenceCount(),
-                        dependency.evidenceLines(), matched));
+                violations.add(
+                        new Violation(
+                                source,
+                                target,
+                                sourceBoundary,
+                                targetBoundary,
+                                dependency.kind(),
+                                dependency.occurrenceCount(),
+                                dependency.evidenceLines(),
+                                matched));
             }
         }
-        violations.sort(Comparator.comparingInt(Violation::occurrences).reversed()
-                .thenComparing(value -> value.source().className())
-                .thenComparing(value -> value.target().className())
-                .thenComparing(Violation::kind));
+        violations.sort(
+                Comparator.comparingInt(Violation::occurrences)
+                        .reversed()
+                        .thenComparing(value -> value.source().className())
+                        .thenComparing(value -> value.target().className())
+                        .thenComparing(Violation::kind));
 
         int pageStart = Math.min(offset, violations.size());
         int pageEnd = Math.min(violations.size(), pageStart + limit);
@@ -124,11 +168,13 @@ public final class ArchitectureViolationQueries {
         root.put("matched_source_classes", matchedSourceClasses);
         root.put("matched_forbidden_classes", matchedForbiddenClasses);
         root.put("compliant", violations.isEmpty());
-        root.put("violating_class_pairs", violations.stream()
-                .map(value -> value.source().id() + ":" + value.target().id())
-                .distinct().count());
-        root.put("occurrence_count", violations.stream()
-                .mapToInt(Violation::occurrences).sum());
+        root.put(
+                "violating_class_pairs",
+                violations.stream()
+                        .map(value -> value.source().id() + ":" + value.target().id())
+                        .distinct()
+                        .count());
+        root.put("occurrence_count", violations.stream().mapToInt(Violation::occurrences).sum());
         Map<String, Integer> byKind = new TreeMap<>();
         violations.forEach(value -> byKind.merge(value.kind(), value.occurrences(), Integer::sum));
         root.set("occurrences_by_kind", JSON.valueToTree(byKind));
@@ -155,19 +201,24 @@ public final class ArchitectureViolationQueries {
             countedTokens.put(violation.target().id(), violation.target().sourceTokens());
         }
         root.putArray("limitations")
-                .add("Rules are evaluated against current static dependencies in compiled application bytecode")
-                .add("Reflection, runtime-generated links, and uncompiled source changes are not inferred")
-                .add("A dependency row may aggregate multiple bytecode occurrences; evidence_lines contains known source-line evidence");
+                .add(
+                        "Rules are evaluated against current static dependencies in compiled application bytecode")
+                .add(
+                        "Reflection, runtime-generated links, and uncompiled source changes are not inferred")
+                .add(
+                        "A dependency row may aggregate multiple bytecode occurrences; evidence_lines contains known source-line evidence");
         appendPage(root, page.size(), violations.size(), limit, offset);
         appendMeta(root, reader, countedTokens.values().stream().mapToInt(Integer::intValue).sum());
-        return root.toString();
+        return root;
     }
 
     private static Pattern compileGlob(String value, String scope) {
-        if (value.isBlank()) throw new IllegalArgumentException("Architecture patterns cannot be blank");
+        if (value.isBlank())
+            throw new IllegalArgumentException("Architecture patterns cannot be blank");
         StringBuilder regex = new StringBuilder("^");
-        for (int index = 0; index < value.length();) {
-            if (index + 1 < value.length() && value.charAt(index) == '.'
+        for (int index = 0; index < value.length(); ) {
+            if (index + 1 < value.length()
+                    && value.charAt(index) == '.'
                     && value.charAt(index + 1) == '.') {
                 regex.append("(?:\\..*)?");
                 index += 2;
@@ -199,8 +250,13 @@ public final class ArchitectureViolationQueries {
         return cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile();
     }
 
-    private record Violation(ClassRecord source, ClassRecord target,
-                             String sourceBoundary, String targetBoundary,
-                             String kind, int occurrences, List<Integer> evidenceLines,
-                             String matchedPattern) {}
+    private record Violation(
+            ClassRecord source,
+            ClassRecord target,
+            String sourceBoundary,
+            String targetBoundary,
+            String kind,
+            int occurrences,
+            List<Integer> evidenceLines,
+            String matchedPattern) {}
 }

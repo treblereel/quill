@@ -3,8 +3,8 @@ package org.treblereel.mcp.mcp.query;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendRetryWith;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupError;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupErrorNode;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -17,123 +17,185 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.UsageRepository.MethodCallView;
-import org.treblereel.mcp.model.ClassMemberRecord;
-import org.treblereel.mcp.model.ClassRecord;
-import org.treblereel.mcp.model.KotlinDeclarationRecord;
-import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.mcp.semantic.KotlinMemberNames;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
-import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.model.ClassMemberRecord;
+import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Reconstructs the emitted bytecode order of calls inside one indexed method. */
 public final class ExecutionOrderQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
-    private static final Set<String> PERSISTENCE = Set.of(
-            "persist", "save", "store", "repository", "persistence", "entitymanager", "dao");
-    private static final Set<String> DISPATCH = Set.of(
-            "dispatch", "submit", "publish", "send", "enqueue", "worker", "invoke", "execute");
+    private static final Set<String> PERSISTENCE =
+            Set.of("persist", "save", "store", "repository", "persistence", "entitymanager", "dao");
+    private static final Set<String> DISPATCH =
+            Set.of(
+                    "dispatch",
+                    "submit",
+                    "publish",
+                    "send",
+                    "enqueue",
+                    "worker",
+                    "invoke",
+                    "execute");
 
-    public String analyze(ReadQueryContext reader, String target, String method, String signature) {
+    public ObjectNode analyze(
+            ReadQueryContext reader, String target, String method, String signature) {
         return analyze(reader, target, method, signature, PERSISTENCE, DISPATCH);
     }
 
-    public String analyze(ReadQueryContext reader, String target, String method, String signature,
-            Set<String> beforeTerms, Set<String> afterTerms) {
+    public ObjectNode analyze(
+            ReadQueryContext reader,
+            String target,
+            String method,
+            String signature,
+            Set<String> beforeTerms,
+            Set<String> afterTerms) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
-                if (!"METHOD".equals(reference.kind())
-                        && !"CONSTRUCTOR".equals(reference.kind())) {
-                    return errorResponse("INVALID_SYMBOL_KIND",
+                if (!"METHOD".equals(reference.kind()) && !"CONSTRUCTOR".equals(reference.kind())) {
+                    return errorNode(
+                            "INVALID_SYMBOL_KIND",
                             "symbol_id must identify a method or constructor");
                 }
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
         } catch (SymbolContract.ParseException error) {
-            return errorResponse(error.errorCode(), error.getMessage());
+            return errorNode(error.errorCode(), error.getMessage());
         }
-        // Class#method or Class#method(Types), the form get_context takes, names the method in the target.
+        // Class#method or Class#method(Types), the form get_context takes, names the method in the
+        // target.
         int hash = target == null ? -1 : target.indexOf('#');
         if ((method == null || method.isBlank()) && hash > 0 && !target.contains("/")) {
             String member = target.substring(hash + 1);
             target = target.substring(0, hash);
             int paren = member.indexOf('(');
             method = paren < 0 ? member : member.substring(0, paren);
-            if (paren >= 0 && (signature == null || signature.isBlank())) signature = member.substring(paren);
+            if (paren >= 0 && (signature == null || signature.isBlank()))
+                signature = member.substring(paren);
         }
         if (method == null || method.isBlank()) {
-            return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
+            return errorNode("MISSING_METHOD", "Method name or symbol_id must be provided");
         }
         String requestedMethod = method;
         String requestedSignature = signature;
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
-        if (lookup.error() != null) return classLookupError(reader, lookup, target);
+        if (lookup.error() != null) return classLookupErrorNode(reader, lookup, target);
         ClassRecord cls = lookup.cls();
         List<KotlinDeclarationRecord> kotlinDeclarations =
                 reader.symbols.findKotlinDeclarations(cls.id());
-        List<ClassMemberRecord> candidates = reader.symbols.findClassMembers(cls.id()).stream()
-                .filter(member -> member.kind().equals("METHOD")
-                        || member.kind().equals("CONSTRUCTOR"))
-                .filter(member -> indexedName(member).equals(requestedMethod)
-                        || KotlinMemberNames.matches(
-                                requestedMethod, member, kotlinDeclarations))
-                .filter(member -> JvmDescriptors.matchesSignature(member, requestedSignature))
-                .toList();
+        List<ClassMemberRecord> candidates =
+                reader.symbols.findClassMembers(cls.id()).stream()
+                        .filter(
+                                member ->
+                                        member.kind().equals("METHOD")
+                                                || member.kind().equals("CONSTRUCTOR"))
+                        .filter(
+                                member ->
+                                        indexedName(member).equals(requestedMethod)
+                                                || KotlinMemberNames.matches(
+                                                        requestedMethod,
+                                                        member,
+                                                        kotlinDeclarations))
+                        .filter(
+                                member ->
+                                        JvmDescriptors.matchesSignature(member, requestedSignature))
+                        .toList();
         if (candidates.size() != 1) {
-            return selectionError(
-                    reader, cls, requestedMethod, requestedSignature, candidates);
+            return selectionError(reader, cls, requestedMethod, requestedSignature, candidates);
         }
 
         ClassMemberRecord selected = candidates.getFirst();
-        KotlinDeclarationRecord kotlinDeclaration = KotlinMemberNames
-                .declaration(selected, kotlinDeclarations).orElse(null);
+        KotlinDeclarationRecord kotlinDeclaration =
+                KotlinMemberNames.declaration(selected, kotlinDeclarations).orElse(null);
         String indexedMethod = indexedName(selected);
-        List<MethodCallView> calls = reader.usages.findMethodCalls(cls.id(), indexedMethod, selected.descriptor(), "outbound", 10_000, 0, reader.methods().symbolicOwners(cls.id(), indexedMethod, selected.descriptor(), "outbound"));
+        List<MethodCallView> calls =
+                reader.usages.findMethodCalls(
+                        cls.id(),
+                        indexedMethod,
+                        selected.descriptor(),
+                        "outbound",
+                        10_000,
+                        0,
+                        reader.methods()
+                                .symbolicOwners(
+                                        cls.id(),
+                                        indexedMethod,
+                                        selected.descriptor(),
+                                        "outbound"));
         List<Event> events = new ArrayList<>();
         for (MethodCallView call : calls) {
             if ("dynamic".equals(call.invocationKind())) continue;
             String category = category(call.toClass(), call.toMethod(), beforeTerms, afterTerms);
             for (int ordinal : call.instructionOrdinals()) {
-                events.add(new Event(ordinal, category, call.toClass(), call.toMethod(),
-                        call.toDescriptor(), call.evidenceLines(), false, null));
+                events.add(
+                        new Event(
+                                ordinal,
+                                category,
+                                call.toClass(),
+                                call.toMethod(),
+                                call.toDescriptor(),
+                                call.evidenceLines(),
+                                false,
+                                null));
             }
         }
-        calls.stream().map(MethodCallView::callerExternalCalls)
-                .filter(encoded -> !encoded.isEmpty()).findFirst().orElse(List.of()).stream()
+        calls.stream()
+                .map(MethodCallView::callerExternalCalls)
+                .filter(encoded -> !encoded.isEmpty())
+                .findFirst()
+                .orElse(List.of())
+                .stream()
                 .map(ExecutionOrderQueries::parseExternalEvent)
                 .filter(java.util.Objects::nonNull)
-                .map(event -> event.withCategory(category(event.calleeClass(),
-                        event.calleeMethod(), beforeTerms, afterTerms)))
+                .map(
+                        event ->
+                                event.withCategory(
+                                        category(
+                                                event.calleeClass(),
+                                                event.calleeMethod(),
+                                                beforeTerms,
+                                                afterTerms)))
                 .forEach(events::add);
         events.sort(Comparator.comparingInt(Event::ordinal));
 
-        List<Event> before = events.stream()
-                .filter(event -> event.category().equals("before")).toList();
-        List<Event> after = events.stream()
-                .filter(event -> event.category().equals("after")).toList();
+        List<Event> before =
+                events.stream().filter(event -> event.category().equals("before")).toList();
+        List<Event> after =
+                events.stream().filter(event -> event.category().equals("after")).toList();
         boolean comparable = !before.isEmpty() && !after.isEmpty();
-        boolean allBeforeAfter = comparable
-                && before.stream().mapToInt(Event::ordinal).max().orElseThrow()
-                < after.stream().mapToInt(Event::ordinal).min().orElseThrow();
-        int branchCount = calls.stream().mapToInt(MethodCallView::callerBranchCount)
-                .max().orElse(0);
-        int exceptionHandlerCount = calls.stream()
-                .mapToInt(MethodCallView::callerExceptionHandlerCount).max().orElse(0);
+        boolean allBeforeAfter =
+                comparable
+                        && before.stream().mapToInt(Event::ordinal).max().orElseThrow()
+                                < after.stream().mapToInt(Event::ordinal).min().orElseThrow();
+        int branchCount =
+                calls.stream().mapToInt(MethodCallView::callerBranchCount).max().orElse(0);
+        int exceptionHandlerCount =
+                calls.stream()
+                        .mapToInt(MethodCallView::callerExceptionHandlerCount)
+                        .max()
+                        .orElse(0);
         boolean straightLine = branchCount == 0 && exceptionHandlerCount == 0;
-        List<String> cfgEdges = calls.stream().map(MethodCallView::callerControlFlowEdges)
-                .filter(edges -> !edges.isEmpty()).findFirst().orElse(List.of());
-        Set<String> asyncBoundaries = calls.stream()
-                .flatMap(call -> call.callerAsyncBoundaries().stream())
-                .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+        List<String> cfgEdges =
+                calls.stream()
+                        .map(MethodCallView::callerControlFlowEdges)
+                        .filter(edges -> !edges.isEmpty())
+                        .findFirst()
+                        .orElse(List.of());
+        Set<String> asyncBoundaries =
+                calls.stream()
+                        .flatMap(call -> call.callerAsyncBoundaries().stream())
+                        .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
         boolean completionOrderUnknown = !asyncBoundaries.isEmpty();
-        boolean cfgDominanceProven = comparable
-                && dominatesEveryAfter(before, after, cfgEdges);
+        boolean cfgDominanceProven = comparable && dominatesEveryAfter(before, after, cfgEdges);
 
         ObjectNode root = JSON.createObjectNode();
         root.put("target", cls.className());
@@ -151,32 +213,54 @@ public final class ExecutionOrderQueries {
             }
         }
         root.put("event_count", events.size());
-        boolean classifiedDynamic = "2".equals(reader.index.getMetadata().get("invokedynamic_evidence_protocol"));
+        boolean classifiedDynamic =
+                "2".equals(reader.index.getMetadata().get("invokedynamic_evidence_protocol"));
         ArrayNode callbacks = root.putArray("dynamic_references");
-        for (MethodCallView call : calls) if ("dynamic".equals(call.invocationKind())) {
-            var callback = callbacks.addObject().put("class",call.toClass()).put("method",call.toMethod())
-                    .put("descriptor",call.toDescriptor()).put("execution_proven",false)
-                    .put("reference_basis",classifiedDynamic ? "lambda_metafactory" : "legacy_unclassified")
-                    .put("execution_semantics",classifiedDynamic ? "callback_creation" : "bootstrap_reference_unknown");
-            callback.set("creation_instruction_ordinals",JSON.valueToTree(call.instructionOrdinals()));
-            callback.set("evidence_lines",JSON.valueToTree(call.evidenceLines()));
-        }
+        for (MethodCallView call : calls)
+            if ("dynamic".equals(call.invocationKind())) {
+                var callback =
+                        callbacks
+                                .addObject()
+                                .put("class", call.toClass())
+                                .put("method", call.toMethod())
+                                .put("descriptor", call.toDescriptor())
+                                .put("execution_proven", false)
+                                .put(
+                                        "reference_basis",
+                                        classifiedDynamic
+                                                ? "lambda_metafactory"
+                                                : "legacy_unclassified")
+                                .put(
+                                        "execution_semantics",
+                                        classifiedDynamic
+                                                ? "callback_creation"
+                                                : "bootstrap_reference_unknown");
+                callback.set(
+                        "creation_instruction_ordinals",
+                        JSON.valueToTree(call.instructionOrdinals()));
+                callback.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
+            }
         ArrayNode sequence = root.putArray("bytecode_sequence");
         for (Event event : events) appendEvent(sequence, event, cls.sourceFile());
         ObjectNode relation = root.putObject("ordering_analysis");
         relation.set("before_terms", JSON.valueToTree(beforeTerms));
         relation.set("after_terms", JSON.valueToTree(afterTerms));
-        relation.put("instruction_order_status", comparable
-                ? (allBeforeAfter ? "proven" : "disproven") : "unknown");
-        relation.put("runtime_order_status", !comparable ? "unknown"
-                : cfgDominanceProven && completionOrderUnknown
-                        ? "invocation_order_proven_completion_unknown"
-                        : cfgDominanceProven && !straightLine ? "proven_on_all_cfg_paths"
-                        : allBeforeAfter && straightLine
-                                ? completionOrderUnknown
-                                        ? "invocation_order_proven_completion_unknown"
-                                        : "proven_on_normal_completion"
-                                : "likely");
+        relation.put(
+                "instruction_order_status",
+                comparable ? (allBeforeAfter ? "proven" : "disproven") : "unknown");
+        relation.put(
+                "runtime_order_status",
+                !comparable
+                        ? "unknown"
+                        : cfgDominanceProven && completionOrderUnknown
+                                ? "invocation_order_proven_completion_unknown"
+                                : cfgDominanceProven && !straightLine
+                                        ? "proven_on_all_cfg_paths"
+                                        : allBeforeAfter && straightLine
+                                                ? completionOrderUnknown
+                                                        ? "invocation_order_proven_completion_unknown"
+                                                        : "proven_on_normal_completion"
+                                                : "likely");
         relation.put("before_event_count", before.size());
         relation.put("after_event_count", after.size());
         relation.put("all_before_instructions_before_after", allBeforeAfter);
@@ -194,26 +278,39 @@ public final class ExecutionOrderQueries {
         async.put("completion_order_unknown", completionOrderUnknown);
         async.set("boundaries", JSON.valueToTree(asyncBoundaries));
         ObjectNode phases = async.putObject("phases");
-        events.stream().filter(event -> event.asyncPhase() != null)
-                .collect(java.util.stream.Collectors.groupingBy(Event::asyncPhase,
-                        java.util.TreeMap::new, java.util.stream.Collectors.counting()))
+        events.stream()
+                .filter(event -> event.asyncPhase() != null)
+                .collect(
+                        java.util.stream.Collectors.groupingBy(
+                                Event::asyncPhase,
+                                java.util.TreeMap::new,
+                                java.util.stream.Collectors.counting()))
                 .forEach(phases::put);
         root.putArray("limitations")
-                .add("Straight-line runtime proof applies only to normal completion; an earlier call may throw or terminate")
-                .add("Exceptional CFG conservatively connects every protected instruction to its handler")
-                .add("Asynchronous completion, reflection, and external-library internals are not ordered by this analysis")
-                .add("Persistence and dispatch labels are name-based classifications; inspect the listed calls");
-        root.withArray("limitations").add("Callback creation is not invocation of its referenced method; dynamic references are excluded from ordering events");
+                .add(
+                        "Straight-line runtime proof applies only to normal completion; an earlier call may throw or terminate")
+                .add(
+                        "Exceptional CFG conservatively connects every protected instruction to its handler")
+                .add(
+                        "Asynchronous completion, reflection, and external-library internals are not ordered by this analysis")
+                .add(
+                        "Persistence and dispatch labels are name-based classifications; inspect the listed calls");
+        root.withArray("limitations")
+                .add(
+                        "Callback creation is not invocation of its referenced method; dynamic references are excluded from ordering events");
         appendMeta(root, reader, cls.sourceTokens(), cls.sourceFile(), cls.module());
-        return root.toString();
+        return root;
     }
 
     private static String indexedName(ClassMemberRecord member) {
         return member.kind().equals("CONSTRUCTOR") ? "<init>" : member.name();
     }
 
-    private static String category(String calleeClass, String calleeMethod,
-            Set<String> beforeTerms, Set<String> afterTerms) {
+    private static String category(
+            String calleeClass,
+            String calleeMethod,
+            Set<String> beforeTerms,
+            Set<String> afterTerms) {
         String searchable = (calleeClass + " " + calleeMethod).toLowerCase(Locale.ROOT);
         if (beforeTerms.stream().anyMatch(searchable::contains)) return "before";
         if (afterTerms.stream().anyMatch(searchable::contains)) return "after";
@@ -242,16 +339,22 @@ public final class ExecutionOrderQueries {
         try {
             int ordinal = Integer.parseInt(parts[0]);
             int line = Integer.parseInt(parts[1]);
-            return new Event(ordinal, "call", parts[2], parts[3], parts[4],
-                    line > 0 ? List.of(line) : List.of(), true,
+            return new Event(
+                    ordinal,
+                    "call",
+                    parts[2],
+                    parts[3],
+                    parts[4],
+                    line > 0 ? List.of(line) : List.of(),
+                    true,
                     parts[5].isBlank() ? null : parts[5]);
         } catch (NumberFormatException ignored) {
             return null;
         }
     }
 
-    private static boolean dominatesEveryAfter(List<Event> before, List<Event> after,
-            List<String> encodedEdges) {
+    private static boolean dominatesEveryAfter(
+            List<Event> before, List<Event> after, List<String> encodedEdges) {
         if (encodedEdges.isEmpty()) return false;
         Map<Integer, Set<Integer>> predecessors = new HashMap<>();
         Set<Integer> nodes = new HashSet<>();
@@ -272,8 +375,8 @@ public final class ExecutionOrderQueries {
         int entry = nodes.stream().min(Integer::compareTo).orElseThrow();
         Map<Integer, Set<Integer>> dominators = new HashMap<>();
         for (int node : nodes) {
-            dominators.put(node, node == entry ? new HashSet<>(Set.of(entry))
-                    : new HashSet<>(nodes));
+            dominators.put(
+                    node, node == entry ? new HashSet<>(Set.of(entry)) : new HashSet<>(nodes));
         }
         boolean changed;
         do {
@@ -295,18 +398,26 @@ public final class ExecutionOrderQueries {
                 }
             }
         } while (changed);
-        Set<Integer> beforeOrdinals = before.stream().map(Event::ordinal)
-                .collect(java.util.stream.Collectors.toSet());
-        return after.stream().allMatch(event -> dominators
-                .getOrDefault(event.ordinal(), Set.of()).stream()
-                .anyMatch(beforeOrdinals::contains));
+        Set<Integer> beforeOrdinals =
+                before.stream().map(Event::ordinal).collect(java.util.stream.Collectors.toSet());
+        return after.stream()
+                .allMatch(
+                        event ->
+                                dominators.getOrDefault(event.ordinal(), Set.of()).stream()
+                                        .anyMatch(beforeOrdinals::contains));
     }
 
-    private static String selectionError(ReadQueryContext reader, ClassRecord cls, String method,
-            String signature, List<ClassMemberRecord> candidates) {
+    private static ObjectNode selectionError(
+            ReadQueryContext reader,
+            ClassRecord cls,
+            String method,
+            String signature,
+            List<ClassMemberRecord> candidates) {
         ObjectNode root = JSON.createObjectNode();
         boolean ambiguous = !candidates.isEmpty();
-        appendError(root, ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
+        appendError(
+                root,
+                ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
                 ambiguous ? "Ambiguous method" : "Method not found");
         root.put("target", cls.className());
         root.put("method", method);
@@ -314,25 +425,42 @@ public final class ExecutionOrderQueries {
         ArrayNode choices = root.putArray("candidates");
         for (ClassMemberRecord candidate : candidates) {
             ObjectNode choice = choices.addObject();
-            choice.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
-                    candidate.name(), candidate.descriptor()));
+            choice.put(
+                    "symbol_id",
+                    SymbolContract.id(
+                            cls, candidate.kind(), candidate.name(), candidate.descriptor()));
             choice.put("signature", candidate.signature());
             choice.put("descriptor", candidate.descriptor());
         }
         if (ambiguous) {
-            appendRetryWith(root, "signature",
+            appendRetryWith(
+                    root,
+                    "signature",
                     "Use one candidate's exact signature, descriptor, or symbol_id");
         }
         appendMeta(root, reader, cls.sourceTokens(), cls.sourceFile(), cls.module());
-        return root.toString();
+        return root;
     }
 
-    private record Event(int ordinal, String category, String calleeClass,
-            String calleeMethod, String calleeDescriptor, List<Integer> evidenceLines,
-            boolean external, String asyncPhase) {
+    private record Event(
+            int ordinal,
+            String category,
+            String calleeClass,
+            String calleeMethod,
+            String calleeDescriptor,
+            List<Integer> evidenceLines,
+            boolean external,
+            String asyncPhase) {
         Event withCategory(String value) {
-            return new Event(ordinal, value, calleeClass, calleeMethod, calleeDescriptor,
-                    evidenceLines, external, asyncPhase);
+            return new Event(
+                    ordinal,
+                    value,
+                    calleeClass,
+                    calleeMethod,
+                    calleeDescriptor,
+                    evidenceLines,
+                    external,
+                    asyncPhase);
         }
     }
 }

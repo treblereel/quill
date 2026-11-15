@@ -2,8 +2,8 @@ package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupError;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupErrorNode;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -12,7 +12,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.mcp.semantic.KotlinProperties;
+import org.treblereel.mcp.mcp.semantic.SymbolContract;
+import org.treblereel.mcp.mcp.support.BeanTerms;
+import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
@@ -20,12 +26,6 @@ import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
-import org.treblereel.mcp.mcp.support.BeanTerms;
-import org.treblereel.mcp.mcp.support.ClassTargetResolver;
-import org.treblereel.mcp.mcp.semantic.KotlinProperties;
-import org.treblereel.mcp.mcp.semantic.SymbolContract;
-import org.treblereel.mcp.mcp.support.ToolResponseSupport;
-import org.treblereel.mcp.core.Json;
 
 /** Builds a compact, evidence-backed card for one indexed class. */
 public final class SymbolToolQueries {
@@ -33,11 +33,17 @@ public final class SymbolToolQueries {
     private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> MEMBER_KINDS = Set.of("FIELD", "CONSTRUCTOR", "METHOD");
 
-    public String getSymbolDetails(ReadQueryContext reader, String target, boolean includeMembers,
-            String memberKind, int memberLimit, int memberOffset) {
+    public ObjectNode getSymbolDetails(
+            ReadQueryContext reader,
+            String target,
+            boolean includeMembers,
+            String memberKind,
+            int memberLimit,
+            int memberOffset) {
         String normalizedKind = normalizeMemberKind(memberKind);
         if (normalizedKind != null && !MEMBER_KINDS.contains(normalizedKind)) {
-            return errorResponse("INVALID_ARGUMENT",
+            return errorNode(
+                    "INVALID_ARGUMENT",
                     "Invalid member_kind: expected field, constructor, or method");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
@@ -45,10 +51,12 @@ public final class SymbolToolQueries {
             var generated = ArcGeneratedClasses.describe(reader, target);
             if (generated != null) {
                 ToolResponseSupport.appendMeta(generated, reader, 0);
-                return generated.toString();
+                return generated;
             }
             String dependency = DependencyTypeAnswers.referencedType(reader, lookup, target);
-            return dependency != null ? DependencyTypeAnswers.symbol(reader, dependency) : classLookupError(reader, lookup, target);
+            return dependency != null
+                    ? DependencyTypeAnswers.symbol(reader, dependency)
+                    : classLookupErrorNode(reader, lookup, target);
         }
         ClassRecord cls = lookup.cls();
         List<KotlinDeclarationRecord> kotlinDeclarations =
@@ -60,57 +68,84 @@ public final class SymbolToolQueries {
         if (cls.superclass() == null) root.putNull("superclass");
         else root.put("superclass", cls.superclass());
         root.set("interfaces", JSON.valueToTree(cls.interfaces()));
-        root.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
+        root.put(
+                "source",
+                (cls.sourceLine() > 0
+                        ? cls.sourceFile() + ":" + cls.sourceLine()
+                        : cls.sourceFile()));
         root.put("origin", cls.origin());
         root.put("lifecycle", cls.lifecycle());
         root.put("source_tokens", cls.sourceTokens());
         SymbolContract.appendClass(root, cls, kotlinDeclarations);
         if (!kotlinDeclarations.isEmpty()) {
             var properties = root.putArray("properties");
-            KotlinProperties.list(reader, cls).forEach(property -> property.append(properties.addObject()));
+            KotlinProperties.list(reader, cls)
+                    .forEach(property -> property.append(properties.addObject()));
         }
         appendContext(root, cls);
 
         List<ClassAnnotationRecord> annotations = reader.symbols.findClassAnnotations(cls.id());
-        root.set("annotations", JSON.valueToTree(annotations.stream()
-                .filter(ClassAnnotationRecord::direct)
-                .map(ClassAnnotationRecord::annotationName).distinct().sorted().toList()));
-        root.set("meta_annotations", JSON.valueToTree(annotations.stream()
-                .filter(annotation -> !annotation.direct())
-                .map(ClassAnnotationRecord::annotationName).distinct().sorted().toList()));
+        root.set(
+                "annotations",
+                JSON.valueToTree(
+                        annotations.stream()
+                                .filter(ClassAnnotationRecord::direct)
+                                .map(ClassAnnotationRecord::annotationName)
+                                .distinct()
+                                .sorted()
+                                .toList()));
+        root.set(
+                "meta_annotations",
+                JSON.valueToTree(
+                        annotations.stream()
+                                .filter(annotation -> !annotation.direct())
+                                .map(ClassAnnotationRecord::annotationName)
+                                .distinct()
+                                .sorted()
+                                .toList()));
         appendKotlinDeclarations(root, kotlinDeclarations);
 
         ObjectNode dependencyMetrics = root.putObject("dependency_metrics");
         dependencyMetrics.put("fan_in", reader.usages.countDependents(cls.id()));
-        dependencyMetrics.put("incoming_occurrences",
-                reader.usages.countDependencyEdges(cls.id(), true));
+        dependencyMetrics.put(
+                "incoming_occurrences", reader.usages.countDependencyEdges(cls.id(), true));
         dependencyMetrics.put("fan_out", reader.usages.countDependencies(cls.id()));
-        dependencyMetrics.put("outgoing_occurrences",
-                reader.usages.countDependencyEdges(cls.id(), false));
+        dependencyMetrics.put(
+                "outgoing_occurrences", reader.usages.countDependencyEdges(cls.id(), false));
 
-        reader.beans.findBeanByClassId(cls.id())
-                .ifPresent(bean -> {
-                    ObjectNode node = root.putObject("bean");
-                    appendBean(node, bean);
-                    // V62 CQ-014: get_context named @LookupIfProperty without its values or what Instance.get() then does.
-                    BeanEvidence.appendConditions(node, bean, annotations, List.of());
-                    String discovery = BeanEvidence.discovery(reader, bean, annotations);
-                    if (discovery != null) node.put("discovery", discovery);
-                    String removal = BeanEvidence.removal(reader, bean, annotations, cls.className());
-                    if (removal != null) node.put("arc_removal", removal);
-                });
+        reader.beans
+                .findBeanByClassId(cls.id())
+                .ifPresent(
+                        bean -> {
+                            ObjectNode node = root.putObject("bean");
+                            appendBean(node, bean);
+                            // V62 CQ-014: get_context named @LookupIfProperty without its values or
+                            // what Instance.get() then does.
+                            BeanEvidence.appendConditions(node, bean, annotations, List.of());
+                            String discovery = BeanEvidence.discovery(reader, bean, annotations);
+                            if (discovery != null) node.put("discovery", discovery);
+                            String removal =
+                                    BeanEvidence.removal(
+                                            reader, bean, annotations, cls.className());
+                            if (removal != null) node.put("arc_removal", removal);
+                        });
         appendImplementations(root, cls, reader.symbols.findAllClasses());
         appendExternalDependencies(root, reader.usages.findExternalDeps(cls.id()));
-        appendOccurrences(root, reader.index.findClassOccurrencesByClassIds(List.of(cls.id())).get(cls.id()));
+        appendOccurrences(
+                root, reader.index.findClassOccurrencesByClassIds(List.of(cls.id())).get(cls.id()));
 
         if (!includeMembers) {
             root.put("members_included", false);
             appendMeta(root, reader, cls.sourceTokens());
-            return root.toString();
+            return root;
         }
-        List<ClassMemberRecord> members = reader.symbols.findClassMembers(cls.id()).stream()
-                .filter(member -> normalizedKind == null || normalizedKind.equals(member.kind()))
-                .toList();
+        List<ClassMemberRecord> members =
+                reader.symbols.findClassMembers(cls.id()).stream()
+                        .filter(
+                                member ->
+                                        normalizedKind == null
+                                                || normalizedKind.equals(member.kind()))
+                        .toList();
         int from = Math.min(memberOffset, members.size());
         int to = (int) Math.min((long) from + memberLimit, members.size());
         List<ClassMemberRecord> page = members.subList(from, to);
@@ -129,21 +164,26 @@ public final class SymbolToolQueries {
             if ("FIELD".equals(member.kind())) node.put("type", member.typeName());
             else node.put("signature", member.signature());
             node.put("descriptor", member.descriptor());
-            if (member.modifiers() != null && !member.modifiers().isBlank()) node.put("modifiers", member.modifiers());
-            if (!member.annotations().isEmpty()) node.set("annotations", JSON.valueToTree(member.annotations()));
+            if (member.modifiers() != null && !member.modifiers().isBlank())
+                node.put("modifiers", member.modifiers());
+            if (!member.annotations().isEmpty())
+                node.set("annotations", JSON.valueToTree(member.annotations()));
             SymbolContract.appendListedMember(node, cls, member, kotlinDeclarations);
             ArrayNode details = JSON.createArrayNode();
-            member.annotationDetails().stream().filter(annotation -> annotation.parameterIndex() != null)
-                    .forEach(annotation -> details.addObject()
-                            .put("annotation", annotation.annotationName())
-                            .put("parameter_index", annotation.parameterIndex())
-                            .put("parameter_name", annotation.parameterName())
-                            .put("parameter_type", annotation.parameterType()));
+            member.annotationDetails().stream()
+                    .filter(annotation -> annotation.parameterIndex() != null)
+                    .forEach(
+                            annotation ->
+                                    details.addObject()
+                                            .put("annotation", annotation.annotationName())
+                                            .put("parameter_index", annotation.parameterIndex())
+                                            .put("parameter_name", annotation.parameterName())
+                                            .put("parameter_type", annotation.parameterType()));
             if (!details.isEmpty()) node.set("parameter_annotations", details);
         }
         appendPage(root, page.size(), members.size(), memberLimit, memberOffset);
         appendMeta(root, reader, cls.sourceTokens());
-        return root.toString();
+        return root;
     }
 
     private static void appendKotlinDeclarations(
@@ -161,7 +201,8 @@ public final class SymbolToolQueries {
             if (!declaration.descriptor().isBlank()) {
                 node.put("descriptor", declaration.descriptor());
             }
-            if (declaration.declarationTypes() != null) node.set("declaration_types", JSON.valueToTree(declaration.declarationTypes()));
+            if (declaration.declarationTypes() != null)
+                node.set("declaration_types", JSON.valueToTree(declaration.declarationTypes()));
             if (declaration.valueParameters() != null) {
                 node.set("value_parameters", JSON.valueToTree(declaration.valueParameters()));
             }
@@ -190,23 +231,39 @@ public final class SymbolToolQueries {
 
     private static void appendImplementations(
             ObjectNode root, ClassRecord target, List<ClassRecord> classes) {
-        List<String> implementations = classes.stream()
-                .filter(candidate -> target.className().equals(candidate.superclass())
-                        || candidate.interfaces().contains(target.className()))
-                .map(ClassRecord::className).sorted().toList();
+        List<String> implementations =
+                classes.stream()
+                        .filter(
+                                candidate ->
+                                        target.className().equals(candidate.superclass())
+                                                || candidate
+                                                        .interfaces()
+                                                        .contains(target.className()))
+                        .map(ClassRecord::className)
+                        .sorted()
+                        .toList();
         root.put("direct_implementation_count", implementations.size());
-        root.set("direct_implementations", JSON.valueToTree(
-                implementations.stream().limit(20).toList()));
+        root.set(
+                "direct_implementations",
+                JSON.valueToTree(implementations.stream().limit(20).toList()));
         root.put("direct_implementations_truncated", implementations.size() > 20);
     }
 
     private static void appendExternalDependencies(
             ObjectNode root, List<ExternalDepRecord> dependencies) {
-        Map<String, Long> byKind = dependencies.stream().collect(java.util.stream.Collectors
-                .groupingBy(ExternalDepRecord::usageKind, java.util.TreeMap::new,
-                        java.util.stream.Collectors.counting()));
-        List<String> types = dependencies.stream().map(ExternalDepRecord::externalType)
-                .distinct().sorted().toList();
+        Map<String, Long> byKind =
+                dependencies.stream()
+                        .collect(
+                                java.util.stream.Collectors.groupingBy(
+                                        ExternalDepRecord::usageKind,
+                                        java.util.TreeMap::new,
+                                        java.util.stream.Collectors.counting()));
+        List<String> types =
+                dependencies.stream()
+                        .map(ExternalDepRecord::externalType)
+                        .distinct()
+                        .sorted()
+                        .toList();
         root.put("external_dependency_reference_count", dependencies.size());
         root.put("external_dependency_type_count", types.size());
         root.set("external_dependency_breakdown", JSON.valueToTree(byKind));
@@ -219,7 +276,8 @@ public final class SymbolToolQueries {
         String value = kind.trim().toUpperCase(Locale.ROOT);
         // Agents ask for "methods" as often as "method".
         return value.endsWith("S") && MEMBER_KINDS.contains(value.substring(0, value.length() - 1))
-                ? value.substring(0, value.length() - 1) : value;
+                ? value.substring(0, value.length() - 1)
+                : value;
     }
 
     private static void appendContext(ObjectNode node, ClassRecord cls) {

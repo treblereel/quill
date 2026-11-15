@@ -12,79 +12,127 @@ import java.util.Optional;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.treblereel.mcp.workspace.SingleProjectScope;
 import org.treblereel.mcp.mcp.project.BuildEventConsumer;
-import org.treblereel.mcp.mcp.server.McpToolCatalog;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.mcp.server.McpToolCatalog;
 import org.treblereel.mcp.mcp.tools.QuillTools;
+import org.treblereel.mcp.workspace.SingleProjectScope;
 
 class ProjectAvailabilityResponsesTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     @TempDir Path root;
 
-    @Test void missingClassesRecommendOnlyTheModuleThatNeedsCompilation() throws Exception {
+    @Test
+    void missingClassesRecommendOnlyTheModuleThatNeedsCompilation() throws Exception {
         mavenModules();
         try (var registry = registry()) {
-            var result = JSON.readTree(ProjectAvailabilityResponses.error(registry.resolve().issues()));
+            var result =
+                    JSON.readTree(ProjectAvailabilityResponses.error(registry.resolve().issues()));
             assertEquals("classes_missing", result.path("reason").asText());
             assertEquals("build", result.path("action").asText());
             assertFalse(result.path("automatic_retry").asBoolean());
             assertFalse(result.has("retry_after_ms"));
-            assertEquals(List.of("service"), JSON.convertValue(result.path("stale_modules"), List.class));
-            assertCommand(result, List.of(root.resolve("mvnw").toString(), "-pl", "service", "-am", "test-compile"));
+            assertEquals(
+                    List.of("service"),
+                    JSON.convertValue(result.path("stale_modules"), List.class));
+            assertCommand(
+                    result,
+                    List.of(
+                            root.resolve("mvnw").toString(),
+                            "-pl",
+                            "service",
+                            "-am",
+                            "test-compile"));
         }
     }
 
-    @Test void buildStatusIsCompactWithoutAnIndexAndItsDetailsRequestIsExecutable() throws Exception {
+    @Test
+    void buildStatusIsCompactWithoutAnIndexAndItsDetailsRequestIsExecutable() throws Exception {
         mavenModules();
         try (var registry = registry()) {
             var tools = new QuillTools(registry);
-            var summary = JSON.readTree(tools.get_build_status(Optional.empty(), Optional.empty(), Optional.empty(),
-                    Optional.empty(), Optional.empty(), Optional.empty()));
+            var summary =
+                    tools.get_build_status(
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty());
             assertEquals("classes_missing", summary.path("reason").asText());
             assertEquals("summary", summary.path("detail").asText());
             assertEquals(1, summary.path("stale_modules_count").asInt());
             assertFalse(summary.has("verification_plan"));
             assertFalse(summary.has("diagnostics"));
-            var method = QuillTools.class.getMethod("get_build_status", Optional.class, Optional.class,
-                    Optional.class, Optional.class, Optional.class, Optional.class);
-            Map<String, Object> args = JSON.convertValue(summary.at("/details_request/arguments"), Map.class);
+            var method =
+                    QuillTools.class.getMethod(
+                            "get_build_status",
+                            Optional.class,
+                            Optional.class,
+                            Optional.class,
+                            Optional.class,
+                            Optional.class,
+                            Optional.class);
+            Map<String, Object> args =
+                    JSON.convertValue(summary.at("/details_request/arguments"), Map.class);
             var full = JSON.readTree(McpToolCatalog.invokeMethod(tools, method, args).text());
             assertEquals("full", full.path("detail").asText());
             assertEquals("classes_missing", full.path("reason").asText());
             assertEquals("service", full.path("stale_modules").get(0).asText());
-            assertCommand(full, List.of(root.resolve("mvnw").toString(), "-pl", "service", "-am", "test-compile"));
+            assertCommand(
+                    full,
+                    List.of(
+                            root.resolve("mvnw").toString(),
+                            "-pl",
+                            "service",
+                            "-am",
+                            "test-compile"));
         }
     }
 
-    @Test void gradleBuildGuidanceUsesTheProjectRunnerAndTestClassesTask() throws Exception {
+    @Test
+    void gradleBuildGuidanceUsesTheProjectRunnerAndTestClassesTask() throws Exception {
         Files.writeString(root.resolve("settings.gradle"), "rootProject.name='app'\n");
         Files.writeString(root.resolve("build.gradle"), "plugins { id 'java' }\n");
         Path source = root.resolve("src/main/java/Example.java");
-        Files.createDirectories(source.getParent()); Files.writeString(source, "class Example {}");
-        Path wrapper = root.resolve("gradlew"); Files.writeString(wrapper, "#!/bin/sh\nexit 0\n");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "class Example {}");
+        Path wrapper = root.resolve("gradlew");
+        Files.writeString(wrapper, "#!/bin/sh\nexit 0\n");
         assertTrue(wrapper.toFile().setExecutable(true));
         try (var registry = registry()) {
-            var result = JSON.readTree(ProjectAvailabilityResponses.error(registry.resolve().issues()));
+            var result =
+                    JSON.readTree(ProjectAvailabilityResponses.error(registry.resolve().issues()));
             assertEquals("classes_missing", result.path("reason").asText());
             assertEquals("gradle", result.path("build_system").asText());
             assertCommand(result, List.of(wrapper.toString(), "testClasses"));
         }
     }
 
-    @Test void failedBuildDiagnosticsAreAvailableWithoutAnIndex() throws Exception {
+    @Test
+    void failedBuildDiagnosticsAreAvailableWithoutAnIndex() throws Exception {
         mavenModules();
         Files.createDirectories(root.resolve("service/target/classes"));
-        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null,
-                "-d", root.resolve("service/target/classes").toString(),
-                root.resolve("service/src/main/java/Example.java").toString()));
+        assertEquals(
+                0,
+                javax.tools.ToolProvider.getSystemJavaCompiler()
+                        .run(
+                                null,
+                                null,
+                                null,
+                                "-d",
+                                root.resolve("service/target/classes").toString(),
+                                root.resolve("service/src/main/java/Example.java").toString()));
         Files.createDirectories(root.resolve(".quill"));
-        Files.writeString(root.resolve(".quill/build-state.json"), """
+        Files.writeString(
+                root.resolve(".quill/build-state.json"),
+                """
                 {"successful":false,"buildTool":"maven","finishedAt":123,
                  "diagnostics":[],"failureMessages":["Compilation failed"]}
                 """);
         try (var registry = registry()) {
-            var result = JSON.readTree(ProjectAvailabilityResponses.error(registry.resolve().issues()));
+            var result =
+                    JSON.readTree(ProjectAvailabilityResponses.error(registry.resolve().issues()));
             assertEquals("build_required", result.path("status").asText());
             assertEquals("build_required", result.path("error").asText());
             assertEquals("build_failed", result.path("reason").asText());
@@ -93,83 +141,151 @@ class ProjectAvailabilityResponsesTest {
             assertFalse(result.path("automatic_retry").asBoolean());
             assertEquals("failed", result.path("diagnostics").path("build_status").asText());
             var tools = new QuillTools(registry);
-            var diagnostics = JSON.readTree(tools.get_build_problems(Optional.empty(), Optional.empty(),
-                    Optional.empty(), Optional.empty(), Optional.empty()));
+            var diagnostics =
+                    tools.get_build_problems(
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty());
             assertEquals("failed", diagnostics.path("build_status").asText());
             assertTrue(diagnostics.path("total").asInt() > 0);
-            var fileProblems = JSON.readTree(tools.get_file_problems(List.of("service/src/main/java/Example.java"),
-                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+            var fileProblems =
+                    tools.get_file_problems(
+                            List.of("service/src/main/java/Example.java"),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty());
             assertEquals("failed", fileProblems.path("build_status").asText());
         }
     }
 
-    @Test void diagnosticsDoNotWaitForAQueuedRefresh() throws Exception {
+    @Test
+    void diagnosticsDoNotWaitForAQueuedRefresh() throws Exception {
         mavenModules();
         var jobs = new java.util.ArrayDeque<Runnable>();
-        var scope = new SingleProjectScope(); scope.register(root);
+        var scope = new SingleProjectScope();
+        scope.register(root);
         try (var registry = new ProjectRegistry(scope, new BuildEventConsumer(jobs::add))) {
             Path events = Files.createDirectories(root.resolve(".quill/build-events"));
-            Files.writeString(events.resolve("result.json"), event(false, System.currentTimeMillis()));
+            Files.writeString(
+                    events.resolve("result.json"), event(false, System.currentTimeMillis()));
             assertEquals("refresh_pending", registry.resolve().issues().getFirst().code());
             var tools = new QuillTools(registry);
-            var response = JSON.readTree(tools.get_build_problems(Optional.empty(), Optional.empty(),
-                    Optional.empty(), Optional.empty(), Optional.empty()));
+            var response =
+                    tools.get_build_problems(
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty());
             assertEquals("unknown", response.path("build_status").asText());
             assertFalse(response.has("error"));
-            var status = JSON.readTree(tools.get_build_status(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()));
+            var status =
+                    tools.get_build_status(
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty());
             assertEquals("refresh_pending", status.path("status").asText());
             assertEquals("build_events_queued", status.path("reason").asText());
-            assertEquals("unknown", status.path("diagnostics_summary").path("build_status").asText());
+            assertEquals(
+                    "unknown", status.path("diagnostics_summary").path("build_status").asText());
             assertEquals(1, jobs.size());
         }
     }
 
-    @Test void editsAfterBuildExplainWhyAnotherBuildIsNeededIncludingTestSources() throws Exception {
+    @Test
+    void editsAfterBuildExplainWhyAnotherBuildIsNeededIncludingTestSources() throws Exception {
         mavenModules();
         try (var git = Git.init().setDirectory(root.toFile()).call()) {
             git.add().addFilepattern(".").call();
-            git.commit().setSign(false).setMessage("fixture").setAuthor("Test", "test@example.com").call();
+            git.commit()
+                    .setSign(false)
+                    .setMessage("fixture")
+                    .setAuthor("Test", "test@example.com")
+                    .call();
             long finished = System.currentTimeMillis() - 2000;
             Path test = root.resolve("service/src/test/java/ExampleTest.java");
-            Files.createDirectories(test.getParent()); Files.writeString(test, "class ExampleTest {}");
+            Files.createDirectories(test.getParent());
+            Files.writeString(test, "class ExampleTest {}");
             Path events = Files.createDirectories(root.resolve(".quill/build-events"));
             Files.writeString(events.resolve("result.json"), event(true, finished));
             assertNull(new BuildEventConsumer().consume(root));
             assertFalse(Files.exists(events));
             try (var registry = registry()) {
-                var result = JSON.readTree(ProjectAvailabilityResponses.error(registry.resolve().issues()));
+                var result =
+                        JSON.readTree(
+                                ProjectAvailabilityResponses.error(registry.resolve().issues()));
                 assertEquals("inputs_changed_after_build", result.path("reason").asText());
                 assertEquals("build", result.path("action").asText());
                 assertTrue(result.path("message").asText().contains("ExampleTest.java"));
-                assertCommand(result, List.of(root.resolve("mvnw").toString(), "-pl", "service", "-am", "test-compile"));
+                assertCommand(
+                        result,
+                        List.of(
+                                root.resolve("mvnw").toString(),
+                                "-pl",
+                                "service",
+                                "-am",
+                                "test-compile"));
             }
         }
     }
 
-    @Test void diagnosticsSupportMultipleProjectsAndRejectUnknownSelectors() throws Exception {
+    @Test
+    void diagnosticsSupportMultipleProjectsAndRejectUnknownSelectors() throws Exception {
         Path first = Files.createDirectories(root.resolve("first"));
         Path second = Files.createDirectories(root.resolve("second"));
         Files.writeString(first.resolve("pom.xml"), "<project/>");
         Files.writeString(second.resolve("pom.xml"), "<project/>");
         try (var registry = new ProjectRegistry()) {
-            registry.register(first); registry.register(second);
+            registry.register(first);
+            registry.register(second);
             var tools = new QuillTools(registry);
-            var result = JSON.readTree(tools.get_build_problems(Optional.empty(), Optional.empty(),
-                    Optional.empty(), Optional.empty(), Optional.empty()));
+            var result =
+                    tools.get_build_problems(
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty());
             assertEquals(2, result.path("projects").size());
-            assertEquals("unknown", result.path("projects").get(0).path("data").path("build_status").asText());
-            var filtered = JSON.readTree(tools.get_build_problems(Optional.empty(), Optional.empty(),
-                    Optional.empty(), Optional.empty(), Optional.of("second")));
+            assertEquals(
+                    "unknown",
+                    result.path("projects").get(0).path("data").path("build_status").asText());
+            var filtered =
+                    tools.get_build_problems(
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.of("second"));
             assertEquals("unknown", filtered.path("build_status").asText());
-            var unknown = JSON.readTree(tools.get_build_problems(Optional.empty(), Optional.empty(),
-                    Optional.empty(), Optional.empty(), Optional.of("absent")));
+            var unknown =
+                    tools.get_build_problems(
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.of("absent"));
             assertTrue(unknown.path("error").asText().contains("not found"));
         }
     }
 
-    @Test void refreshFailureNeverSuggestsWaitingWithoutAScheduledRetry() throws Exception {
-        var issue = new ProjectRegistry.ProjectIssue("app", root, "index_refresh_failed", "maven",
-                "Disk full", "Inspect the refresh failure", false);
+    @Test
+    void refreshFailureNeverSuggestsWaitingWithoutAScheduledRetry() throws Exception {
+        var issue =
+                new ProjectRegistry.ProjectIssue(
+                        "app",
+                        root,
+                        "index_refresh_failed",
+                        "maven",
+                        "Disk full",
+                        "Inspect the refresh failure",
+                        false);
         var result = JSON.readTree(ProjectAvailabilityResponses.error(issue));
         assertEquals("index_refresh_failed", result.path("reason").asText());
         assertEquals("inspect_error", result.path("action").asText());
@@ -177,17 +293,38 @@ class ProjectAvailabilityResponsesTest {
         assertFalse(result.has("retry_after_ms"));
         var workspace = JSON.createObjectNode();
         ProjectAvailabilityResponses.append(workspace, List.of(issue));
-        assertEquals(result.path("reason"), workspace.path("unavailable_projects").get(0).path("reason"));
+        assertEquals(
+                result.path("reason"),
+                workspace.path("unavailable_projects").get(0).path("reason"));
     }
 
-    /** V26 CQ-049: a verify_change warning restated the answer's own verification plan and diagnostics, 1.6 KB. */
-    @Test void aWarningDoesNotRestateThePlanAndDiagnosticsTheAnswerStates() throws Exception {
+    /**
+     * V26 CQ-049: a verify_change warning restated the answer's own verification plan and
+     * diagnostics, 1.6 KB.
+     */
+    @Test
+    void aWarningDoesNotRestateThePlanAndDiagnosticsTheAnswerStates() throws Exception {
         var plan = JSON.createObjectNode().put("build_system", "maven");
         plan.putArray("commands").addObject().put("scope", "quick_compile");
         var diagnostics = JSON.createObjectNode().put("build_status", "failed").put("total", 3);
-        var issue = new ProjectRegistry.ProjectIssue("app", root, "build_required", "maven", "Build failed",
-                "Fix the build", false, "build_failed", List.of(), ProjectRegistry.ReadinessReason.BUILD_FAILED,
-                null, null, null, true, plan, diagnostics);
+        var issue =
+                new ProjectRegistry.ProjectIssue(
+                        "app",
+                        root,
+                        "build_required",
+                        "maven",
+                        "Build failed",
+                        "Fix the build",
+                        false,
+                        "build_failed",
+                        List.of(),
+                        ProjectRegistry.ReadinessReason.BUILD_FAILED,
+                        null,
+                        null,
+                        null,
+                        true,
+                        plan,
+                        diagnostics);
         var answer = JSON.createObjectNode();
         answer.set("verification_plan", plan.deepCopy());
         answer.set("diagnostics", diagnostics.deepCopy());
@@ -196,17 +333,35 @@ class ProjectAvailabilityResponsesTest {
         var warning = answer.path("project_warnings").get(0);
         assertFalse(warning.has("verification_plan"), warning.toString());
         assertFalse(warning.has("diagnostics"), warning.toString());
-        assertEquals("failed", warning.path("diagnostics_summary").path("build_status").asText(), warning.toString());
+        assertEquals(
+                "failed",
+                warning.path("diagnostics_summary").path("build_status").asText(),
+                warning.toString());
 
         var bare = JSON.createObjectNode();
         ProjectAvailabilityResponses.append(bare, "project_warnings", List.of(issue));
-        assertTrue(bare.path("project_warnings").get(0).has("verification_plan"), "Nothing else states it here");
+        assertTrue(
+                bare.path("project_warnings").get(0).has("verification_plan"),
+                "Nothing else states it here");
     }
 
-    /** V28 CQ-049: a change_session warning restated status, reason and action its verification.build states. */
-    @Test void aWarningTheVerifiedBuildAlreadyStatesBecomesAPointer() throws Exception {
-        var issue = new ProjectRegistry.ProjectIssue("app", root, "build_required", "maven",
-                "Compiled main classes are older than project build inputs", "Run quick_compile", false, "classes_stale", List.of("."));
+    /**
+     * V28 CQ-049: a change_session warning restated status, reason and action its
+     * verification.build states.
+     */
+    @Test
+    void aWarningTheVerifiedBuildAlreadyStatesBecomesAPointer() throws Exception {
+        var issue =
+                new ProjectRegistry.ProjectIssue(
+                        "app",
+                        root,
+                        "build_required",
+                        "maven",
+                        "Compiled main classes are older than project build inputs",
+                        "Run quick_compile",
+                        false,
+                        "classes_stale",
+                        List.of("."));
         var answer = JSON.createObjectNode().put("detail", "summary");
         var build = answer.putObject("verification").putObject("build");
         build.put("status", "build_required").put("reason", "classes_stale").put("action", "build");
@@ -217,29 +372,43 @@ class ProjectAvailabilityResponsesTest {
         assertFalse(warning.has("message"), warning.toString());
 
         var other = JSON.createObjectNode().put("detail", "summary");
-        other.putObject("verification").putObject("build").put("status", "ready").put("reason", "ready").put("action", "none");
+        other.putObject("verification")
+                .putObject("build")
+                .put("status", "ready")
+                .put("reason", "ready")
+                .put("action", "none");
         ProjectAvailabilityResponses.append(other, "project_warnings", List.of(issue));
-        assertTrue(other.path("project_warnings").get(0).has("message"), "A different reason is stated whole");
+        assertTrue(
+                other.path("project_warnings").get(0).has("message"),
+                "A different reason is stated whole");
     }
 
     private void mavenModules() throws Exception {
-        Files.writeString(root.resolve("pom.xml"), """
+        Files.writeString(
+                root.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion><groupId>test</groupId><artifactId>parent</artifactId>
                 <version>1</version><packaging>pom</packaging><modules><module>service</module></modules></project>
                 """);
         Path module = Files.createDirectories(root.resolve("service"));
-        Files.writeString(module.resolve("pom.xml"), """
+        Files.writeString(
+                module.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion><parent><groupId>test</groupId><artifactId>parent</artifactId>
                 <version>1</version></parent><artifactId>service</artifactId></project>
                 """);
         Path source = module.resolve("src/main/java/Example.java");
-        Files.createDirectories(source.getParent()); Files.writeString(source, "class Example {}");
-        Path wrapper = root.resolve("mvnw"); Files.writeString(wrapper, "#!/bin/sh\nexit 0\n");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "class Example {}");
+        Path wrapper = root.resolve("mvnw");
+        Files.writeString(wrapper, "#!/bin/sh\nexit 0\n");
         assertTrue(wrapper.toFile().setExecutable(true));
     }
 
     private ProjectRegistry registry() {
-        var registry = new ProjectRegistry(); registry.register(root); return registry;
+        var registry = new ProjectRegistry();
+        registry.register(root);
+        return registry;
     }
 
     private void assertCommand(JsonNode response, List<String> expected) {
@@ -252,8 +421,10 @@ class ProjectAvailabilityResponsesTest {
     }
 
     private static String event(boolean successful, long finished) {
-        return "{\"version\":3,\"buildTool\":\"maven\",\"successful\":" + successful
-                + ",\"finishedAt\":" + finished
+        return "{\"version\":3,\"buildTool\":\"maven\",\"successful\":"
+                + successful
+                + ",\"finishedAt\":"
+                + finished
                 + ",\"captureScope\":\"exception_chain\",\"failureMessagesBase64\":[],\"diagnosticsBase64\":[]}";
     }
 }

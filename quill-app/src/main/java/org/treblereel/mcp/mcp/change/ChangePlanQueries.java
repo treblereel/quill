@@ -1,6 +1,6 @@
 package org.treblereel.mcp.mcp.change;
 
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,10 +10,10 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.mcp.support.ClassTargetResolver;
-import org.treblereel.mcp.mcp.project.VerificationPlanQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.mcp.project.VerificationPlanQueries;
+import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 
 /** Turns context evidence into an ordered, explicitly scoped change plan. */
 public final class ChangePlanQueries {
@@ -21,17 +21,22 @@ public final class ChangePlanQueries {
     private static final ObjectMapper JSON = Json.MAPPER;
     private final ContextQueries contextQueries = new ContextQueries();
 
-    public String planChange(ReadQueryContext reader, Path projectRoot, List<String> targets,
-            String change, int limit) {
+    public ObjectNode planChange(
+            ReadQueryContext reader,
+            Path projectRoot,
+            List<String> targets,
+            String change,
+            int limit) {
         if (change == null || change.isBlank()) {
-            return errorResponse("A non-empty change description is required");
+            return errorNode("A non-empty change description is required");
         }
-        ObjectNode context = parse(contextQueries.getContext(reader, targets, true, limit));
-        if (context.has("error_code")) return context.toString();
-        return planFromContext(reader, projectRoot, context, change).toString();
+        ObjectNode context = contextQueries.getContext(reader, targets, true, limit);
+        if (context.has("error_code")) return context;
+        return planFromContext(reader, projectRoot, context, change);
     }
 
-    ObjectNode planFromContext(ReadQueryContext reader, Path projectRoot, ObjectNode context, String change) {
+    ObjectNode planFromContext(
+            ReadQueryContext reader, Path projectRoot, ObjectNode context, String change) {
         ObjectNode root = JSON.createObjectNode();
         root.put("change", change.strip());
         copy(context, root, "requested_targets");
@@ -57,21 +62,31 @@ public final class ChangePlanQueries {
                 String file = method.path("source_file").asText();
                 if (file.isEmpty()) {
                     var owner = ClassTargetResolver.resolve(reader, method.path("target").asText());
-                    if (owner.error() == null && owner.cls().sourceFile() != null) file = owner.cls().sourceFile();
+                    if (owner.error() == null && owner.cls().sourceFile() != null)
+                        file = owner.cls().sourceFile();
                 }
                 target.put("file", file);
                 target.put("method", method.path("name").asText());
-                for (JsonNode usage : item.path("test_impact").path("selected_method_references").path("usages")) {
+                for (JsonNode usage :
+                        item.path("test_impact")
+                                .path("selected_method_references")
+                                .path("usages")) {
                     JsonNode caller = usage.path("caller");
-                    String key = caller.path("class").asText() + "\u0000" + usage.path("usage_kind").asText();
-                    if (caller.path("class").asText().isEmpty() || !dependencyKeys.add(key)) continue;
+                    String key =
+                            caller.path("class").asText()
+                                    + "\u0000"
+                                    + usage.path("usage_kind").asText();
+                    if (caller.path("class").asText().isEmpty() || !dependencyKeys.add(key))
+                        continue;
                     ObjectNode candidate = dependencies.addObject();
                     copy(caller, candidate, "class");
                     candidate.put("file", caller.path("source").asText());
                     copy(caller, candidate, "module");
                     copy(usage, candidate, "usage_kind");
                     candidate.put("action", "review");
-                    candidate.put("reason", "Calls the requested method; static evidence does not prove an edit is required");
+                    candidate.put(
+                            "reason",
+                            "Calls the requested method; static evidence does not prove an edit is required");
                 }
                 continue;
             }
@@ -91,8 +106,8 @@ public final class ChangePlanQueries {
             veryHighRisk |= riskLevel.equals("VERY_HIGH");
 
             for (JsonNode usage : item.path("usages").path("usages")) {
-                String key = usage.path("class").asText() + "\u0000"
-                        + usage.path("usage_kind").asText();
+                String key =
+                        usage.path("class").asText() + "\u0000" + usage.path("usage_kind").asText();
                 if (!dependencyKeys.add(key)) continue;
                 ObjectNode candidate = dependencies.addObject();
                 copy(usage, candidate, "class");
@@ -102,12 +117,16 @@ public final class ChangePlanQueries {
                 copy(usage, candidate, "indexed_kind");
                 copy(usage, candidate, "occurrences");
                 candidate.put("action", "review");
-                candidate.put("reason", "Uses a requested target; static evidence does not prove an edit is required");
+                candidate.put(
+                        "reason",
+                        "Uses a requested target; static evidence does not prove an edit is required");
             }
         }
 
-        ObjectNode impact = context.path("impacted_tests") instanceof ObjectNode object
-                ? object : JSON.createObjectNode();
+        ObjectNode impact =
+                context.path("impacted_tests") instanceof ObjectNode object
+                        ? object
+                        : JSON.createObjectNode();
         ObjectNode testPlan = root.putObject("test_plan");
         copy(impact, testPlan, "test_index_coverage");
         copy(impact, testPlan, "answer_complete");
@@ -129,39 +148,67 @@ public final class ChangePlanQueries {
             arguments.put("limit", impact.path("limit").asInt());
             arguments.put("offset", impact.path("next_offset").asInt());
         }
-        root.set("verification_plan", new VerificationPlanQueries().plan(
-                reader, projectRoot, context.path("contexts"), impact));
+        root.set(
+                "verification_plan",
+                new VerificationPlanQueries()
+                        .plan(reader, projectRoot, context.path("contexts"), impact));
 
         ArrayNode warnings = root.putArray("warnings");
         if (context.path("unresolved_target_count").asInt() > 0) {
-            warning(warnings, "UNRESOLVED_TARGETS",
+            warning(
+                    warnings,
+                    "UNRESOLVED_TARGETS",
                     "Some requested targets could not be resolved; their impact is absent from this plan");
         }
         if (!impact.path("answer_complete").asBoolean(true)) {
-            warning(warnings, "INCOMPLETE_TEST_COVERAGE",
+            warning(
+                    warnings,
+                    "INCOMPLETE_TEST_COVERAGE",
                     "The affected-test list is incomplete; use module or build-system test selection as a fallback");
         }
         if (highRisk) {
-            warning(warnings, "HIGH_CHANGE_RISK",
-                    veryHighRisk ? "At least one target has very high change risk"
+            warning(
+                    warnings,
+                    "HIGH_CHANGE_RISK",
+                    veryHighRisk
+                            ? "At least one target has very high change risk"
                             : "At least one target has high change risk");
         }
         JsonNode meta = context.path("_meta");
         if (meta.path("structure_stale").asBoolean()) {
-            warning(warnings, "STALE_INDEX",
+            warning(
+                    warnings,
+                    "STALE_INDEX",
                     "Structural changes are newer than the index; refresh it before relying on this plan");
         }
 
         ArrayNode sequence = root.putArray("sequence");
-        step(sequence, 1, "inspect_primary", "Inspect the resolved declarations and member contracts before editing");
+        step(
+                sequence,
+                1,
+                "inspect_primary",
+                "Inspect the resolved declarations and member contracts before editing");
         step(sequence, 2, "edit_primary", "Implement the requested change in the primary files");
-        step(sequence, 3, "review_dependencies", "Review usage candidates for contract or behavior fallout");
-        step(sequence, 4, "update_tests", "Update or add focused tests, starting with the ranked affected tests");
-        step(sequence, 5, "verify", "Run focused tests, then the owning modules' build and refresh the index");
+        step(
+                sequence,
+                3,
+                "review_dependencies",
+                "Review usage candidates for contract or behavior fallout");
+        step(
+                sequence,
+                4,
+                "update_tests",
+                "Update or add focused tests, starting with the ranked affected tests");
+        step(
+                sequence,
+                5,
+                "verify",
+                "Run focused tests, then the owning modules' build and refresh the index");
 
-        boolean complete = context.path("answer_complete").asBoolean()
-                && impact.path("answer_complete").asBoolean(true)
-                && !meta.path("structure_stale").asBoolean();
+        boolean complete =
+                context.path("answer_complete").asBoolean()
+                        && impact.path("answer_complete").asBoolean(true)
+                        && !meta.path("structure_stale").asBoolean();
         root.put("plan_status", complete ? "ready" : "partial");
         root.put("answer_complete", complete);
         root.set("_meta", meta.deepCopy());

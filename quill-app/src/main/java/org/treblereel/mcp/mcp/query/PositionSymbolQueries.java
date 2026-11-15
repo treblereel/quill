@@ -10,41 +10,49 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.SymbolRepository.PositionDeclaration;
-import org.treblereel.mcp.db.SymbolRepository.EnclosingClass;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.core.KotlinSourceText;
-import org.treblereel.mcp.model.KotlinValueParameter;
-import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.SymbolRepository.EnclosingClass;
+import org.treblereel.mcp.db.SymbolRepository.PositionDeclaration;
 import org.treblereel.mcp.mcp.semantic.JavaSemanticQueries;
 import org.treblereel.mcp.mcp.semantic.KotlinProperties;
 import org.treblereel.mcp.mcp.semantic.KotlinSemanticQueries;
 import org.treblereel.mcp.mcp.semantic.KotlinUsageNormalizer;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
-import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.model.KotlinValueParameter;
 
 /** Resolves the identifier under a live source position against indexed declarations. */
 public final class PositionSymbolQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    public String getSymbolAtPosition(ReadQueryContext reader, Path root, String sourcePath, int line, int column) {
+    public ObjectNode getSymbolAtPosition(
+            ReadQueryContext reader, Path root, String sourcePath, int line, int column) {
         String normalized = sourcePath.strip().replace('\\', '/');
         Path file = root.resolve(normalized).normalize();
         if (!file.startsWith(root.toAbsolutePath().normalize())) {
             return error(reader, "INVALID_SOURCE_PATH", "Source path escapes the project root");
         }
         String source;
-        try { source = Files.readString(file); }
-        catch (IOException failure) { return error(reader, "SOURCE_NOT_FOUND", "Could not read source file: " + normalized); }
+        try {
+            source = Files.readString(file);
+        } catch (IOException failure) {
+            return error(reader, "SOURCE_NOT_FOUND", "Could not read source file: " + normalized);
+        }
         List<String> lines = source.lines().toList();
-        if (line < 1 || line > lines.size()) return error(reader, "INVALID_POSITION", "Line is outside the source file");
+        if (line < 1 || line > lines.size())
+            return error(reader, "INVALID_POSITION", "Line is outside the source file");
         int lineOffset = 0;
         for (int i = 0; i < line - 1; i++) {
-            while (lineOffset < source.length() && source.charAt(lineOffset) != '\n' && source.charAt(lineOffset) != '\r') lineOffset++;
-            if (lineOffset < source.length() && source.charAt(lineOffset++) == '\r'
-                    && lineOffset < source.length() && source.charAt(lineOffset) == '\n') lineOffset++;
+            while (lineOffset < source.length()
+                    && source.charAt(lineOffset) != '\n'
+                    && source.charAt(lineOffset) != '\r') lineOffset++;
+            if (lineOffset < source.length()
+                    && source.charAt(lineOffset++) == '\r'
+                    && lineOffset < source.length()
+                    && source.charAt(lineOffset) == '\n') lineOffset++;
         }
         String code = KotlinSourceText.code(source);
         String sourceLine = code.substring(lineOffset, lineOffset + lines.get(line - 1).length());
@@ -53,80 +61,174 @@ public final class PositionSymbolQueries {
         }
         Identifier located = identifierAt(sourceLine, column - 1);
         if (located == null) {
-            return error(reader, "SYMBOL_NOT_FOUND",
+            return error(
+                    reader,
+                    "SYMBOL_NOT_FOUND",
                     "No Java/Kotlin identifier at the requested position");
         }
         String identifier = located.value();
 
         boolean kotlin = normalized.endsWith(".kt") || normalized.endsWith(".kts");
-        var semantic = kotlin ? KotlinSemanticQueries.resolve(reader, root, file, lineOffset + located.start())
-                : JavaSemanticQueries.resolve(reader, root, file, lineOffset + located.start());
+        var semantic =
+                kotlin
+                        ? KotlinSemanticQueries.resolve(
+                                reader, root, file, lineOffset + located.start())
+                        : JavaSemanticQueries.resolve(
+                                reader, root, file, lineOffset + located.start());
         try {
-            if (!Files.readString(file).equals(source)) return error(reader, "SOURCE_CHANGED", "Source changed while resolving the position; retry the query");
-        } catch (IOException unavailable) { return error(reader, "SOURCE_CHANGED", "Source became unavailable while resolving the position"); }
-        boolean compilerResolved = semantic != null && semantic.path("status").asText().equals("resolved");
-        boolean compilerLocal = semantic != null && java.util.Set.of("local", "unresolved").contains(semantic.path("status").asText());
+            if (!Files.readString(file).equals(source))
+                return error(
+                        reader,
+                        "SOURCE_CHANGED",
+                        "Source changed while resolving the position; retry the query");
+        } catch (IOException unavailable) {
+            return error(
+                    reader,
+                    "SOURCE_CHANGED",
+                    "Source became unavailable while resolving the position");
+        }
+        boolean compilerResolved =
+                semantic != null && semantic.path("status").asText().equals("resolved");
+        boolean compilerLocal =
+                semantic != null
+                        && java.util.Set.of("local", "unresolved")
+                                .contains(semantic.path("status").asText());
         String explicitQualified = kotlin ? qualifiedCall(sourceLine, located) : null;
-        String imported = kotlin && explicitQualified == null ? importedName(code, identifier) : null;
-        String lookupName = imported == null ? identifier : imported.substring(imported.lastIndexOf('.') + 1);
+        String imported =
+                kotlin && explicitQualified == null ? importedName(code, identifier) : null;
+        String lookupName =
+                imported == null ? identifier : imported.substring(imported.lastIndexOf('.') + 1);
         if (compilerResolved && semantic.path("name").isTextual()) {
             lookupName = semantic.path("name").asText();
             if (semantic.path("kind").asText().equals("CONSTRUCTOR")) {
                 String owner = semantic.path("owner").asText();
-                lookupName = owner.substring(Math.max(owner.lastIndexOf('.'), owner.lastIndexOf('$')) + 1);
+                lookupName =
+                        owner.substring(
+                                Math.max(owner.lastIndexOf('.'), owner.lastIndexOf('$')) + 1);
             }
         }
-        List<PositionDeclaration> candidates = reader.symbols.findPositionDeclarations( lookupName, normalized);
-        if (kotlin) candidates = sourceCallables(reader, logicalProperties(reader, candidates, lookupName));
+        List<PositionDeclaration> candidates =
+                reader.symbols.findPositionDeclarations(lookupName, normalized);
+        if (kotlin)
+            candidates = sourceCallables(reader, logicalProperties(reader, candidates, lookupName));
         if (compilerLocal) candidates = List.of();
         if ((imported != null || explicitQualified != null) && !compilerResolved) {
             String qualified = explicitQualified == null ? imported : explicitQualified;
             String importedMember = lookupName;
-            List<PositionDeclaration> qualifiedCandidates = candidates.stream().filter(candidate -> candidate.className().replace('$', '.').equals(qualified)
-                    || (candidate.className().replace('$', '.') + "." + importedMember).equals(qualified)
-                    || qualified.equals(candidate.className().substring(0,
-                            candidate.className().lastIndexOf('.') + 1) + importedMember)
-                        && topLevel(reader, candidate.className()))
-                    .toList();
+            List<PositionDeclaration> qualifiedCandidates =
+                    candidates.stream()
+                            .filter(
+                                    candidate ->
+                                            candidate
+                                                            .className()
+                                                            .replace('$', '.')
+                                                            .equals(qualified)
+                                                    || (candidate.className().replace('$', '.')
+                                                                    + "."
+                                                                    + importedMember)
+                                                            .equals(qualified)
+                                                    || qualified.equals(
+                                                                    candidate
+                                                                                    .className()
+                                                                                    .substring(
+                                                                                            0,
+                                                                                            candidate
+                                                                                                            .className()
+                                                                                                            .lastIndexOf(
+                                                                                                                    '.')
+                                                                                                    + 1)
+                                                                            + importedMember)
+                                                            && topLevel(
+                                                                    reader, candidate.className()))
+                            .toList();
             // A dotted receiver may be an expression rather than a package. Only narrow
             // explicit source qualification when indexed declarations confirm its owner.
-            if (explicitQualified == null || !qualifiedCandidates.isEmpty()) candidates = qualifiedCandidates;
+            if (explicitQualified == null || !qualifiedCandidates.isEmpty())
+                candidates = qualifiedCandidates;
         }
-        if (compilerResolved) candidates = candidates.stream().filter(candidate ->
-                candidate.className().equals(semantic.path("owner").asText())
-                        && candidate.kind().equals(semantic.path("kind").asText())
-                        && (!semantic.has("descriptor") || java.util.Objects.equals(candidate.descriptor(), semantic.path("descriptor").asText()))
-                        && (!semantic.has("source_file") || candidate.sourceFile() != null
-                            && sameSource(root.resolve(candidate.sourceFile()), Path.of(semantic.path("source_file").asText()))))
-                .toList();
-        List<EnclosingClass> enclosing = reader.symbols.findEnclosingClasses( normalized, line);
+        if (compilerResolved)
+            candidates =
+                    candidates.stream()
+                            .filter(
+                                    candidate ->
+                                            candidate
+                                                            .className()
+                                                            .equals(semantic.path("owner").asText())
+                                                    && candidate
+                                                            .kind()
+                                                            .equals(semantic.path("kind").asText())
+                                                    && (!semantic.has("descriptor")
+                                                            || java.util.Objects.equals(
+                                                                    candidate.descriptor(),
+                                                                    semantic.path("descriptor")
+                                                                            .asText()))
+                                                    && (!semantic.has("source_file")
+                                                            || candidate.sourceFile() != null
+                                                                    && sameSource(
+                                                                            root.resolve(
+                                                                                    candidate
+                                                                                            .sourceFile()),
+                                                                            Path.of(
+                                                                                    semantic.path(
+                                                                                                    "source_file")
+                                                                                            .asText()))))
+                            .toList();
+        List<EnclosingClass> enclosing = reader.symbols.findEnclosingClasses(normalized, line);
         String suffix = source.substring(lineOffset + located.end()).stripLeading();
         SourceContext sourceContext = sourceContext(sourceLine, located);
-        if (kotlin && (suffix.startsWith("(") || suffix.startsWith("{")
-                || suffix.matches("(?s)^[\\p{L}_$][\\p{L}\\p{N}_$]*@\\s*\\{.*"))) {
+        if (kotlin
+                && (suffix.startsWith("(")
+                        || suffix.startsWith("{")
+                        || suffix.matches("(?s)^[\\p{L}_$][\\p{L}\\p{N}_$]*@\\s*\\{.*"))) {
             sourceContext = new SourceContext(ContextKind.METHOD_CALL, arguments(suffix));
         }
-        if (sourceContext.kind() == ContextKind.METHOD_CALL || sourceContext.kind() == ContextKind.CONSTRUCTOR_CALL) {
+        if (sourceContext.kind() == ContextKind.METHOD_CALL
+                || sourceContext.kind() == ContextKind.CONSTRUCTOR_CALL) {
             sourceContext = new SourceContext(sourceContext.kind(), arguments(suffix));
         }
         final SourceContext context = sourceContext;
-        String enclosingClass = kotlin || enclosing.isEmpty() ? null : enclosing.getFirst().className();
-        List<RankedCandidate> ranked = candidates.stream()
-                .map(candidate -> compilerResolved ? new RankedCandidate(candidate, 1000, List.of("compiler_semantic_match"))
-                        : rank(candidate, context, enclosingClass, kotlin))
-                .sorted(Comparator.comparingInt(RankedCandidate::score).reversed()
-                        .thenComparing(value -> value.candidate().className())
-                        .thenComparing(value -> value.candidate().kind()))
-                .toList();
+        String enclosingClass =
+                kotlin || enclosing.isEmpty() ? null : enclosing.getFirst().className();
+        List<RankedCandidate> ranked =
+                candidates.stream()
+                        .map(
+                                candidate ->
+                                        compilerResolved
+                                                ? new RankedCandidate(
+                                                        candidate,
+                                                        1000,
+                                                        List.of("compiler_semantic_match"))
+                                                : rank(candidate, context, enclosingClass, kotlin))
+                        .sorted(
+                                Comparator.comparingInt(RankedCandidate::score)
+                                        .reversed()
+                                        .thenComparing(value -> value.candidate().className())
+                                        .thenComparing(value -> value.candidate().kind()))
+                        .toList();
         RankedCandidate selected = ranked.isEmpty() ? null : ranked.getFirst();
-        var callables = ranked.stream().filter(value -> value.candidate().kind().equals("METHOD")
-                || value.candidate().kind().equals("CONSTRUCTOR")).toList();
-        boolean noApplicable = kotlin && sourceContext.kind() == ContextKind.METHOD_CALL && !callables.isEmpty()
-                && callables.stream().allMatch(value -> value.reasons().contains("arguments_not_applicable"));
-        boolean decisive = selected != null
-                && !selected.reasons().contains("arguments_not_applicable")
-                && (!kotlin || sourceContext.kind() != ContextKind.METHOD_CALL || !selected.candidate().kind().equals("CLASS"))
-                && (ranked.size() == 1 || selected.score() > ranked.get(1).score());
+        var callables =
+                ranked.stream()
+                        .filter(
+                                value ->
+                                        value.candidate().kind().equals("METHOD")
+                                                || value.candidate().kind().equals("CONSTRUCTOR"))
+                        .toList();
+        boolean noApplicable =
+                kotlin
+                        && sourceContext.kind() == ContextKind.METHOD_CALL
+                        && !callables.isEmpty()
+                        && callables.stream()
+                                .allMatch(
+                                        value ->
+                                                value.reasons()
+                                                        .contains("arguments_not_applicable"));
+        boolean decisive =
+                selected != null
+                        && !selected.reasons().contains("arguments_not_applicable")
+                        && (!kotlin
+                                || sourceContext.kind() != ContextKind.METHOD_CALL
+                                || !selected.candidate().kind().equals("CLASS"))
+                        && (ranked.size() == 1 || selected.score() > ranked.get(1).score());
         ObjectNode result = JSON.createObjectNode();
         result.put("path", normalized);
         result.put("line", line);
@@ -135,14 +237,35 @@ public final class PositionSymbolQueries {
         result.put("context", sourceContext.kind().name().toLowerCase());
         if (sourceContext.argumentCount() == null) result.putNull("argument_count");
         else result.put("argument_count", sourceContext.argumentCount());
-        result.put("resolution", compilerLocal ? semantic.path("status").asText().equals("local") ? "local_symbol" : "unresolved"
-                : compilerResolved && candidates.isEmpty() ? "semantic_target_not_indexed"
-                : noApplicable ? "no_applicable_candidate" : decisive ? "resolved"
-                : candidates.isEmpty() ? "enclosing_class_fallback" : "ambiguous");
-        result.put("resolution_basis", compilerResolved || compilerLocal ? "compiler" : "lexical_fallback");
-        result.put("confidence", compilerLocal || compilerResolved && decisive ? "high"
-                : noApplicable ? "low"
-                : decisive ? "medium" : candidates.isEmpty() && !enclosing.isEmpty() ? "low" : "medium");
+        result.put(
+                "resolution",
+                compilerLocal
+                        ? semantic.path("status").asText().equals("local")
+                                ? "local_symbol"
+                                : "unresolved"
+                        : compilerResolved && candidates.isEmpty()
+                                ? "semantic_target_not_indexed"
+                                : noApplicable
+                                        ? "no_applicable_candidate"
+                                        : decisive
+                                                ? "resolved"
+                                                : candidates.isEmpty()
+                                                        ? "enclosing_class_fallback"
+                                                        : "ambiguous");
+        result.put(
+                "resolution_basis",
+                compilerResolved || compilerLocal ? "compiler" : "lexical_fallback");
+        result.put(
+                "confidence",
+                compilerLocal || compilerResolved && decisive
+                        ? "high"
+                        : noApplicable
+                                ? "low"
+                                : decisive
+                                        ? "medium"
+                                        : candidates.isEmpty() && !enclosing.isEmpty()
+                                                ? "low"
+                                                : "medium");
         if (semantic != null) result.set("semantic_analysis", semantic);
         if (decisive) {
             ObjectNode selectedNode = result.putObject("selected");
@@ -150,11 +273,14 @@ public final class PositionSymbolQueries {
             if (compilerResolved) applyCompilerLocation(selectedNode, semantic);
         }
         ArrayNode matches = result.putArray("candidates");
-        ranked.stream().limit(50).forEach(candidate -> {
-            ObjectNode item = matches.addObject();
-            addCandidate(item, candidate);
-            if (compilerResolved) applyCompilerLocation(item, semantic);
-        });
+        ranked.stream()
+                .limit(50)
+                .forEach(
+                        candidate -> {
+                            ObjectNode item = matches.addObject();
+                            addCandidate(item, candidate);
+                            if (compilerResolved) applyCompilerLocation(item, semantic);
+                        });
         if (!enclosing.isEmpty()) {
             EnclosingClass value = enclosing.getFirst();
             ObjectNode owner = result.putObject("enclosing_class");
@@ -163,44 +289,103 @@ public final class PositionSymbolQueries {
         }
         result.put("candidate_count", candidates.size());
         result.putArray("limitations")
-                .add("Resolution uses the live identifier text and indexed declarations; local variables are not indexed")
-                .add(compilerResolved ? "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
-                        : "Fallback argument-count ranking does not perform full Java or Kotlin overload type inference");
+                .add(
+                        "Resolution uses the live identifier text and indexed declarations; local variables are not indexed")
+                .add(
+                        compilerResolved
+                                ? "Compiler target is matched against indexed declarations; bytecode may require rebuilding"
+                                : "Fallback argument-count ranking does not perform full Java or Kotlin overload type inference");
         ToolResponseSupport.appendMeta(result, reader, 0, normalized, null);
-        return result.toString();
+        return result;
     }
 
-
-
-    private static List<PositionDeclaration> sourceCallables(ReadQueryContext reader, List<PositionDeclaration> candidates) {
-        return candidates.stream().filter(candidate -> {
-            if (candidate.semanticName() != null
-                    || !("METHOD".equals(candidate.kind()) || "CONSTRUCTOR".equals(candidate.kind()))) return true;
-            var owners = reader.symbols.findClassesByName(candidate.className()).stream()
-                    .filter(owner -> java.util.Objects.equals(owner.sourceFile(), candidate.sourceFile())).toList();
-            // Retain uncertain candidates, including duplicate owners with conflicting evidence.
-            return owners.isEmpty() || !owners.stream().allMatch(owner -> {
-                String method = "CONSTRUCTOR".equals(candidate.kind()) ? "<init>" : candidate.memberName();
-                var target = KotlinUsageNormalizer.sourceTarget(reader, owner.id(), method, candidate.descriptor());
-                return target.isPresent() && candidates.stream().anyMatch(source -> source.semanticName() != null
-                        && source.kind().equals(candidate.kind())
-                        && source.className().equals(target.get().className())
-                        && source.descriptor().equals(target.get().descriptor())
-                        && ("CONSTRUCTOR".equals(source.kind()) || source.memberName().equals(target.get().method()))
-                        && java.util.Objects.equals(source.sourceFile(), target.get().sourceFile()));
-            });
-        }).toList();
+    private static List<PositionDeclaration> sourceCallables(
+            ReadQueryContext reader, List<PositionDeclaration> candidates) {
+        return candidates.stream()
+                .filter(
+                        candidate -> {
+                            if (candidate.semanticName() != null
+                                    || !("METHOD".equals(candidate.kind())
+                                            || "CONSTRUCTOR".equals(candidate.kind()))) return true;
+                            var owners =
+                                    reader.symbols.findClassesByName(candidate.className()).stream()
+                                            .filter(
+                                                    owner ->
+                                                            java.util.Objects.equals(
+                                                                    owner.sourceFile(),
+                                                                    candidate.sourceFile()))
+                                            .toList();
+                            // Retain uncertain candidates, including duplicate owners with
+                            // conflicting evidence.
+                            return owners.isEmpty()
+                                    || !owners.stream()
+                                            .allMatch(
+                                                    owner -> {
+                                                        String method =
+                                                                "CONSTRUCTOR"
+                                                                                .equals(
+                                                                                        candidate
+                                                                                                .kind())
+                                                                        ? "<init>"
+                                                                        : candidate.memberName();
+                                                        var target =
+                                                                KotlinUsageNormalizer.sourceTarget(
+                                                                        reader,
+                                                                        owner.id(),
+                                                                        method,
+                                                                        candidate.descriptor());
+                                                        return target.isPresent()
+                                                                && candidates.stream()
+                                                                        .anyMatch(
+                                                                                source ->
+                                                                                        source
+                                                                                                                .semanticName()
+                                                                                                        != null
+                                                                                                && source.kind()
+                                                                                                        .equals(
+                                                                                                                candidate
+                                                                                                                        .kind())
+                                                                                                && source.className()
+                                                                                                        .equals(
+                                                                                                                target.get()
+                                                                                                                        .className())
+                                                                                                && source.descriptor()
+                                                                                                        .equals(
+                                                                                                                target.get()
+                                                                                                                        .descriptor())
+                                                                                                && ("CONSTRUCTOR"
+                                                                                                                .equals(
+                                                                                                                        source
+                                                                                                                                .kind())
+                                                                                                        || source.memberName()
+                                                                                                                .equals(
+                                                                                                                        target.get()
+                                                                                                                                .method()))
+                                                                                                && java
+                                                                                                        .util
+                                                                                                        .Objects
+                                                                                                        .equals(
+                                                                                                                source
+                                                                                                                        .sourceFile(),
+                                                                                                                target.get()
+                                                                                                                        .sourceFile()));
+                                                    });
+                        })
+                .toList();
     }
 
     private static String importedName(String code, String identifier) {
-        var imports = java.util.regex.Pattern.compile(
-                "(?m)^\\h*import\\h+([\\p{L}\\p{N}_$.`]+)(?:\\h+as\\h+(`[^`\\r\\n]+`|[\\p{L}\\p{N}_$]+))?\\h*;?\\h*$")
-                .matcher(code);
+        var imports =
+                java.util.regex.Pattern.compile(
+                                "(?m)^\\h*import\\h+([\\p{L}\\p{N}_$.`]+)(?:\\h+as\\h+(`[^`\\r\\n]+`|[\\p{L}\\p{N}_$]+))?\\h*;?\\h*$")
+                        .matcher(code);
         String result = null;
         while (imports.find()) {
             String qualified = imports.group(1).replace("`", "");
-            String alias = imports.group(2) == null ? qualified.substring(qualified.lastIndexOf('.') + 1)
-                    : imports.group(2).replace("`", "");
+            String alias =
+                    imports.group(2) == null
+                            ? qualified.substring(qualified.lastIndexOf('.') + 1)
+                            : imports.group(2).replace("`", "");
             if (identifier.equals(alias)) {
                 if (result != null && !result.equals(qualified)) return null;
                 result = qualified;
@@ -211,39 +396,62 @@ public final class PositionSymbolQueries {
 
     private static String qualifiedCall(String sourceLine, Identifier located) {
         String before = sourceLine.substring(0, located.start());
-        var matcher = java.util.regex.Pattern.compile(
-                "(?:(?:[\\p{L}_$][\\p{L}\\p{N}_$]*|`[^`\\r\\n]+`)\\.)+$").matcher(before);
+        var matcher =
+                java.util.regex.Pattern.compile(
+                                "(?:(?:[\\p{L}_$][\\p{L}\\p{N}_$]*|`[^`\\r\\n]+`)\\.)+$")
+                        .matcher(before);
         if (!matcher.find()) return null;
         return (matcher.group() + located.value()).replace("`", "");
     }
 
     private static boolean topLevel(ReadQueryContext reader, String className) {
         return reader.symbols.findClassesByName(className).stream()
-                .anyMatch(cls -> reader.symbols.findKotlinDeclarations(cls.id()).stream()
-                        .anyMatch(value -> java.util.Set.of("FILE_FACADE", "MULTIFILE_PART", "MULTIFILE_FACADE")
-                                .contains(value.kind())));
+                .anyMatch(
+                        cls ->
+                                reader.symbols.findKotlinDeclarations(cls.id()).stream()
+                                        .anyMatch(
+                                                value ->
+                                                        java.util.Set.of(
+                                                                        "FILE_FACADE",
+                                                                        "MULTIFILE_PART",
+                                                                        "MULTIFILE_FACADE")
+                                                                .contains(value.kind())));
     }
 
-    private static List<PositionDeclaration> logicalProperties(ReadQueryContext reader, List<PositionDeclaration> candidates, String name) {
+    private static List<PositionDeclaration> logicalProperties(
+            ReadQueryContext reader, List<PositionDeclaration> candidates, String name) {
         var result = new java.util.LinkedHashMap<String, PositionDeclaration>();
         for (var candidate : candidates) {
-            if (!"PROPERTY".equals(candidate.semanticKind()) || !name.equals(candidate.semanticName())) {
-                result.put(candidate.toString(), candidate); continue;
+            if (!"PROPERTY".equals(candidate.semanticKind())
+                    || !name.equals(candidate.semanticName())) {
+                result.put(candidate.toString(), candidate);
+                continue;
             }
             for (var owner : reader.symbols.findClassesByName(candidate.className())) {
                 if (!java.util.Objects.equals(owner.sourceFile(), candidate.sourceFile())) continue;
                 for (var property : KotlinProperties.list(reader, owner)) {
                     if (!property.name().equals(name)) continue;
-                    result.put(property.symbolId(), new PositionDeclaration(owner.className(), "PROPERTY", name,
-                            null, property.descriptor(), null, owner.sourceFile(), owner.sourceLine(),
-                            candidate.sameFile(), "PROPERTY", name, false, null));
+                    result.put(
+                            property.symbolId(),
+                            new PositionDeclaration(
+                                    owner.className(),
+                                    "PROPERTY",
+                                    name,
+                                    null,
+                                    property.descriptor(),
+                                    null,
+                                    owner.sourceFile(),
+                                    owner.sourceLine(),
+                                    candidate.sameFile(),
+                                    "PROPERTY",
+                                    name,
+                                    false,
+                                    null));
                 }
             }
         }
         return List.copyOf(result.values());
     }
-
-
 
     private static Identifier identifierAt(String line, int cursor) {
         if (line.isEmpty()) return null;
@@ -259,7 +467,8 @@ public final class PositionSymbolQueries {
                 opening = -1;
             }
         }
-        if (!Character.isJavaIdentifierPart(line.charAt(position)) && position > 0
+        if (!Character.isJavaIdentifierPart(line.charAt(position))
+                && position > 0
                 && Character.isJavaIdentifierPart(line.charAt(position - 1))) position--;
         if (!Character.isJavaIdentifierPart(line.charAt(position))) return null;
         int start = position;
@@ -268,7 +477,8 @@ public final class PositionSymbolQueries {
         while (end < line.length() && Character.isJavaIdentifierPart(line.charAt(end))) end++;
         String value = line.substring(start, end);
         return Character.isJavaIdentifierStart(value.charAt(0))
-                ? new Identifier(value, start, end) : null;
+                ? new Identifier(value, start, end)
+                : null;
     }
 
     private static SourceContext sourceContext(String line, Identifier identifier) {
@@ -294,9 +504,11 @@ public final class PositionSymbolQueries {
             if (c == '`') {
                 int end = masked.indexOf('`', i + 1);
                 if (end < 0 || masked.substring(i + 1, end).contains("\n")) return null;
-                i = end; continue;
+                i = end;
+                continue;
             }
-            if (c == '<' && braces == 0) return null; // Generic argument expressions remain conservative.
+            if (c == '<' && braces == 0)
+                return null; // Generic argument expressions remain conservative.
             if (c == '[') brackets++;
             if (c == ']') brackets--;
             if (c == '{') braces++;
@@ -311,7 +523,8 @@ public final class PositionSymbolQueries {
                     result.add(argument);
                 }
                 String suffix = masked.substring(i + 1).stripLeading();
-                if (suffix.startsWith("{") || suffix.matches("(?s)^[\\p{L}_$][\\p{L}\\p{N}_$]*@\\s*\\{.*"))
+                if (suffix.startsWith("{")
+                        || suffix.matches("(?s)^[\\p{L}_$][\\p{L}\\p{N}_$]*@\\s*\\{.*"))
                     return trailingLambda(suffix, result);
                 return List.copyOf(result);
             } else if (c == ',' && parentheses == 1 && brackets == 0 && braces == 0) {
@@ -319,7 +532,8 @@ public final class PositionSymbolQueries {
                 if (segment.isEmpty()) return null;
                 var argument = argument(segment);
                 if (argument == null) return null;
-                result.add(argument); start = i + 1;
+                result.add(argument);
+                start = i + 1;
             }
             if (parentheses < 0 || brackets < 0 || braces < 0) return null;
         }
@@ -327,10 +541,15 @@ public final class PositionSymbolQueries {
     }
 
     private static Argument argument(String text) {
-        var named = java.util.regex.Pattern.compile("^(`[^`\\r\\n]+`|[\\p{L}_$][\\p{L}\\p{N}_$]*)\\s*=(?!=)\\s*([\\s\\S]*)$").matcher(text);
+        var named =
+                java.util.regex.Pattern.compile(
+                                "^(`[^`\\r\\n]+`|[\\p{L}_$][\\p{L}\\p{N}_$]*)\\s*=(?!=)\\s*([\\s\\S]*)$")
+                        .matcher(text);
         if (named.matches()) {
             String value = named.group(2).strip();
-            return value.isEmpty() || value.equals("*") ? null : new Argument(named.group(1).replace("`", ""), value.startsWith("*"), false);
+            return value.isEmpty() || value.equals("*")
+                    ? null
+                    : new Argument(named.group(1).replace("`", ""), value.startsWith("*"), false);
         }
         return text.equals("*") ? null : new Argument(null, text.startsWith("*"), false);
     }
@@ -344,7 +563,8 @@ public final class PositionSymbolQueries {
             if (c == '`') {
                 int end = body.indexOf('`', i + 1);
                 if (end < 0) return null;
-                i = end; continue;
+                i = end;
+                continue;
             }
             if (c == '{') depth++;
             else if (c == '}' && --depth == 0) {
@@ -357,28 +577,42 @@ public final class PositionSymbolQueries {
         return null;
     }
 
-    private static Applicability applicable(PositionDeclaration candidate, List<Argument> arguments) {
+    private static Applicability applicable(
+            PositionDeclaration candidate, List<Argument> arguments) {
         List<KotlinValueParameter> parameters = candidate.valueParameters();
         if (parameters == null || arguments == null) return Applicability.UNKNOWN;
         boolean[] supplied = new boolean[parameters.size()];
-        int position = 0; boolean namedOnly = false;
+        int position = 0;
+        boolean namedOnly = false;
         for (var argument : arguments) {
             int index;
             if (argument.trailingLambda()) {
                 index = parameters.size() - 1;
                 if (index < 0 || supplied[index]) return Applicability.NO_MATCH;
-                // SAM and generic function types need semantic evidence; never reject them by JVM shape.
+                // SAM and generic function types need semantic evidence; never reject them by JVM
+                // shape.
                 try {
                     var types = org.objectweb.asm.Type.getArgumentTypes(candidate.descriptor());
                     int last = types.length - 1;
-                    if (last >= 0 && types[last].getDescriptor().equals("Lkotlin/coroutines/Continuation;")) last--;
-                    if (last < 0 || !types[last].getDescriptor().matches("Lkotlin/jvm/functions/Function[0-9]+;"))
+                    if (last >= 0
+                            && types[last]
+                                    .getDescriptor()
+                                    .equals("Lkotlin/coroutines/Continuation;")) last--;
+                    if (last < 0
+                            || !types[last]
+                                    .getDescriptor()
+                                    .matches("Lkotlin/jvm/functions/Function[0-9]+;"))
                         return Applicability.UNKNOWN;
-                } catch (IllegalArgumentException invalid) { return Applicability.UNKNOWN; }
+                } catch (IllegalArgumentException invalid) {
+                    return Applicability.UNKNOWN;
+                }
             } else if (argument.name() != null) {
                 index = -1;
                 for (int i = 0; i < parameters.size(); i++)
-                    if (parameters.get(i).name().equals(argument.name())) { index = i; break; }
+                    if (parameters.get(i).name().equals(argument.name())) {
+                        index = i;
+                        break;
+                    }
                 if (index < 0 || supplied[index]) return Applicability.NO_MATCH;
                 if (index != position || parameters.get(index).vararg()) namedOnly = true;
                 else position++;
@@ -398,7 +632,10 @@ public final class PositionSymbolQueries {
     }
 
     private static RankedCandidate rank(
-            PositionDeclaration candidate, SourceContext context, String enclosingClass, boolean kotlin) {
+            PositionDeclaration candidate,
+            SourceContext context,
+            String enclosingClass,
+            boolean kotlin) {
         int score = candidate.sameFile() ? 20 : 0;
         List<String> reasons = new ArrayList<>();
         if (candidate.sameFile()) reasons.add("same_file");
@@ -417,7 +654,8 @@ public final class PositionSymbolQueries {
                 } else score -= 50;
             }
             case METHOD_CALL -> {
-                if (candidate.kind().equals("METHOD") || kotlin && candidate.kind().equals("CONSTRUCTOR")) {
+                if (candidate.kind().equals("METHOD")
+                        || kotlin && candidate.kind().equals("CONSTRUCTOR")) {
                     score += 80;
                     reasons.add("call_expression_method");
                 } else score -= 30;
@@ -428,10 +666,14 @@ public final class PositionSymbolQueries {
                     reasons.add("member_access_field");
                 }
             }
-            case IDENTIFIER -> { }
+            case IDENTIFIER -> {}
         }
-        Applicability applicability = kotlin && (candidate.kind().equals("METHOD") || candidate.kind().equals("CONSTRUCTOR"))
-                ? applicable(candidate, context.arguments()) : Applicability.UNKNOWN;
+        Applicability applicability =
+                kotlin
+                                && (candidate.kind().equals("METHOD")
+                                        || candidate.kind().equals("CONSTRUCTOR"))
+                        ? applicable(candidate, context.arguments())
+                        : Applicability.UNKNOWN;
         if (applicability == Applicability.NO_MATCH) {
             score -= 150;
             reasons.add("arguments_not_applicable");
@@ -442,7 +684,8 @@ public final class PositionSymbolQueries {
             if (context.argumentCount().equals(candidate.parameterCount())) {
                 score += 30;
                 reasons.add("argument_count_match");
-            } else if (candidate.hasDefaults() && context.argumentCount() < candidate.parameterCount()) {
+            } else if (candidate.hasDefaults()
+                    && context.argumentCount() < candidate.parameterCount()) {
                 score += 10;
                 reasons.add("default_arguments_possible");
             } else {
@@ -453,30 +696,36 @@ public final class PositionSymbolQueries {
         return new RankedCandidate(candidate, score, List.copyOf(reasons));
     }
 
-
-
-
-
     private static void addCandidate(ObjectNode item, RankedCandidate ranked) {
         PositionDeclaration candidate = ranked.candidate();
         item.put("class_name", candidate.className());
         item.put("kind", candidate.kind());
         if (candidate.memberName() != null) item.put("member_name", candidate.memberName());
         if (candidate.signature() != null) item.put("signature", candidate.signature());
-        SymbolContract.append(item, candidate.className(), candidate.kind(),
-                candidate.memberName(), candidate.descriptor(), candidate.semanticName(),
-                candidate.sourceFile(), candidate.sourceLine(),
+        SymbolContract.append(
+                item,
+                candidate.className(),
+                candidate.kind(),
+                candidate.memberName(),
+                candidate.descriptor(),
+                candidate.semanticName(),
+                candidate.sourceFile(),
+                candidate.sourceLine(),
                 candidate.semanticName() != null
                         || SymbolContract.language(candidate.sourceFile(), false).equals("kotlin"));
         if (candidate.semanticName() != null) {
             item.put("kotlin_kind", candidate.semanticKind().toLowerCase(Locale.ROOT));
             item.put("kotlin_name", candidate.semanticName());
         }
-        if (candidate.parameterCount() != null) item.put("parameter_count", candidate.parameterCount());
+        if (candidate.parameterCount() != null)
+            item.put("parameter_count", candidate.parameterCount());
         if (candidate.valueParameters() != null) {
             item.set("value_parameters", JSON.valueToTree(candidate.valueParameters()));
-            item.put("required_parameter_count", candidate.valueParameters().stream()
-                    .filter(parameter -> !parameter.hasDefault() && !parameter.vararg()).count());
+            item.put(
+                    "required_parameter_count",
+                    candidate.valueParameters().stream()
+                            .filter(parameter -> !parameter.hasDefault() && !parameter.vararg())
+                            .count());
         }
         if (candidate.descriptor() != null) item.put("descriptor", candidate.descriptor());
         if (candidate.sourceFile() != null) item.put("source_file", candidate.sourceFile());
@@ -485,35 +734,60 @@ public final class PositionSymbolQueries {
         item.set("ranking_reasons", JSON.valueToTree(ranked.reasons()));
     }
 
-    private static void applyCompilerLocation(ObjectNode item, com.fasterxml.jackson.databind.JsonNode semantic) {
+    private static void applyCompilerLocation(
+            ObjectNode item, com.fasterxml.jackson.databind.JsonNode semantic) {
         if (!semantic.hasNonNull("source_file") || semantic.path("source_line").asInt() < 1) return;
         ObjectNode location = item.with("location");
         location.put("line", semantic.path("source_line").asInt());
         location.put("basis", "compiler");
         location.remove("class_declaration_line");
-        if (semantic.hasNonNull("source_column")) location.put("column", semantic.path("source_column").asInt());
-        if (semantic.hasNonNull("source_end_line")) location.put("end_line", semantic.path("source_end_line").asInt());
-        if (semantic.hasNonNull("source_end_column")) location.put("end_column", semantic.path("source_end_column").asInt());
-    }
-    private static boolean sameSource(Path indexed, Path compiler) {
-        try { return Files.isSameFile(indexed, compiler); }
-        catch (IOException unavailable) { return indexed.toAbsolutePath().normalize().equals(compiler.toAbsolutePath().normalize()); }
+        if (semantic.hasNonNull("source_column"))
+            location.put("column", semantic.path("source_column").asInt());
+        if (semantic.hasNonNull("source_end_line"))
+            location.put("end_line", semantic.path("source_end_line").asInt());
+        if (semantic.hasNonNull("source_end_column"))
+            location.put("end_column", semantic.path("source_end_column").asInt());
     }
 
-    private static String error(ReadQueryContext reader, String code, String message) {
+    private static boolean sameSource(Path indexed, Path compiler) {
+        try {
+            return Files.isSameFile(indexed, compiler);
+        } catch (IOException unavailable) {
+            return indexed.toAbsolutePath()
+                    .normalize()
+                    .equals(compiler.toAbsolutePath().normalize());
+        }
+    }
+
+    private static ObjectNode error(ReadQueryContext reader, String code, String message) {
         var result = ToolResponseSupport.appendError(JSON.createObjectNode(), code, message);
         ToolResponseSupport.appendMeta(result, reader, 0);
-        return result.toString();
+        return result;
     }
 
     private record Identifier(String value, int start, int end) {}
-    private enum ContextKind { CONSTRUCTOR_CALL, METHOD_CALL, MEMBER_ACCESS, IDENTIFIER }
-    private record Argument(String name, boolean spread, boolean trailingLambda) {}
-    private enum Applicability { MATCH, NO_MATCH, UNKNOWN }
-    private record SourceContext(ContextKind kind, List<Argument> arguments) {
-        Integer argumentCount() { return arguments == null ? null : arguments.size(); }
+
+    private enum ContextKind {
+        CONSTRUCTOR_CALL,
+        METHOD_CALL,
+        MEMBER_ACCESS,
+        IDENTIFIER
     }
 
-    private record RankedCandidate(PositionDeclaration candidate, int score, List<String> reasons) {}
+    private record Argument(String name, boolean spread, boolean trailingLambda) {}
 
+    private enum Applicability {
+        MATCH,
+        NO_MATCH,
+        UNKNOWN
+    }
+
+    private record SourceContext(ContextKind kind, List<Argument> arguments) {
+        Integer argumentCount() {
+            return arguments == null ? null : arguments.size();
+        }
+    }
+
+    private record RankedCandidate(
+            PositionDeclaration candidate, int score, List<String> reasons) {}
 }

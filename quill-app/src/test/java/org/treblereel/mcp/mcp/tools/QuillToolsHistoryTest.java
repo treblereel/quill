@@ -32,10 +32,8 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
                                 "dev2",
                                 "2026-08-20T08:00:00Z"));
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.resolveEntities(
-                                jdbi,
-                                List.of("OrderService", "DeletedGenerator.java", "NeverExisted")));
+                JDBI_READS.resolveEntities(
+                        jdbi, List.of("OrderService", "DeletedGenerator.java", "NeverExisted"));
         JsonNode current = result.get("entities").get(0);
         assertTrue(current.get("current").asBoolean());
         assertEquals("current", current.get("resolution").asText());
@@ -51,7 +49,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getHotspotsReturnsMostChanged() throws Exception {
-        String result = JDBI_READS.getHotspots(jdbi, 10, null);
+        String result = JDBI_READS.getHotspots(jdbi, 10, null).toString();
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         assertNotNull(hotspots);
@@ -64,7 +62,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void hotspotPaginationReportsFullTotalAndTruncation() throws Exception {
-        JsonNode root = JSON.readTree(JDBI_READS.getHotspots(jdbi, 1, null));
+        JsonNode root = JDBI_READS.getHotspots(jdbi, 1, null);
 
         assertEquals(1, root.path("showing").asInt());
         assertEquals(3, root.path("total").asInt());
@@ -73,7 +71,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getHotspotsFiltersBySince() throws Exception {
-        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-27");
+        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-27").toString();
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         for (JsonNode h : hotspots) {
@@ -83,7 +81,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getFileHistoryReturnsCommits() throws Exception {
-        String result = JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 10);
+        String result = JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 10).toString();
         JsonNode root = JSON.readTree(result);
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
         JsonNode commits = root.get("commits");
@@ -108,10 +106,8 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getFileHistorySupportsOffsetPagination() throws Exception {
-        JsonNode first =
-                JSON.readTree(JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 2, 0));
-        JsonNode second =
-                JSON.readTree(JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 2, 2));
+        JsonNode first = JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 2, 0);
+        JsonNode second = JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 2, 2);
 
         assertEquals(2, first.get("showing").asInt());
         assertEquals(2, first.get("returned_window").get("commit_count").asInt());
@@ -130,7 +126,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getCoChangesFindsCorrelatedFiles() throws Exception {
-        String result = JDBI_READS.getCoChanges(jdbi, "OrderService", 10);
+        String result = JDBI_READS.getCoChanges(jdbi, "OrderService", 10).toString();
         JsonNode root = JSON.readTree(result);
         assertEquals("org.acme.OrderService", root.get("target").asText());
         JsonNode coChanges = root.get("co_changes");
@@ -149,7 +145,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getRecentChangesReturnsCommitsWithFiles() throws Exception {
-        String result = JDBI_READS.getRecentChanges(jdbi, 5);
+        String result = JDBI_READS.getRecentChanges(jdbi, 5).toString();
         JsonNode root = JSON.readTree(result);
         JsonNode changes = root.get("recent_changes");
         assertNotNull(changes);
@@ -162,8 +158,8 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getRecentChangesPagesFilesAndSupportsCompactResponses() throws Exception {
-        JsonNode first = JSON.readTree(JDBI_READS.getRecentChanges(jdbi, 5, 2, 0, false));
-        JsonNode second = JSON.readTree(JDBI_READS.getRecentChanges(jdbi, 5, 2, 2, false));
+        JsonNode first = JDBI_READS.getRecentChanges(jdbi, 5, 2, 0, false);
+        JsonNode second = JDBI_READS.getRecentChanges(jdbi, 5, 2, 2, false);
 
         assertEquals(2, first.path("showing").asInt());
         assertEquals(6, first.path("total").asInt());
@@ -178,7 +174,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getHotspotsSinceRecomputesCounts() throws Exception {
-        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-28");
+        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-28").toString();
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         assertNotNull(hotspots);
@@ -196,7 +192,7 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
 
     @Test
     void getHotspotsSinceExcludesOlderCommits() throws Exception {
-        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-28");
+        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-28").toString();
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         for (JsonNode h : hotspots) {
@@ -271,27 +267,25 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
                                 .bind("path", "src/main/java/example/Deleted.java")
                                 .execute());
 
-        JsonNode currentOnly = JSON.readTree(JDBI_READS.getHotspots(historyDb, 10, null, false));
+        JsonNode currentOnly = JDBI_READS.getHotspots(historyDb, 10, null, false);
         assertFalse(currentOnly.path("hotspots").toString().contains("Deleted.java"));
-        JsonNode overview = JSON.readTree(JDBI_READS.getOverview(historyDb));
+        JsonNode overview = JDBI_READS.getOverview(historyDb);
         assertFalse(
                 overview.path("git_summary")
                         .path("top_hotspots")
                         .toString()
                         .contains("Deleted.java"));
 
-        JsonNode withHistory = JSON.readTree(JDBI_READS.getHotspots(historyDb, 10, null, true));
+        JsonNode withHistory = JDBI_READS.getHotspots(historyDb, 10, null, true);
         assertTrue(withHistory.path("hotspots").toString().contains("Deleted.java"));
         assertTrue(withHistory.path("hotspots").toString().contains("historical"));
 
         JsonNode history =
-                JSON.readTree(
-                        JDBI_READS.getFileHistory(
-                                historyDb, "src/main/java/example/Deleted.java", 10));
+                JDBI_READS.getFileHistory(historyDb, "src/main/java/example/Deleted.java", 10);
         assertEquals("historical", history.path("lifecycle").asText());
         assertEquals(2, history.path("commits").size());
 
-        JsonNode missingClass = JSON.readTree(JDBI_READS.getRisk(historyDb, "example.Deleted"));
+        JsonNode missingClass = JDBI_READS.getRisk(historyDb, "example.Deleted");
         assertEquals("Class not found", missingClass.path("message").asText());
         assertTrue(missingClass.path("candidates").toString().contains("Deleted.java"));
         assertTrue(missingClass.path("candidates").toString().contains("historical"));
@@ -313,11 +307,11 @@ class QuillToolsHistoryTest extends QuillToolsTestBase {
                                         "unknown"))
                         .snapshot());
 
-        String result = JDBI_READS.getHotspots(noGitJdbi, 10, null);
+        String result = JDBI_READS.getHotspots(noGitJdbi, 10, null).toString();
         assertTrue(result.contains("No git data available"));
         assertTrue(result.contains("git init"));
 
-        result = JDBI_READS.getFileHistory(noGitJdbi, "SomeClass", 10);
+        result = JDBI_READS.getFileHistory(noGitJdbi, "SomeClass", 10).toString();
         assertTrue(result.contains("No git data available"));
     }
 }

@@ -15,12 +15,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
-import org.treblereel.mcp.core.ProjectCoordinatesDiscovery;
-import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.core.ProjectCoordinatesDiscovery;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Reads the dependency artifacts captured by Quill's Maven or Gradle classpath discovery. */
@@ -31,49 +31,67 @@ public final class ProjectDependencyQueries {
     private static final ConcurrentHashMap<Path, CachedMetadata> METADATA =
             new ConcurrentHashMap<>();
 
-    public String getProjectDependencies(ReadQueryContext reader, Path root, String module, String sourceSet, String query,
-            String directness, String group, String artifactName, String scope,
-            int limit, int offset) {
+    public ObjectNode getProjectDependencies(
+            ReadQueryContext reader,
+            Path root,
+            String module,
+            String sourceSet,
+            String query,
+            String directness,
+            String group,
+            String artifactName,
+            String scope,
+            int limit,
+            int offset) {
         DebugTrace.Trace trace = DebugTrace.start("get_project_dependencies");
         try {
-            trace.event("query_parameters", Map.of(
-                    "project_root", root.toAbsolutePath().normalize().toString(),
-                    "module", normalizedOrAll(module),
-                    "source_set", normalizedOrAll(sourceSet),
-                    "query", normalizedOrAll(query),
-                    "scope", normalizedOrAll(scope),
-                    "directness", normalizedOrAll(directness)));
+            trace.event(
+                    "query_parameters",
+                    Map.of(
+                            "project_root", root.toAbsolutePath().normalize().toString(),
+                            "module", normalizedOrAll(module),
+                            "source_set", normalizedOrAll(sourceSet),
+                            "query", normalizedOrAll(query),
+                            "scope", normalizedOrAll(scope),
+                            "directness", normalizedOrAll(directness)));
             String requestedDirectness = normalized(directness);
             if (!requestedDirectness.isEmpty()
                     && !Set.of("direct", "transitive", "mixed", "unknown")
                             .contains(requestedDirectness)) {
                 trace.event("query_rejected", Map.of("reason", "invalid_directness"));
-                return JSON.createObjectNode().put("error",
-                        "directness must be direct, transitive, mixed, or unknown").toString();
+                return JSON.createObjectNode()
+                        .put("error", "directness must be direct, transitive, mixed, or unknown");
             }
             DependencyMetadata metadata = metadata(reader, root);
             List<ClasspathFile> classpaths = metadata.classpaths();
             DeclaredDependencyDiscovery.Result declared = metadata.declared();
-            trace.event("metadata_loaded", Map.of(
-                    "indexed_modules", metadata.indexedModules().size(),
-                    "classpath_files", classpaths.size(),
-                    "declarations_complete", declared.complete(),
-                    "declaration_source", declared.source(),
-                    "metadata_cache", metadata.cacheHit() ? "hit" : "miss"));
-            List<ParsedClasspath> effectiveClasspaths = effectiveClasspaths(
-                    metadata, module, sourceSet);
+            trace.event(
+                    "metadata_loaded",
+                    Map.of(
+                            "indexed_modules", metadata.indexedModules().size(),
+                            "classpath_files", classpaths.size(),
+                            "declarations_complete", declared.complete(),
+                            "declaration_source", declared.source(),
+                            "metadata_cache", metadata.cacheHit() ? "hit" : "miss"));
+            List<ParsedClasspath> effectiveClasspaths =
+                    effectiveClasspaths(metadata, module, sourceSet);
             for (ParsedClasspath classpath : effectiveClasspaths) {
-                if (module != null && !module.isBlank()
+                if (module != null
+                        && !module.isBlank()
                         && !classpath.module().equals(normalizeModule(module))) continue;
-                trace.event(classpath.inferred() ? "classpath_inferred" : "classpath_loaded", Map.of(
-                        "module", classpath.module(),
-                        "path", classpath.path().toString(),
-                        "source_set", classpath.sourceSet(),
-                        "classpath_scope", classpath.sourceSet().equals("test")
-                                ? "test_runtime" : "runtime",
-                        "evidence", classpath.evidence(),
-                        "entries", classpath.jars().size(),
-                        "last_modified_ms", lastModified(classpath.path())));
+                trace.event(
+                        classpath.inferred() ? "classpath_inferred" : "classpath_loaded",
+                        Map.of(
+                                "module", classpath.module(),
+                                "path", classpath.path().toString(),
+                                "source_set", classpath.sourceSet(),
+                                "classpath_scope",
+                                        classpath.sourceSet().equals("test")
+                                                ? "test_runtime"
+                                                : "runtime",
+                                "evidence", classpath.evidence(),
+                                "entries", classpath.jars().size(),
+                                "last_modified_ms", lastModified(classpath.path())));
             }
             Map<String, Artifact> artifacts = new LinkedHashMap<>();
             int scannedJars = 0;
@@ -81,11 +99,11 @@ public final class ProjectDependencyQueries {
             if (!requestedSourceSet.isEmpty()
                     && !Set.of("main", "test").contains(requestedSourceSet)) {
                 trace.event("query_rejected", Map.of("reason", "invalid_source_set"));
-                return JSON.createObjectNode().put("error",
-                        "source_set must be main or test").toString();
+                return JSON.createObjectNode().put("error", "source_set must be main or test");
             }
             for (ParsedClasspath classpath : effectiveClasspaths) {
-                if (module != null && !module.isBlank()
+                if (module != null
+                        && !module.isBlank()
                         && !classpath.module().equals(normalizeModule(module))) continue;
                 if (!requestedSourceSet.isEmpty()
                         && !classpath.sourceSet().equals(requestedSourceSet)) continue;
@@ -93,42 +111,73 @@ public final class ProjectDependencyQueries {
                 for (JarReference reference : classpath.jars()) {
                     Path jar = reference.jar();
                     Coordinates coordinates = reference.coordinates();
-                    String searchable = (coordinates.id() + " " + jar.getFileName())
-                            .toLowerCase();
-                    if (query != null && !query.isBlank()
+                    String searchable = (coordinates.id() + " " + jar.getFileName()).toLowerCase();
+                    if (query != null
+                            && !query.isBlank()
                             && !searchable.contains(query.strip().toLowerCase())) continue;
-                    artifacts.computeIfAbsent(coordinates.id(), ignored ->
-                                    new Artifact(coordinates, jar, new LinkedHashMap<>(),
-                                            new LinkedHashMap<>()))
+                    artifacts
+                            .computeIfAbsent(
+                                    coordinates.id(),
+                                    ignored ->
+                                            new Artifact(
+                                                    coordinates,
+                                                    jar,
+                                                    new LinkedHashMap<>(),
+                                                    new LinkedHashMap<>()))
                             .add(classpath.module(), classpath.sourceSet(), classpath.evidence());
                 }
             }
-            List<ArtifactView> ordered = artifacts.values().stream()
-                    .map(value -> view(value, declared))
-                    .filter(value -> requestedDirectness.isEmpty()
-                            || value.directness().equals(requestedDirectness))
-                    .filter(value -> contains(value.artifact().coordinates().group(), group))
-                    .filter(value -> contains(value.artifact().coordinates().artifact(), artifactName))
-                    .filter(value -> normalized(scope).isEmpty()
-                            || value.scopes().stream().anyMatch(candidate ->
-                                    candidate.equalsIgnoreCase(scope.strip())))
-                    .sorted(Comparator.comparing(value -> value.artifact().coordinates().id()))
-                    .toList();
+            List<ArtifactView> ordered =
+                    artifacts.values().stream()
+                            .map(value -> view(value, declared))
+                            .filter(
+                                    value ->
+                                            requestedDirectness.isEmpty()
+                                                    || value.directness()
+                                                            .equals(requestedDirectness))
+                            .filter(
+                                    value ->
+                                            contains(value.artifact().coordinates().group(), group))
+                            .filter(
+                                    value ->
+                                            contains(
+                                                    value.artifact().coordinates().artifact(),
+                                                    artifactName))
+                            .filter(
+                                    value ->
+                                            normalized(scope).isEmpty()
+                                                    || value.scopes().stream()
+                                                            .anyMatch(
+                                                                    candidate ->
+                                                                            candidate
+                                                                                    .equalsIgnoreCase(
+                                                                                            scope
+                                                                                                    .strip())))
+                            .sorted(
+                                    Comparator.comparing(
+                                            value -> value.artifact().coordinates().id()))
+                            .toList();
             int from = Math.min(offset, ordered.size());
             int to = Math.min(from + limit, ordered.size());
             Coverage coverage = coverage(metadata, effectiveClasspaths, module, sourceSet);
-            boolean answerComplete = declared.complete()
-                    && coverage.missingModules().isEmpty() && coverage.scopeCovered();
-            trace.event("filter_summary", Map.of(
-                    "scanned_jars", scannedJars,
-                    "matching_artifacts_before_field_filters", artifacts.size(),
-                    "matching_artifacts", ordered.size()));
-            trace.event("result_completeness", Map.of(
-                    "answer_complete", answerComplete,
-                    "requested_source_set_covered", coverage.scopeCovered(),
-                    "missing_classpath_modules", coverage.missingModules(),
-                    "inferred_test_modules", coverage.inferredTestModules(),
-                    "uncovered_source_sets", coverage.uncoveredSourceSets()));
+            boolean answerComplete =
+                    declared.complete()
+                            && coverage.missingModules().isEmpty()
+                            && coverage.scopeCovered();
+            trace.event(
+                    "filter_summary",
+                    Map.of(
+                            "scanned_jars", scannedJars,
+                            "matching_artifacts_before_field_filters", artifacts.size(),
+                            "matching_artifacts", ordered.size()));
+            trace.event(
+                    "result_completeness",
+                    Map.of(
+                            "answer_complete", answerComplete,
+                            "requested_source_set_covered", coverage.scopeCovered(),
+                            "missing_classpath_modules", coverage.missingModules(),
+                            "inferred_test_modules", coverage.inferredTestModules(),
+                            "uncovered_source_sets", coverage.uncoveredSourceSets()));
 
             ObjectNode result = JSON.createObjectNode();
             result.put("total", ordered.size());
@@ -136,8 +185,9 @@ public final class ProjectDependencyQueries {
             result.put("offset", offset);
             result.put("has_more", to < ordered.size());
             result.put("relationship", "resolved_runtime_classpath");
-            result.put("requested_source_set", requestedSourceSet.isEmpty()
-                    ? "all" : requestedSourceSet);
+            result.put(
+                    "requested_source_set",
+                    requestedSourceSet.isEmpty() ? "all" : requestedSourceSet);
             result.put("directness", answerComplete ? "resolved" : "partial");
             result.put("answer_complete", answerComplete);
             ArrayNode dependencies = result.putArray("dependencies");
@@ -154,33 +204,38 @@ public final class ProjectDependencyQueries {
             discovery.put("classpath_scope", "main_and_test_runtime");
             ArrayNode coveredSourceSets = discovery.putArray("covered_source_sets");
             coveredSourceSets.add("main");
-            if (metadata.classpaths().stream().anyMatch(value ->
-                    value.sourceSet().equals("test"))) coveredSourceSets.add("test");
+            if (metadata.classpaths().stream().anyMatch(value -> value.sourceSet().equals("test")))
+                coveredSourceSets.add("test");
             discovery.putArray("covered_scopes").add("compile").add("runtime");
             discovery.put("requested_source_set_covered", coverage.scopeCovered());
-            discovery.put("classpath_complete_for_requested_modules",
+            discovery.put(
+                    "classpath_complete_for_requested_modules",
                     coverage.missingModules().isEmpty());
             ArrayNode missingModules = discovery.putArray("missing_classpath_modules");
             coverage.missingModules().forEach(missingModules::add);
             ArrayNode inferredTestModules = discovery.putArray("inferred_test_modules");
             coverage.inferredTestModules().forEach(inferredTestModules::add);
             ArrayNode limitations = discovery.putArray("limitations");
-            if (!declared.complete()) limitations.add("Some direct dependency declarations "
-                    + "could not be resolved from build metadata");
-            if (!coverage.missingModules().isEmpty()) limitations.add(
-                    "Complete requested source-set classpath snapshots are missing for some modules");
-            if (!coverage.inferredTestModules().isEmpty()) limitations.add(
-                    "Some test visibility is inferred from reactor declarations and main "
-                            + "runtime snapshots; direct external test dependencies require a "
-                            + "successful Maven or Gradle test-classpath capture");
-            if (!coverage.scopeCovered()) limitations.add(
-                    "Requested source sets do not have complete classpath snapshots");
+            if (!declared.complete())
+                limitations.add(
+                        "Some direct dependency declarations "
+                                + "could not be resolved from build metadata");
+            if (!coverage.missingModules().isEmpty())
+                limitations.add(
+                        "Complete requested source-set classpath snapshots are missing for some modules");
+            if (!coverage.inferredTestModules().isEmpty())
+                limitations.add(
+                        "Some test visibility is inferred from reactor declarations and main "
+                                + "runtime snapshots; direct external test dependencies require a "
+                                + "successful Maven or Gradle test-classpath capture");
+            if (!coverage.scopeCovered())
+                limitations.add("Requested source sets do not have complete classpath snapshots");
             if (trace.enabled()) {
                 ObjectNode debug = result.putObject("debug");
                 debug.put("trace_id", trace.id());
                 debug.put("log_file", DebugTrace.logFile().toString());
             }
-            return result.toString();
+            return result;
         } catch (RuntimeException | Error error) {
             trace.failure(error);
             throw error;
@@ -205,8 +260,10 @@ public final class ProjectDependencyQueries {
         }
         if (root == null) return;
         result.put("maven_repository_root", root);
-        result.put("jar_path_rule", "Absent jar = maven_repository_root/group-path/artifact/version/"
-                + "artifact-version[-classifier].jar");
+        result.put(
+                "jar_path_rule",
+                "Absent jar = maven_repository_root/group-path/artifact/version/"
+                        + "artifact-version[-classifier].jar");
         for (var item : dependencies) {
             String relative = mavenRelativePath(item);
             if (relative != null && item.path("jar").asText().equals(root + "/" + relative))
@@ -217,9 +274,19 @@ public final class ProjectDependencyQueries {
     private static String mavenRelativePath(com.fasterxml.jackson.databind.JsonNode item) {
         if (!"maven_repository".equals(item.path("repository_layout").asText())) return null;
         String artifact = item.path("artifact").asText(), version = item.path("version").asText();
-        String classifier = item.path("classifier").isTextual() ? "-" + item.path("classifier").asText() : "";
-        return item.path("group").asText().replace('.', '/') + "/" + artifact + "/" + version + "/"
-                + artifact + "-" + version + classifier + ".jar";
+        String classifier =
+                item.path("classifier").isTextual() ? "-" + item.path("classifier").asText() : "";
+        return item.path("group").asText().replace('.', '/')
+                + "/"
+                + artifact
+                + "/"
+                + version
+                + "/"
+                + artifact
+                + "-"
+                + version
+                + classifier
+                + ".jar";
     }
 
     /**
@@ -228,19 +295,29 @@ public final class ProjectDependencyQueries {
      */
     private static void appendDeclarations(Path root, ObjectNode result, ArrayNode dependencies) {
         if (!Files.isRegularFile(root.resolve("pom.xml"))) return;
-        Path repository = result.hasNonNull("maven_repository_root") ? Path.of(result.path("maven_repository_root").asText())
-                : Path.of(System.getProperty("user.home"), ".m2", "repository");
-        Map<String, Map<String, org.treblereel.mcp.core.DependencyDeclarations.Declaration>> byModule = new java.util.HashMap<>();
+        Path repository =
+                result.hasNonNull("maven_repository_root")
+                        ? Path.of(result.path("maven_repository_root").asText())
+                        : Path.of(System.getProperty("user.home"), ".m2", "repository");
+        Map<String, Map<String, org.treblereel.mcp.core.DependencyDeclarations.Declaration>>
+                byModule = new java.util.HashMap<>();
         for (var node : dependencies) {
             if (!(node instanceof ObjectNode item) || !item.path("direct").asBoolean()) continue;
             String ga = item.path("group").asText() + ":" + item.path("artifact").asText();
             List<String> places = new ArrayList<>();
             String version = null;
             for (var module : item.path("direct_in_modules")) {
-                var declaration = byModule.computeIfAbsent(module.asText(),
-                        name -> org.treblereel.mcp.core.DependencyDeclarations.locate(root, name, repository)).get(ga);
+                var declaration =
+                        byModule.computeIfAbsent(
+                                        module.asText(),
+                                        name ->
+                                                org.treblereel.mcp.core.DependencyDeclarations
+                                                        .locate(root, name, repository))
+                                .get(ga);
                 if (declaration == null) continue;
-                declaration.declaredAt().stream().filter(place -> !places.contains(place)).forEach(places::add);
+                declaration.declaredAt().stream()
+                        .filter(place -> !places.contains(place))
+                        .forEach(places::add);
                 if (version == null) version = declaration.versionSource();
             }
             if (!places.isEmpty()) item.set("declared_at", JSON.valueToTree(places));
@@ -287,8 +364,6 @@ public final class ProjectDependencyQueries {
         }
     }
 
-
-
     private static List<ClasspathFile> findClasspathFiles(Path root, List<String> modules) {
         BuildSystem buildSystem;
         try {
@@ -301,11 +376,18 @@ public final class ProjectDependencyQueries {
             String normalized = normalizeModule(module);
             Path moduleRoot = normalized.equals(".") ? root : root.resolve(normalized);
             Path classpath = buildSystem.classpathFile(moduleRoot);
-            if (Files.isRegularFile(classpath)) result.add(new ClasspathFile(
-                    classpath, normalized, "main", "captured_runtime_classpath"));
+            if (Files.isRegularFile(classpath))
+                result.add(
+                        new ClasspathFile(
+                                classpath, normalized, "main", "captured_runtime_classpath"));
             Path testClasspath = buildSystem.testClasspathFile(moduleRoot);
-            if (Files.isRegularFile(testClasspath)) result.add(new ClasspathFile(
-                    testClasspath, normalized, "test", "captured_test_runtime_classpath"));
+            if (Files.isRegularFile(testClasspath))
+                result.add(
+                        new ClasspathFile(
+                                testClasspath,
+                                normalized,
+                                "test",
+                                "captured_test_runtime_classpath"));
         }
         return List.copyOf(result);
     }
@@ -334,16 +416,23 @@ public final class ProjectDependencyQueries {
         return List.copyOf(jars);
     }
 
-    private static final Map<org.treblereel.mcp.model.ProjectReadSnapshot, DependencyMetadata> PREPARED =
-            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static final Map<org.treblereel.mcp.model.ProjectReadSnapshot, DependencyMetadata>
+            PREPARED = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
-    static void prepareSnapshot(ReadQueryContext reader, Path root, org.treblereel.mcp.model.ProjectReadSnapshot snapshot) {
+    static void prepareSnapshot(
+            ReadQueryContext reader,
+            Path root,
+            org.treblereel.mcp.model.ProjectReadSnapshot snapshot) {
         PREPARED.put(snapshot, metadata(reader, root));
     }
 
-    static void reuseSnapshot(org.treblereel.mcp.model.ProjectReadSnapshot previous,
+    static void reuseSnapshot(
+            org.treblereel.mcp.model.ProjectReadSnapshot previous,
             org.treblereel.mcp.model.ProjectReadSnapshot current) {
-        PREPARED.put(current, java.util.Objects.requireNonNull(PREPARED.get(previous), "Prepared dependency evidence"));
+        PREPARED.put(
+                current,
+                java.util.Objects.requireNonNull(
+                        PREPARED.get(previous), "Prepared dependency evidence"));
     }
 
     static void prewarm(ReadQueryContext reader, Path root) {
@@ -354,10 +443,11 @@ public final class ProjectDependencyQueries {
             DependencyMetadata metadata, String requestedModule, String requestedSourceSet) {
         List<ParsedClasspath> result = new ArrayList<>(metadata.parsedClasspaths());
         if (normalized(requestedSourceSet).equals("main")) return List.copyOf(result);
-        Set<String> capturedTests = metadata.parsedClasspaths().stream()
-                .filter(value -> value.sourceSet().equals("test"))
-                .map(ParsedClasspath::module)
-                .collect(java.util.stream.Collectors.toSet());
+        Set<String> capturedTests =
+                metadata.parsedClasspaths().stream()
+                        .filter(value -> value.sourceSet().equals("test"))
+                        .map(ParsedClasspath::module)
+                        .collect(java.util.stream.Collectors.toSet());
         Map<String, String> modulesByGa = new LinkedHashMap<>();
         for (ProjectCoordinatesDiscovery.Module module : metadata.coordinates().modules()) {
             if (module.ga() != null) modulesByGa.putIfAbsent(module.ga(), module.module());
@@ -368,8 +458,10 @@ public final class ProjectDependencyQueries {
                 .forEach(value -> mainByModule.put(value.module(), value));
         Map<String, List<ReactorEdge>> reactor = reactorEdges(metadata.declared(), modulesByGa);
 
-        List<String> applications = requestedModule == null || requestedModule.isBlank()
-                ? metadata.indexedModules() : List.of(normalizeModule(requestedModule));
+        List<String> applications =
+                requestedModule == null || requestedModule.isBlank()
+                        ? metadata.indexedModules()
+                        : List.of(normalizeModule(requestedModule));
         for (String application : applications) {
             if (capturedTests.contains(application)) continue;
             LinkedHashSet<String> visible = new LinkedHashSet<>();
@@ -396,9 +488,14 @@ public final class ProjectDependencyQueries {
                 main.jars().forEach(reference -> jars.putIfAbsent(reference.jar(), reference));
             }
             if (!jars.isEmpty()) {
-                result.add(new ParsedClasspath(Path.of("reactor-model"), application,
-                        "test", "reactor_model_inference", true,
-                        List.copyOf(jars.values())));
+                result.add(
+                        new ParsedClasspath(
+                                Path.of("reactor-model"),
+                                application,
+                                "test",
+                                "reactor_model_inference",
+                                true,
+                                List.copyOf(jars.values())));
             }
         }
         return List.copyOf(result);
@@ -407,35 +504,43 @@ public final class ProjectDependencyQueries {
     private static Map<String, List<ReactorEdge>> reactorEdges(
             DeclaredDependencyDiscovery.Result declared, Map<String, String> modulesByGa) {
         Map<String, List<ReactorEdge>> result = new LinkedHashMap<>();
-        declared.dependenciesByModule().forEach((module, dependencies) -> {
-            List<ReactorEdge> edges = new ArrayList<>();
-            for (String dependency : dependencies) {
-                String target = modulesByGa.get(dependency);
-                if (target == null || target.equals(module)) continue;
-                Set<String> scopes = declared.scopesByModule().getOrDefault(module, Map.of())
-                        .getOrDefault(dependency, Set.of("compile"));
-                edges.add(new ReactorEdge(target, scopes));
-            }
-            result.put(module, List.copyOf(edges));
-        });
+        declared.dependenciesByModule()
+                .forEach(
+                        (module, dependencies) -> {
+                            List<ReactorEdge> edges = new ArrayList<>();
+                            for (String dependency : dependencies) {
+                                String target = modulesByGa.get(dependency);
+                                if (target == null || target.equals(module)) continue;
+                                Set<String> scopes =
+                                        declared.scopesByModule()
+                                                .getOrDefault(module, Map.of())
+                                                .getOrDefault(dependency, Set.of("compile"));
+                                edges.add(new ReactorEdge(target, scopes));
+                            }
+                            result.put(module, List.copyOf(edges));
+                        });
         return result;
     }
 
     private static boolean runtimeVisible(Set<String> scopes) {
-        return scopes.stream().map(ProjectDependencyQueries::normalized)
+        return scopes.stream()
+                .map(ProjectDependencyQueries::normalized)
                 .anyMatch(value -> value.equals("compile") || value.equals("runtime"));
     }
 
     private static boolean testVisible(Set<String> scopes) {
-        return scopes.stream().map(ProjectDependencyQueries::normalized)
-                .anyMatch(value -> Set.of("compile", "runtime", "test", "provided")
-                        .contains(value));
+        return scopes.stream()
+                .map(ProjectDependencyQueries::normalized)
+                .anyMatch(
+                        value -> Set.of("compile", "runtime", "test", "provided").contains(value));
     }
 
     private static DependencyMetadata metadata(ReadQueryContext reader, Path root) {
         if (reader.snapshot() != null) {
             var prepared = PREPARED.get(reader.snapshot());
-            if (prepared == null) throw new IllegalStateException("Dependency evidence is not prepared for this observation");
+            if (prepared == null)
+                throw new IllegalStateException(
+                        "Dependency evidence is not prepared for this observation");
             return prepared.withCacheHit(true);
         }
         Path key = root.toAbsolutePath().normalize();
@@ -448,27 +553,41 @@ public final class ProjectDependencyQueries {
         }
         List<ParsedClasspath> parsed = new ArrayList<>();
         for (ClasspathFile classpath : classpaths) {
-            List<JarReference> jars = readClasspath(classpath.path()).stream()
-                    .map(jar -> new JarReference(jar, coordinates(jar))).toList();
-            parsed.add(new ParsedClasspath(classpath.path(), classpath.module(),
-                    classpath.sourceSet(), classpath.evidence(), false, jars));
+            List<JarReference> jars =
+                    readClasspath(classpath.path()).stream()
+                            .map(jar -> new JarReference(jar, coordinates(jar)))
+                            .toList();
+            parsed.add(
+                    new ParsedClasspath(
+                            classpath.path(),
+                            classpath.module(),
+                            classpath.sourceSet(),
+                            classpath.evidence(),
+                            false,
+                            jars));
         }
         BuildSystem buildSystem = detectBuildSystem(key);
-        DeclaredDependencyDiscovery.Result declared = buildSystem == null
-                ? new DeclaredDependencyDiscovery.Result(
-                        Map.of(), Map.of(), Set.of(), "unavailable", false)
-                : DeclaredDependencyDiscovery.discover(key, buildSystem,
-                        new LinkedHashSet<>(indexedModules));
-        DependencyMetadata created = new DependencyMetadata(
-                indexedModules, List.copyOf(classpaths), List.copyOf(parsed), declared,
-                ProjectCoordinatesDiscovery.discover(key), false);
+        DeclaredDependencyDiscovery.Result declared =
+                buildSystem == null
+                        ? new DeclaredDependencyDiscovery.Result(
+                                Map.of(), Map.of(), Set.of(), "unavailable", false)
+                        : DeclaredDependencyDiscovery.discover(
+                                key, buildSystem, new LinkedHashSet<>(indexedModules));
+        DependencyMetadata created =
+                new DependencyMetadata(
+                        indexedModules,
+                        List.copyOf(classpaths),
+                        List.copyOf(parsed),
+                        declared,
+                        ProjectCoordinatesDiscovery.discover(key),
+                        false);
         if (METADATA.size() >= MAX_PROJECT_CACHES) METADATA.clear();
         METADATA.put(key, new CachedMetadata(fingerprint, created));
         return created;
     }
 
-    private static String metadataFingerprint(Path root, List<String> indexedModules,
-            List<ClasspathFile> classpaths) {
+    private static String metadataFingerprint(
+            Path root, List<String> indexedModules, List<ClasspathFile> classpaths) {
         StringBuilder value = new StringBuilder();
         value.append("modules=").append(indexedModules);
         for (String module : indexedModules) {
@@ -489,15 +608,20 @@ public final class ProjectDependencyQueries {
     private static void appendFingerprint(StringBuilder target, Path path) {
         target.append('|').append(path);
         try {
-            target.append(':').append(Files.getLastModifiedTime(path).toMillis())
-                    .append(':').append(Files.size(path));
+            target.append(':')
+                    .append(Files.getLastModifiedTime(path).toMillis())
+                    .append(':')
+                    .append(Files.size(path));
         } catch (IOException error) {
             target.append(":missing");
         }
     }
 
-    private static Coverage coverage(DependencyMetadata metadata,
-            List<ParsedClasspath> effectiveClasspaths, String module, String sourceSet) {
+    private static Coverage coverage(
+            DependencyMetadata metadata,
+            List<ParsedClasspath> effectiveClasspaths,
+            String module,
+            String sourceSet) {
         Set<String> requested = new LinkedHashSet<>();
         if (module == null || module.isBlank()) {
             requested.addAll(metadata.indexedModules());
@@ -506,9 +630,11 @@ public final class ProjectDependencyQueries {
         }
         Set<String> main = modulesFor(metadata.classpaths(), "main");
         Set<String> test = modulesFor(metadata.classpaths(), "test");
-        Set<String> inferred = effectiveClasspaths.stream()
-                .filter(ParsedClasspath::inferred).map(ParsedClasspath::module)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> inferred =
+                effectiveClasspaths.stream()
+                        .filter(ParsedClasspath::inferred)
+                        .map(ParsedClasspath::module)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         String requestedSourceSet = normalized(sourceSet);
         Set<String> available = new LinkedHashSet<>();
         if (!requestedSourceSet.equals("test")) available.addAll(main);
@@ -526,14 +652,20 @@ public final class ProjectDependencyQueries {
         if (!requestedSourceSet.equals("main") && !test.containsAll(requested)) {
             uncovered.add("test");
         }
-        List<String> inferredRequested = requestedSourceSet.equals("main") ? List.of()
-                : requested.stream().filter(inferred::contains).sorted().toList();
-        return new Coverage(missing.stream().sorted().toList(), missing.isEmpty(),
-                inferredRequested, List.copyOf(uncovered));
+        List<String> inferredRequested =
+                requestedSourceSet.equals("main")
+                        ? List.of()
+                        : requested.stream().filter(inferred::contains).sorted().toList();
+        return new Coverage(
+                missing.stream().sorted().toList(),
+                missing.isEmpty(),
+                inferredRequested,
+                List.copyOf(uncovered));
     }
 
     private static Set<String> modulesFor(List<ClasspathFile> classpaths, String sourceSet) {
-        return classpaths.stream().filter(value -> value.sourceSet().equals(sourceSet))
+        return classpaths.stream()
+                .filter(value -> value.sourceSet().equals(sourceSet))
                 .map(ClasspathFile::module)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
@@ -567,15 +699,26 @@ public final class ProjectDependencyQueries {
 
     private static ArtifactView view(
             Artifact artifact, DeclaredDependencyDiscovery.Result declared) {
-        List<String> direct = artifact.modules().stream().sorted()
-                .filter(candidate -> declared.dependenciesByModule()
-                        .getOrDefault(candidate, Set.of())
-                        .contains(artifact.coordinates().ga())).toList();
-        List<String> transitive = artifact.modules().stream().sorted()
-                .filter(declared.completeModules()::contains)
-                .filter(candidate -> !direct.contains(candidate)).toList();
-        List<String> unknown = artifact.modules().stream().sorted()
-                .filter(candidate -> !declared.completeModules().contains(candidate)).toList();
+        List<String> direct =
+                artifact.modules().stream()
+                        .sorted()
+                        .filter(
+                                candidate ->
+                                        declared.dependenciesByModule()
+                                                .getOrDefault(candidate, Set.of())
+                                                .contains(artifact.coordinates().ga()))
+                        .toList();
+        List<String> transitive =
+                artifact.modules().stream()
+                        .sorted()
+                        .filter(declared.completeModules()::contains)
+                        .filter(candidate -> !direct.contains(candidate))
+                        .toList();
+        List<String> unknown =
+                artifact.modules().stream()
+                        .sorted()
+                        .filter(candidate -> !declared.completeModules().contains(candidate))
+                        .toList();
         String directness;
         if (!direct.isEmpty() && transitive.isEmpty() && unknown.isEmpty()) {
             directness = "direct";
@@ -586,10 +729,18 @@ public final class ProjectDependencyQueries {
         } else {
             directness = "mixed";
         }
-        List<String> scopes = direct.stream()
-                .flatMap(module -> declared.scopesByModule().getOrDefault(module, Map.of())
-                        .getOrDefault(artifact.coordinates().ga(), Set.of()).stream())
-                .distinct().sorted().toList();
+        List<String> scopes =
+                direct.stream()
+                        .flatMap(
+                                module ->
+                                        declared
+                                                .scopesByModule()
+                                                .getOrDefault(module, Map.of())
+                                                .getOrDefault(artifact.coordinates().ga(), Set.of())
+                                                .stream())
+                        .distinct()
+                        .sorted()
+                        .toList();
         return new ArtifactView(artifact, direct, transitive, unknown, scopes, directness);
     }
 
@@ -598,16 +749,24 @@ public final class ProjectDependencyQueries {
         jar.toAbsolutePath().normalize().forEach(part -> segments.add(part.toString()));
         int gradle = segments.indexOf("files-2.1");
         if (gradle >= 0 && gradle + 4 < segments.size()) {
-            return build(segments.get(gradle + 1), segments.get(gradle + 2),
-                    segments.get(gradle + 3), jar, "gradle_cache");
+            return build(
+                    segments.get(gradle + 1),
+                    segments.get(gradle + 2),
+                    segments.get(gradle + 3),
+                    jar,
+                    "gradle_cache");
         }
         int repository = lastIndexOf(segments, "repository");
         if (repository >= 0 && repository + 3 < segments.size()) {
             int artifactIndex = segments.size() - 3;
             if (artifactIndex > repository) {
                 String group = String.join(".", segments.subList(repository + 1, artifactIndex));
-                return build(group, segments.get(artifactIndex),
-                        segments.get(artifactIndex + 1), jar, "maven_repository");
+                return build(
+                        group,
+                        segments.get(artifactIndex),
+                        segments.get(artifactIndex + 1),
+                        jar,
+                        "maven_repository");
             }
         }
         String filename = jar.getFileName().toString();
@@ -620,11 +779,20 @@ public final class ProjectDependencyQueries {
         String filename = jar.getFileName().toString();
         String stem = filename.substring(0, filename.length() - 4);
         String prefix = artifact + "-" + version;
-        String classifier = stem.startsWith(prefix + "-")
-                ? stem.substring(prefix.length() + 1) : null;
-        return new Coordinates(group + ":" + artifact + ":" + version
-                + (classifier == null ? "" : ":" + classifier),
-                artifact, group, version, classifier, layout);
+        String classifier =
+                stem.startsWith(prefix + "-") ? stem.substring(prefix.length() + 1) : null;
+        return new Coordinates(
+                group
+                        + ":"
+                        + artifact
+                        + ":"
+                        + version
+                        + (classifier == null ? "" : ":" + classifier),
+                artifact,
+                group,
+                version,
+                classifier,
+                layout);
     }
 
     private static int lastIndexOf(List<String> values, String value) {
@@ -634,8 +802,13 @@ public final class ProjectDependencyQueries {
         return -1;
     }
 
-    public record Coordinates(String id, String artifact, String group, String version,
-            String classifier, String layout) {
+    public record Coordinates(
+            String id,
+            String artifact,
+            String group,
+            String version,
+            String classifier,
+            String layout) {
         Coordinates(String id, String artifact, String version, String classifier, String layout) {
             this(id, artifact, "unknown", version, classifier, layout);
         }
@@ -646,26 +819,43 @@ public final class ProjectDependencyQueries {
     }
 
     private record ClasspathFile(Path path, String module, String sourceSet, String evidence) {}
+
     private record JarReference(Path jar, Coordinates coordinates) {}
-    private record ParsedClasspath(Path path, String module, String sourceSet, String evidence,
-            boolean inferred, List<JarReference> jars) {}
-    private record DependencyMetadata(List<String> indexedModules, List<ClasspathFile> classpaths,
+
+    private record ParsedClasspath(
+            Path path,
+            String module,
+            String sourceSet,
+            String evidence,
+            boolean inferred,
+            List<JarReference> jars) {}
+
+    private record DependencyMetadata(
+            List<String> indexedModules,
+            List<ClasspathFile> classpaths,
             List<ParsedClasspath> parsedClasspaths,
             DeclaredDependencyDiscovery.Result declared,
-            ProjectCoordinatesDiscovery.Result coordinates, boolean cacheHit) {
+            ProjectCoordinatesDiscovery.Result coordinates,
+            boolean cacheHit) {
         DependencyMetadata withCacheHit(boolean value) {
-            return new DependencyMetadata(indexedModules, classpaths, parsedClasspaths,
-                    declared, coordinates, value);
+            return new DependencyMetadata(
+                    indexedModules, classpaths, parsedClasspaths, declared, coordinates, value);
         }
     }
+
     private record CachedMetadata(String fingerprint, DependencyMetadata metadata) {}
-    private record Artifact(Coordinates coordinates, Path jar,
+
+    private record Artifact(
+            Coordinates coordinates,
+            Path jar,
             Map<String, Set<String>> sourceSetsByModule,
             Map<String, Set<String>> evidenceByModule) {
         void add(String module, String sourceSet, String evidence) {
-            sourceSetsByModule.computeIfAbsent(module, ignored -> new LinkedHashSet<>())
+            sourceSetsByModule
+                    .computeIfAbsent(module, ignored -> new LinkedHashSet<>())
                     .add(sourceSet);
-            evidenceByModule.computeIfAbsent(module, ignored -> new LinkedHashSet<>())
+            evidenceByModule
+                    .computeIfAbsent(module, ignored -> new LinkedHashSet<>())
                     .add(evidence);
         }
 
@@ -676,19 +866,33 @@ public final class ProjectDependencyQueries {
         List<String> modulesFor(String sourceSet) {
             return sourceSetsByModule.entrySet().stream()
                     .filter(entry -> entry.getValue().contains(sourceSet))
-                    .map(Map.Entry::getKey).sorted().toList();
+                    .map(Map.Entry::getKey)
+                    .sorted()
+                    .toList();
         }
 
         List<String> inferredModules() {
             return evidenceByModule.entrySet().stream()
                     .filter(entry -> entry.getValue().contains("reactor_model_inference"))
-                    .map(Map.Entry::getKey).sorted().toList();
+                    .map(Map.Entry::getKey)
+                    .sorted()
+                    .toList();
         }
     }
-    private record ArtifactView(Artifact artifact, List<String> directModules,
-            List<String> transitiveModules, List<String> unknownModules,
-            List<String> scopes, String directness) {}
-    private record Coverage(List<String> missingModules, boolean scopeCovered,
-            List<String> inferredTestModules, List<String> uncoveredSourceSets) {}
+
+    private record ArtifactView(
+            Artifact artifact,
+            List<String> directModules,
+            List<String> transitiveModules,
+            List<String> unknownModules,
+            List<String> scopes,
+            String directness) {}
+
+    private record Coverage(
+            List<String> missingModules,
+            boolean scopeCovered,
+            List<String> inferredTestModules,
+            List<String> uncoveredSourceSets) {}
+
     private record ReactorEdge(String target, Set<String> scopes) {}
 }

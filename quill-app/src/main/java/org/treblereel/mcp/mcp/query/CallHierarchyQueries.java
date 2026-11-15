@@ -4,8 +4,8 @@ import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendRetryWith;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupError;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupErrorNode;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -19,23 +19,22 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.UsageRepository.MethodCallView;
-import org.treblereel.mcp.model.ClassMemberRecord;
-import org.treblereel.mcp.model.ClassRecord;
-import org.treblereel.mcp.model.KotlinDeclarationRecord;
-import org.treblereel.mcp.mcp.support.ArgumentAliases;
-import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.mcp.project.UsageCoverage;
 import org.treblereel.mcp.mcp.semantic.JavaSourceLocations;
 import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.mcp.semantic.KotlinMemberNames;
 import org.treblereel.mcp.mcp.semantic.KotlinSourceLocations;
 import org.treblereel.mcp.mcp.semantic.KotlinUsageNormalizer;
-import org.treblereel.mcp.mcp.support.NameSimilarity;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
-import org.treblereel.mcp.mcp.project.UsageCoverage;
-import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.mcp.support.ArgumentAliases;
+import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.mcp.support.NameSimilarity;
+import org.treblereel.mcp.model.ClassMemberRecord;
+import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Returns direct or bounded-transitive caller/callee edges captured from application bytecode. */
 public final class CallHierarchyQueries {
@@ -45,72 +44,120 @@ public final class CallHierarchyQueries {
     private static final Set<String> SCOPES = Set.of("all", "cross_class", "cross_package");
     private static final int TRAVERSAL_EDGE_CAP = 5_000;
 
-    public String getCallHierarchy(ReadQueryContext reader, String target, String method, String signature,
-            String direction, boolean transitive, int maxDepth, int limit, int offset) {
-        return getCallHierarchy(reader, target, method, signature, direction, transitive,
-                maxDepth, "all", limit, offset);
+    public ObjectNode getCallHierarchy(
+            ReadQueryContext reader,
+            String target,
+            String method,
+            String signature,
+            String direction,
+            boolean transitive,
+            int maxDepth,
+            int limit,
+            int offset) {
+        return getCallHierarchy(
+                reader,
+                target,
+                method,
+                signature,
+                direction,
+                transitive,
+                maxDepth,
+                "all",
+                limit,
+                offset);
     }
 
-    public String getCallHierarchy(ReadQueryContext reader, String target, String method, String signature,
-            String direction, boolean transitive, int maxDepth, String scope,
-            int limit, int offset) {
+    public ObjectNode getCallHierarchy(
+            ReadQueryContext reader,
+            String target,
+            String method,
+            String signature,
+            String direction,
+            boolean transitive,
+            int maxDepth,
+            String scope,
+            int limit,
+            int offset) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
-                if (!"METHOD".equals(reference.kind())
-                        && !"CONSTRUCTOR".equals(reference.kind())) {
-                    return errorResponse("INVALID_SYMBOL_KIND",
+                if (!"METHOD".equals(reference.kind()) && !"CONSTRUCTOR".equals(reference.kind())) {
+                    return errorNode(
+                            "INVALID_SYMBOL_KIND",
                             "symbol_id must identify a method or constructor");
                 }
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
         } catch (SymbolContract.ParseException error) {
-            return errorResponse(error.errorCode(), error.getMessage());
+            return errorNode(error.errorCode(), error.getMessage());
         }
-        String normalizedDirection = direction == null
-                ? "both" : ArgumentAliases.graphDirection(direction);
+        String normalizedDirection =
+                direction == null ? "both" : ArgumentAliases.graphDirection(direction);
         if (!DIRECTIONS.contains(normalizedDirection)) {
-            return errorResponse("INVALID_ARGUMENT",
-                    "Invalid direction: expected inbound, outbound, or both");
+            return errorNode(
+                    "INVALID_ARGUMENT", "Invalid direction: expected inbound, outbound, or both");
         }
         String normalizedScope = scope == null ? "all" : scope.trim().toLowerCase(Locale.ROOT);
         if (!SCOPES.contains(normalizedScope)) {
-            return errorResponse("INVALID_ARGUMENT",
+            return errorNode(
+                    "INVALID_ARGUMENT",
                     "Invalid scope: expected all, cross_class, or cross_package");
         }
         String normalizedMethod = method == null || method.isBlank() ? null : method.trim();
-        String normalizedSignature = signature == null || signature.isBlank()
-                ? null : signature.trim();
+        String normalizedSignature =
+                signature == null || signature.isBlank() ? null : signature.trim();
         if (normalizedMethod == null && normalizedSignature != null) {
-            return errorResponse("MISSING_METHOD",
-                    "A method name is required when signature is provided");
+            return errorNode(
+                    "MISSING_METHOD", "A method name is required when signature is provided");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
-        if (lookup.error() != null) return classLookupError(reader, lookup, target);
+        if (lookup.error() != null) return classLookupErrorNode(reader, lookup, target);
         ClassRecord cls = lookup.cls();
         List<KotlinDeclarationRecord> kotlinDeclarations =
                 reader.symbols.findKotlinDeclarations(cls.id());
 
-        List<ClassMemberRecord> candidates = normalizedMethod == null ? List.of()
-                : (normalizedSignature == null ? reader.symbols.findClassMembers(cls.id()) : reader.symbols.findJvmClassMembers(cls.id())).stream()
-                        .filter(member -> member.kind().equals("METHOD")
-                                || member.kind().equals("CONSTRUCTOR"))
-                        .filter(member -> KotlinMemberNames.matches(
-                                normalizedMethod, member, kotlinDeclarations)
-                                || (normalizedMethod.equals("<init>")
-                                        && member.kind().equals("CONSTRUCTOR")))
-                        .toList();
-        List<ClassMemberRecord> matchingMembers = normalizedSignature == null
-                ? candidates
-                : candidates.stream().filter(member -> JvmDescriptors.matchesSignature(member, normalizedSignature))
-                        .toList();
+        List<ClassMemberRecord> candidates =
+                normalizedMethod == null
+                        ? List.of()
+                        : (normalizedSignature == null
+                                        ? reader.symbols.findClassMembers(cls.id())
+                                        : reader.symbols.findJvmClassMembers(cls.id()))
+                                .stream()
+                                        .filter(
+                                                member ->
+                                                        member.kind().equals("METHOD")
+                                                                || member.kind()
+                                                                        .equals("CONSTRUCTOR"))
+                                        .filter(
+                                                member ->
+                                                        KotlinMemberNames.matches(
+                                                                        normalizedMethod,
+                                                                        member,
+                                                                        kotlinDeclarations)
+                                                                || (normalizedMethod.equals(
+                                                                                "<init>")
+                                                                        && member.kind()
+                                                                                .equals(
+                                                                                        "CONSTRUCTOR")))
+                                        .toList();
+        List<ClassMemberRecord> matchingMembers =
+                normalizedSignature == null
+                        ? candidates
+                        : candidates.stream()
+                                .filter(
+                                        member ->
+                                                JvmDescriptors.matchesSignature(
+                                                        member, normalizedSignature))
+                                .toList();
         ClassMemberRecord selected = null;
         String descriptor = null;
         String bytecodeMethod = normalizedMethod;
         KotlinDeclarationRecord kotlinDeclaration = null;
         String lambdaDeclarer = null;
-        if (normalizedMethod != null && matchingMembers.isEmpty() && normalizedMethod.startsWith("lambda$")) {
+        if (normalizedMethod != null
+                && matchingMembers.isEmpty()
+                && normalizedMethod.startsWith("lambda$")) {
             // A synthetic lambda body is no declared member, but call evidence names it.
             descriptor = lambdaDescriptor(reader, cls.id(), normalizedMethod, normalizedSignature);
             if (descriptor != null) {
@@ -120,33 +167,53 @@ public final class CallHierarchyQueries {
         }
         if (normalizedMethod != null && lambdaDeclarer == null) {
             if (matchingMembers.size() != 1) {
-                return symbolSelectionError(reader, cls, normalizedMethod,
-                        normalizedSignature, matchingMembers.isEmpty() ? candidates : matchingMembers,
+                return symbolSelectionError(
+                        reader,
+                        cls,
+                        normalizedMethod,
+                        normalizedSignature,
+                        matchingMembers.isEmpty() ? candidates : matchingMembers,
                         matchingMembers.size() > 1
                                 || (normalizedSignature == null && candidates.size() > 1));
             }
             selected = matchingMembers.getFirst();
-            kotlinDeclaration = KotlinMemberNames
-                    .declaration(selected, kotlinDeclarations).orElse(null);
+            kotlinDeclaration =
+                    KotlinMemberNames.declaration(selected, kotlinDeclarations).orElse(null);
             descriptor = JvmDescriptors.methodDescriptor(selected);
             if (descriptor == null) {
                 ObjectNode error = JSON.createObjectNode();
-                appendError(error, "DESCRIPTOR_UNAVAILABLE",
+                appendError(
+                        error,
+                        "DESCRIPTOR_UNAVAILABLE",
                         "Method descriptor is unavailable; rebuild the Quill index");
                 appendCandidate(error.putArray("candidates"), cls, selected);
                 appendMeta(error, reader, 0);
-                return error.toString();
+                return error;
             }
             bytecodeMethod = "CONSTRUCTOR".equals(selected.kind()) ? "<init>" : selected.name();
         }
 
-        TraversalResult unfiltered = transitive
-                ? traverse(reader, cls.id(), bytecodeMethod, descriptor,
-                        normalizedDirection, maxDepth)
-                : direct(reader, cls.id(), bytecodeMethod, descriptor,
-                        normalizedDirection, TRAVERSAL_EDGE_CAP, 0);
-        List<TraversalEdge> filtered = unfiltered.edges().stream()
-                .filter(edge -> inScope(edge.call(), normalizedScope)).toList();
+        TraversalResult unfiltered =
+                transitive
+                        ? traverse(
+                                reader,
+                                cls.id(),
+                                bytecodeMethod,
+                                descriptor,
+                                normalizedDirection,
+                                maxDepth)
+                        : direct(
+                                reader,
+                                cls.id(),
+                                bytecodeMethod,
+                                descriptor,
+                                normalizedDirection,
+                                TRAVERSAL_EDGE_CAP,
+                                0);
+        List<TraversalEdge> filtered =
+                unfiltered.edges().stream()
+                        .filter(edge -> inScope(edge.call(), normalizedScope))
+                        .toList();
         List<TraversalEdge> page = page(filtered, offset, limit);
 
         ObjectNode root = JSON.createObjectNode();
@@ -172,20 +239,31 @@ public final class CallHierarchyQueries {
             }
         }
         root.put("direction", normalizedDirection);
-        if (selected != null && !kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound")) {
-            var sourceCallers = KotlinUsageNormalizer.inbound(reader, cls.id(), bytecodeMethod, descriptor);
+        if (selected != null
+                && !kotlinDeclarations.isEmpty()
+                && !normalizedDirection.equals("outbound")) {
+            var sourceCallers =
+                    KotlinUsageNormalizer.inbound(reader, cls.id(), bytecodeMethod, descriptor);
             root.put("source_caller_count", sourceCallers.usages().size());
             root.put("source_caller_normalization_truncated", sourceCallers.truncated());
             var callers = root.putArray("source_callers");
             for (var usage : sourceCallers.usages().stream().skip(offset).limit(limit).toList()) {
                 var caller = callers.addObject();
                 var call = usage.call();
-                appendEndpoint(caller.putObject("caller"), call.fromClass(), call.fromMethod(), call.fromDescriptor(),
-                        call.fromSource(), call.fromSourceLine(), call.fromOrigin(), call.fromModule());
+                appendEndpoint(
+                        caller.putObject("caller"),
+                        call.fromClass(),
+                        call.fromMethod(),
+                        call.fromDescriptor(),
+                        call.fromSource(),
+                        call.fromSourceLine(),
+                        call.fromOrigin(),
+                        call.fromModule());
                 caller.put("occurrence_count", call.occurrenceCount());
                 caller.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
                 SymbolUsageQueries.appendPath(caller, usage);
-                KotlinSourceLocations.append(reader, caller, call.fromClassId(), call.evidenceLines());
+                KotlinSourceLocations.append(
+                        reader, caller, call.fromClassId(), call.evidenceLines());
             }
         }
         root.put("direct_only", !transitive);
@@ -200,25 +278,37 @@ public final class CallHierarchyQueries {
             root.put("declared_method_found", selected != null);
         }
         ArrayNode limitations = root.putArray("limitations");
-        limitations.add(transitive
-                ? "Traversal is bounded by max_depth and traversal_edge_cap"
-                : "Only direct calls present in indexed application bytecode are reported");
-        limitations.add("Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
-        limitations.add("Reflection, generated-at-runtime calls, and framework callbacks are not inferred");
-        ObjectNode events = selected != null && !normalizedDirection.equals("inbound")
-                ? SpringEventDeliveries.find(reader, cls, bytecodeMethod, descriptor) : null;
+        limitations.add(
+                transitive
+                        ? "Traversal is bounded by max_depth and traversal_edge_cap"
+                        : "Only direct calls present in indexed application bytecode are reported");
+        limitations.add(
+                "Virtual/interface calls identify the bytecode-declared owner, not every runtime dispatch target");
+        limitations.add(
+                "Reflection, generated-at-runtime calls, and framework callbacks are not inferred");
+        ObjectNode events =
+                selected != null && !normalizedDirection.equals("inbound")
+                        ? SpringEventDeliveries.find(reader, cls, bytecodeMethod, descriptor)
+                        : null;
         if (events != null) {
             root.set("event_deliveries", events);
-            limitations.add("Spring events published on the way are resolved to listeners in event_deliveries; calls stop at publishEvent");
+            limitations.add(
+                    "Spring events published on the way are resolved to listeners in event_deliveries; calls stop at publishEvent");
         }
-        ObjectNode expressions = selected != null && "METHOD".equals(selected.kind()) && !normalizedDirection.equals("outbound")
-                ? ExpressionReferences.find(reader, cls, selected.name()) : null;
+        ObjectNode expressions =
+                selected != null
+                                && "METHOD".equals(selected.kind())
+                                && !normalizedDirection.equals("outbound")
+                        ? ExpressionReferences.find(reader, cls, selected.name())
+                        : null;
         if (expressions != null) {
             root.set("expression_references", expressions);
-            limitations.add("Calls written in annotation expressions (SpEL) are listed in expression_references, not in calls");
+            limitations.add(
+                    "Calls written in annotation expressions (SpEL) are listed in expression_references, not in calls");
         }
 
-        root.putObject("edge_defaults").put("edge_kind", "call")
+        root.putObject("edge_defaults")
+                .put("edge_kind", "call")
                 .put("execution_semantics", "invocation_instruction");
         JavaDispatchEvidence.declareDefaults(root);
         ArrayNode edges = root.putArray("calls");
@@ -226,42 +316,100 @@ public final class CallHierarchyQueries {
         int naiveTokens = cls.sourceTokens();
         countedClasses.add(cls.id());
         JavaSourceLocations javaLocations = new JavaSourceLocations(reader);
-        String dynamicBasis = "2".equals(reader.index.getMetadata().get("invokedynamic_evidence_protocol"))
-                ? "lambda_metafactory" : "legacy_unclassified";
+        String dynamicBasis =
+                "2".equals(reader.index.getMetadata().get("invokedynamic_evidence_protocol"))
+                        ? "lambda_metafactory"
+                        : "legacy_unclassified";
         JavaDispatchEvidence dispatch = new JavaDispatchEvidence(reader);
-        if (selected != null && kotlinDeclarations.isEmpty() && !normalizedDirection.equals("outbound"))
+        if (selected != null
+                && kotlinDeclarations.isEmpty()
+                && !normalizedDirection.equals("outbound"))
             dispatch.appendPossibleCallers(root, cls, selected, limit, offset);
         java.util.Map<Integer, ClassRecord> callees = new java.util.HashMap<>();
         for (TraversalEdge traversed : page) {
             MethodCallView call = traversed.call();
             ObjectNode edge = edges.addObject();
-            appendEndpoint(edge.putObject("caller"), call.fromClass(), call.fromMethod(),
-                    call.fromDescriptor(), call.fromSource(), call.fromSourceLine(),
-                    call.fromOrigin(), call.fromModule());
-            appendEndpoint(edge.putObject("callee"), call.toClass(), call.toMethod(),
-                    call.toDescriptor(), call.toSource(), call.toSourceLine(),
-                    call.toOrigin(), call.toModule());
+            appendEndpoint(
+                    edge.putObject("caller"),
+                    call.fromClass(),
+                    call.fromMethod(),
+                    call.fromDescriptor(),
+                    call.fromSource(),
+                    call.fromSourceLine(),
+                    call.fromOrigin(),
+                    call.fromModule());
+            appendEndpoint(
+                    edge.putObject("callee"),
+                    call.toClass(),
+                    call.toMethod(),
+                    call.toDescriptor(),
+                    call.toSource(),
+                    call.toSourceLine(),
+                    call.toOrigin(),
+                    call.toModule());
             edge.put("invocation_kind", call.invocationKind());
             // Ordinary calls use the edge_defaults declared once on the root.
             if ("dynamic".equals(call.invocationKind())) {
-                edge.put("edge_kind", "lambda_metafactory".equals(dynamicBasis)
-                        ? "callback_reference" : "dynamic_handle_reference");
-                edge.put("execution_semantics", "lambda_metafactory".equals(dynamicBasis)
-                        ? "callback_creation" : "bootstrap_reference_unknown");
+                edge.put(
+                        "edge_kind",
+                        "lambda_metafactory".equals(dynamicBasis)
+                                ? "callback_reference"
+                                : "dynamic_handle_reference");
+                edge.put(
+                        "execution_semantics",
+                        "lambda_metafactory".equals(dynamicBasis)
+                                ? "callback_creation"
+                                : "bootstrap_reference_unknown");
                 edge.put("reference_basis", dynamicBasis);
             }
-            if (call.fromSource() != null && call.fromSource().endsWith(".java")) dispatch.appendTarget(edge, call);
+            if (call.fromSource() != null && call.fromSource().endsWith(".java"))
+                dispatch.appendTarget(edge, call);
             edge.put("occurrence_count", call.occurrenceCount());
             edge.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
-            ClassRecord callee = callees.computeIfAbsent(call.toClassId(), id -> reader.symbols.findClassById(id).orElse(null));
-            ClassRecord caller = callees.computeIfAbsent(call.fromClassId(), id -> reader.symbols.findClassById(id).orElse(null));
-            if(callee!=null) ((ObjectNode)edge.get("callee")).put("symbol_id",SymbolContract.id(callee,
-                    "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD",call.toMethod(),call.toDescriptor()));
-            if(caller!=null) ((ObjectNode)edge.get("caller")).put("symbol_id",SymbolContract.id(caller,
-                    "<init>".equals(call.fromMethod()) ? "CONSTRUCTOR" : "METHOD",call.fromMethod(),call.fromDescriptor()));
-            if (callee != null) javaLocations.append(edge, call.fromSource(), call.fromClass(), call.fromMethod(), call.fromDescriptor(),
-                    call.toClass(), call.toMethod(), call.toDescriptor(), "call", SymbolContract.id(callee,
-                            "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD", call.toMethod(), call.toDescriptor()), call.evidenceLines());
+            ClassRecord callee =
+                    callees.computeIfAbsent(
+                            call.toClassId(), id -> reader.symbols.findClassById(id).orElse(null));
+            ClassRecord caller =
+                    callees.computeIfAbsent(
+                            call.fromClassId(),
+                            id -> reader.symbols.findClassById(id).orElse(null));
+            if (callee != null)
+                ((ObjectNode) edge.get("callee"))
+                        .put(
+                                "symbol_id",
+                                SymbolContract.id(
+                                        callee,
+                                        "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD",
+                                        call.toMethod(),
+                                        call.toDescriptor()));
+            if (caller != null)
+                ((ObjectNode) edge.get("caller"))
+                        .put(
+                                "symbol_id",
+                                SymbolContract.id(
+                                        caller,
+                                        "<init>".equals(call.fromMethod())
+                                                ? "CONSTRUCTOR"
+                                                : "METHOD",
+                                        call.fromMethod(),
+                                        call.fromDescriptor()));
+            if (callee != null)
+                javaLocations.append(
+                        edge,
+                        call.fromSource(),
+                        call.fromClass(),
+                        call.fromMethod(),
+                        call.fromDescriptor(),
+                        call.toClass(),
+                        call.toMethod(),
+                        call.toDescriptor(),
+                        "call",
+                        SymbolContract.id(
+                                callee,
+                                "<init>".equals(call.toMethod()) ? "CONSTRUCTOR" : "METHOD",
+                                call.toMethod(),
+                                call.toDescriptor()),
+                        call.evidenceLines());
             if (transitive) {
                 edge.put("depth", traversed.depth());
                 edge.put("traversal_direction", traversed.direction());
@@ -273,9 +421,9 @@ public final class CallHierarchyQueries {
         dispatch.writeTargets(root);
         javaLocations.writeDefaults(root);
         appendPage(root, page.size(), filtered.size(), limit, offset);
-        UsageCoverage.append(root,reader,cls.id());
+        UsageCoverage.append(root, reader, cls.id());
         appendMeta(root, reader, naiveTokens, cls.sourceFile(), cls.module());
-        return root.toString();
+        return root;
     }
 
     private static boolean inScope(MethodCallView call, String scope) {
@@ -292,22 +440,59 @@ public final class CallHierarchyQueries {
         return separator < 0 ? "" : owner.substring(0, separator);
     }
 
-    private static TraversalResult direct(ReadQueryContext reader, int classId, String method,
-            String descriptor, String direction, int limit, int offset) {
-        List<TraversalEdge> edges = reader.usages.findMethodCalls(classId, method, descriptor, direction, limit, offset, reader.methods().symbolicOwners(classId, method, descriptor, direction)).stream()
-                .map(call -> new TraversalEdge(call, 1, direction, List.of()))
-                .toList();
-        int total = reader.usages.countMethodCalls(classId, method, descriptor, direction, reader.methods().symbolicOwners(classId, method, descriptor, direction));
+    private static TraversalResult direct(
+            ReadQueryContext reader,
+            int classId,
+            String method,
+            String descriptor,
+            String direction,
+            int limit,
+            int offset) {
+        List<TraversalEdge> edges =
+                reader
+                        .usages
+                        .findMethodCalls(
+                                classId,
+                                method,
+                                descriptor,
+                                direction,
+                                limit,
+                                offset,
+                                reader.methods()
+                                        .symbolicOwners(classId, method, descriptor, direction))
+                        .stream()
+                        .map(call -> new TraversalEdge(call, 1, direction, List.of()))
+                        .toList();
+        int total =
+                reader.usages.countMethodCalls(
+                        classId,
+                        method,
+                        descriptor,
+                        direction,
+                        reader.methods().symbolicOwners(classId, method, descriptor, direction));
         return new TraversalResult(edges, total, total > edges.size());
     }
 
-    private static TraversalResult traverse(ReadQueryContext reader, int classId, String method,
-            String descriptor, String direction, int maxDepth) {
-        List<String> directions = direction.equals("both")
-                ? List.of("inbound", "outbound") : List.of(direction);
+    private static TraversalResult traverse(
+            ReadQueryContext reader,
+            int classId,
+            String method,
+            String descriptor,
+            String direction,
+            int maxDepth) {
+        List<String> directions =
+                direction.equals("both") ? List.of("inbound", "outbound") : List.of(direction);
         LinkedHashSet<MethodNode> roots = new LinkedHashSet<>();
         for (String traversalDirection : directions) {
-            for (MethodCallView call : reader.usages.findAdjacentMethodCalls(classId, method, descriptor, traversalDirection, reader.methods().symbolicOwners(classId, method, descriptor, traversalDirection))) {
+            for (MethodCallView call :
+                    reader.usages.findAdjacentMethodCalls(
+                            classId,
+                            method,
+                            descriptor,
+                            traversalDirection,
+                            reader.methods()
+                                    .symbolicOwners(
+                                            classId, method, descriptor, traversalDirection))) {
                 roots.add(endpoint(call, traversalDirection));
             }
         }
@@ -326,13 +511,25 @@ public final class CallHierarchyQueries {
             NodePath current = queue.removeFirst();
             if (current.depth() >= maxDepth) continue;
             for (String traversalDirection : directions) {
-                List<MethodCallView> adjacent = reader.usages.findAdjacentMethodCalls(current.node().classId(), current.node().method(), current.node().descriptor(), traversalDirection, reader.methods().symbolicOwners(current.node().classId(), current.node().method(), current.node().descriptor(), traversalDirection));
+                List<MethodCallView> adjacent =
+                        reader.usages.findAdjacentMethodCalls(
+                                current.node().classId(),
+                                current.node().method(),
+                                current.node().descriptor(),
+                                traversalDirection,
+                                reader.methods()
+                                        .symbolicOwners(
+                                                current.node().classId(),
+                                                current.node().method(),
+                                                current.node().descriptor(),
+                                                traversalDirection));
                 for (MethodCallView call : adjacent) {
                     MethodNode next = opposite(call, traversalDirection);
                     List<String> path = new ArrayList<>(current.path());
                     path.add(next.identity());
                     int depth = current.depth() + 1;
-                    found.putIfAbsent(edgeKey(call),
+                    found.putIfAbsent(
+                            edgeKey(call),
                             new TraversalEdge(call, depth, traversalDirection, List.copyOf(path)));
                     if (found.size() >= TRAVERSAL_EDGE_CAP) {
                         truncated = true;
@@ -344,34 +541,56 @@ public final class CallHierarchyQueries {
                 }
             }
         }
-        List<TraversalEdge> edges = found.values().stream()
-                .sorted(Comparator.comparingInt(TraversalEdge::depth)
-                        .thenComparing(edge -> edge.call().fromClass())
-                        .thenComparing(edge -> edge.call().fromMethod())
-                        .thenComparing(edge -> edge.call().fromDescriptor())
-                        .thenComparing(edge -> edge.call().toClass())
-                        .thenComparing(edge -> edge.call().toMethod())
-                        .thenComparing(edge -> edge.call().toDescriptor()))
-                .toList();
+        List<TraversalEdge> edges =
+                found.values().stream()
+                        .sorted(
+                                Comparator.comparingInt(TraversalEdge::depth)
+                                        .thenComparing(edge -> edge.call().fromClass())
+                                        .thenComparing(edge -> edge.call().fromMethod())
+                                        .thenComparing(edge -> edge.call().fromDescriptor())
+                                        .thenComparing(edge -> edge.call().toClass())
+                                        .thenComparing(edge -> edge.call().toMethod())
+                                        .thenComparing(edge -> edge.call().toDescriptor()))
+                        .toList();
         return new TraversalResult(edges, edges.size(), truncated);
     }
 
     private static MethodNode endpoint(MethodCallView call, String direction) {
         return direction.equals("inbound")
-                ? new MethodNode(call.toClassId(), call.toClass(), call.toMethod(), call.toDescriptor())
-                : new MethodNode(call.fromClassId(), call.fromClass(), call.fromMethod(), call.fromDescriptor());
+                ? new MethodNode(
+                        call.toClassId(), call.toClass(), call.toMethod(), call.toDescriptor())
+                : new MethodNode(
+                        call.fromClassId(),
+                        call.fromClass(),
+                        call.fromMethod(),
+                        call.fromDescriptor());
     }
 
     private static MethodNode opposite(MethodCallView call, String direction) {
         return direction.equals("inbound")
-                ? new MethodNode(call.fromClassId(), call.fromClass(), call.fromMethod(), call.fromDescriptor())
-                : new MethodNode(call.toClassId(), call.toClass(), call.toMethod(), call.toDescriptor());
+                ? new MethodNode(
+                        call.fromClassId(),
+                        call.fromClass(),
+                        call.fromMethod(),
+                        call.fromDescriptor())
+                : new MethodNode(
+                        call.toClassId(), call.toClass(), call.toMethod(), call.toDescriptor());
     }
 
     private static String edgeKey(MethodCallView call) {
-        return call.fromClassId() + "\u0000" + call.fromMethod() + "\u0000" + call.fromDescriptor()
-                + "\u0000" + call.toClassId() + "\u0000" + call.toMethod() + "\u0000"
-                + call.toDescriptor() + "\u0000" + call.invocationKind();
+        return call.fromClassId()
+                + "\u0000"
+                + call.fromMethod()
+                + "\u0000"
+                + call.fromDescriptor()
+                + "\u0000"
+                + call.toClassId()
+                + "\u0000"
+                + call.toMethod()
+                + "\u0000"
+                + call.toDescriptor()
+                + "\u0000"
+                + call.invocationKind();
     }
 
     private static List<TraversalEdge> page(List<TraversalEdge> edges, int offset, int limit) {
@@ -379,8 +598,15 @@ public final class CallHierarchyQueries {
         return edges.subList(offset, Math.min(edges.size(), offset + limit));
     }
 
-    private static void appendEndpoint(ObjectNode node, String className, String method,
-            String descriptor, String source, int sourceLine, String origin, String module) {
+    private static void appendEndpoint(
+            ObjectNode node,
+            String className,
+            String method,
+            String descriptor,
+            String source,
+            int sourceLine,
+            String origin,
+            String module) {
         // Parameter and return types are derivable from the JVM descriptor; repeating them on
         // both endpoints of every edge roughly doubled the endpoint payload.
         node.put("class", className);
@@ -392,20 +618,33 @@ public final class CallHierarchyQueries {
         else node.put("module", module);
     }
 
-    /** The one bytecode descriptor of a synthetic lambda in call evidence, matching a given descriptor if any. */
-    private static String lambdaDescriptor(ReadQueryContext reader, int classId, String method, String signature) {
+    /**
+     * The one bytecode descriptor of a synthetic lambda in call evidence, matching a given
+     * descriptor if any.
+     */
+    private static String lambdaDescriptor(
+            ReadQueryContext reader, int classId, String method, String signature) {
         List<String> descriptors = reader.usages.findCallDescriptors(classId, method);
-        List<String> matching = signature == null ? descriptors
-                : descriptors.stream().filter(signature::equals).toList();
+        List<String> matching =
+                signature == null
+                        ? descriptors
+                        : descriptors.stream().filter(signature::equals).toList();
         return matching.size() == 1 ? matching.getFirst() : null;
     }
 
-    private static String symbolSelectionError(ReadQueryContext reader, ClassRecord cls,
-            String method, String signature, List<ClassMemberRecord> candidates,
+    private static ObjectNode symbolSelectionError(
+            ReadQueryContext reader,
+            ClassRecord cls,
+            String method,
+            String signature,
+            List<ClassMemberRecord> candidates,
             boolean ambiguous) {
         ObjectNode error = JSON.createObjectNode();
-        appendError(error, ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
-                ambiguous ? "Ambiguous method; provide signature or JVM descriptor"
+        appendError(
+                error,
+                ambiguous ? "AMBIGUOUS_METHOD" : "METHOD_NOT_FOUND",
+                ambiguous
+                        ? "Ambiguous method; provide signature or JVM descriptor"
                         : "Method not found");
         error.put("target", cls.className());
         error.put("method", method);
@@ -413,25 +652,35 @@ public final class CallHierarchyQueries {
         ArrayNode values = error.putArray("candidates");
         candidates.forEach(candidate -> appendCandidate(values, cls, candidate));
         if (candidates.isEmpty()) {
-            List<String> names = reader.symbols.findClassMembers(cls.id()).stream()
-                    .filter(member -> member.kind().equals("METHOD")).map(ClassMemberRecord::name)
-                    .filter(name -> !name.startsWith("lambda$")).distinct().toList();
-            if (!names.isEmpty()) error.set("similar_methods", JSON.valueToTree(NameSimilarity.closest(method, names, 5)));
+            List<String> names =
+                    reader.symbols.findClassMembers(cls.id()).stream()
+                            .filter(member -> member.kind().equals("METHOD"))
+                            .map(ClassMemberRecord::name)
+                            .filter(name -> !name.startsWith("lambda$"))
+                            .distinct()
+                            .toList();
+            if (!names.isEmpty())
+                error.set(
+                        "similar_methods",
+                        JSON.valueToTree(NameSimilarity.closest(method, names, 5)));
         }
         if (ambiguous) {
-            appendRetryWith(error, "signature",
+            appendRetryWith(
+                    error,
+                    "signature",
                     "Use one candidate's exact signature, descriptor, or symbol_id");
         }
         appendMeta(error, reader, 0);
-        return error.toString();
+        return error;
     }
 
     private static void appendCandidate(
             ArrayNode target, ClassRecord cls, ClassMemberRecord candidate) {
         ObjectNode node = target.addObject();
         String descriptor = JvmDescriptors.methodDescriptor(candidate);
-        node.put("symbol_id", SymbolContract.id(cls, candidate.kind(),
-                candidate.name(), descriptor));
+        node.put(
+                "symbol_id",
+                SymbolContract.id(cls, candidate.kind(), candidate.name(), descriptor));
         node.put("kind", candidate.kind().toLowerCase(Locale.ROOT));
         node.put("name", candidate.name());
         node.put("signature", candidate.signature());

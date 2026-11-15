@@ -49,19 +49,18 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findConfigurationReferences(
-                                                        readScope,
-                                                        "orders*",
-                                                        "OrderService",
-                                                        "all",
-                                                        null,
-                                                        20,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findConfigurationReferences(
+                                                readScope,
+                                                "orders*",
+                                                "OrderService",
+                                                "all",
+                                                null,
+                                                20,
+                                                0));
 
         assertEquals(4, result.path("total").asInt(), result.toString());
         assertEquals(2, result.path("definition_count").asInt());
@@ -82,19 +81,18 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
         assertFalse(result.toString().contains("us-west"));
 
         JsonNode dynamic =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findConfigurationReferences(
-                                                        readScope,
-                                                        "<dynamic>",
-                                                        null,
-                                                        "property",
-                                                        null,
-                                                        20,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findConfigurationReferences(
+                                                readScope,
+                                                "<dynamic>",
+                                                null,
+                                                "property",
+                                                null,
+                                                20,
+                                                0));
         JsonNode dynamicUsage = dynamic.path("references").get(0);
         assertEquals("unknown", dynamicUsage.path("resolution_status").asText());
         assertEquals(
@@ -102,33 +100,30 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
         assertFalse(dynamicUsage.path("resolved").asBoolean());
 
         JsonNode exact =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findConfigurationReferences(
-                                                        readScope,
-                                                        "orders.timeout",
-                                                        null,
-                                                        "all",
-                                                        null,
-                                                        20,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findConfigurationReferences(
+                                                readScope,
+                                                "orders.timeout",
+                                                null,
+                                                "all",
+                                                null,
+                                                20,
+                                                0));
         assertTrue(
                 exact.path("references")
                         .valueStream()
                         .anyMatch(value -> value.path("kind").asText().equals("config_prefix")));
 
         JsonNode prefixes =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findConfigurationReferences(
-                                                        readScope, null, null, "prefix", null, 20,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findConfigurationReferences(
+                                                readScope, null, null, "prefix", null, 20, 0));
         assertEquals(3, prefixes.path("total").asInt());
         assertFalse(prefixes.toString().contains("unrelated.enabled"));
     }
@@ -158,18 +153,17 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findResourceReferences(
-                                                        readScope,
-                                                        "templates/order.html",
-                                                        "OrderService",
-                                                        null,
-                                                        20,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findResourceReferences(
+                                                readScope,
+                                                "templates/order.html",
+                                                "OrderService",
+                                                null,
+                                                20,
+                                                0));
 
         assertEquals(2, result.path("total").asInt(), result.toString());
         assertEquals(1, result.path("definition_count").asInt());
@@ -215,18 +209,17 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                 });
 
         JsonNode bundle =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findResourceReferences(
-                                                        readScope,
-                                                        "messages.properties",
-                                                        null,
-                                                        null,
-                                                        20,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findResourceReferences(
+                                                readScope,
+                                                "messages.properties",
+                                                null,
+                                                null,
+                                                20,
+                                                0));
         JsonNode bundleUsage =
                 bundle.path("references")
                         .valueStream()
@@ -240,18 +233,17 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                 bundleUsage.path("definition_files").get(0).asText());
 
         JsonNode external =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findResourceReferences(
-                                                        readScope,
-                                                        "file:/tmp/order.html",
-                                                        null,
-                                                        null,
-                                                        20,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findResourceReferences(
+                                                readScope,
+                                                "file:/tmp/order.html",
+                                                null,
+                                                null,
+                                                20,
+                                                0));
         JsonNode externalUsage = external.path("references").get(0);
         assertEquals("unsupported_mechanism", externalUsage.path("resolution_status").asText());
         assertEquals(0, externalUsage.path("definition_files").size());
@@ -312,36 +304,28 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                     }
                 });
         JsonNode configuration =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findConfigurationReferences(
-                                                        readScope,
-                                                        "app.name",
-                                                        null,
-                                                        "all",
-                                                        null,
-                                                        100,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findConfigurationReferences(
+                                                readScope, "app.name", null, "all", null, 100, 0));
         assertEquals(101, configuration.path("total").asInt());
         assertTrue(statements.get() <= 10, "configuration SQL statements: " + statements);
 
         statements.set(0);
         JsonNode resources =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findResourceReferences(
-                                                        readScope,
-                                                        "templates/order.html",
-                                                        null,
-                                                        null,
-                                                        100,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findResourceReferences(
+                                                readScope,
+                                                "templates/order.html",
+                                                null,
+                                                null,
+                                                100,
+                                                0));
         assertEquals(101, resources.path("total").asInt());
         assertTrue(statements.get() <= 10, "resource SQL statements: " + statements);
     }
@@ -376,14 +360,13 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findFrameworkEndpoints(
-                                                        readScope, "spring", "post", "/orders",
-                                                        null, false, false, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findFrameworkEndpoints(
+                                                readScope, "spring", "post", "/orders", null, false,
+                                                false, 10, 0));
 
         assertEquals(1, result.path("total").asInt());
         JsonNode endpoint = result.path("endpoints").get(0);
@@ -421,23 +404,21 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                                 .execute());
         var queries = new QuillToolQueries();
         JsonNode purge =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findFrameworkEndpoints(
-                                                readScope, "jax-rs", "purge", "/cache", null, false,
-                                                false, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findFrameworkEndpoints(
+                                        readScope, "jax-rs", "purge", "/cache", null, false, false,
+                                        10, 0));
         assertEquals(1, purge.path("total").asInt());
         assertEquals("/cache", purge.path("endpoints").get(0).path("paths").get(0).asText());
         JsonNode spring =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findFrameworkEndpoints(
-                                                readScope, "spring", "GET", "/api", null, false,
-                                                false, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findFrameworkEndpoints(
+                                        readScope, "spring", "GET", "/api", null, false, false, 10,
+                                        0));
         assertEquals(1, spring.path("total").asInt());
         assertEquals(
                 List.of("/api/one", "/api/two"),
@@ -480,14 +461,13 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                             .execute();
                 });
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findFrameworkEndpoints(
-                                                        readScope, "spring", null, null, null,
-                                                        false, false, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findFrameworkEndpoints(
+                                                readScope, "spring", null, null, null, false, false,
+                                                10, 0));
         JsonNode endpoint = result.path("endpoints").get(0);
         assertEquals("org.acme.OrderService", endpoint.path("class").asText());
         assertEquals("org.acme.StripePaymentService", endpoint.path("declaring_class").asText());
@@ -518,14 +498,13 @@ class QuillToolsReferenceTest extends QuillToolsTestBase {
                         """)
                                 .execute());
         JsonNode endpoint =
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                new QuillToolQueries()
-                                                        .findFrameworkEndpoints(
-                                                                readScope, "spring", null, null,
-                                                                null, false, false, 10, 0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        new QuillToolQueries()
+                                                .findFrameworkEndpoints(
+                                                        readScope, "spring", null, null, null,
+                                                        false, false, 10, 0))
                         .path("endpoints")
                         .get(0);
         assertFalse(endpoint.path("direct_call_targets_indexed").asBoolean());

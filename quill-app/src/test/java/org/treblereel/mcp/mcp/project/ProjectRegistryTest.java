@@ -1,10 +1,5 @@
 package org.treblereel.mcp.mcp.project;
 
-import org.treblereel.mcp.index.ProjectIndexStore;
-import org.treblereel.mcp.workspace.ProjectScope;
-import org.treblereel.mcp.workspace.SingleProjectScope;
-
-import org.treblereel.mcp.db.IndexSchema;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
@@ -16,9 +11,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.db.IndexSchema;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
 import org.treblereel.mcp.mcp.tools.QuillTools;
+import org.treblereel.mcp.workspace.ProjectScope;
+import org.treblereel.mcp.workspace.SingleProjectScope;
 
 class ProjectRegistryTest {
 
@@ -30,24 +28,36 @@ class ProjectRegistryTest {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         createPublishedDatabase(project, "previous");
         var jobs = new java.util.ArrayDeque<Runnable>();
-        ProjectRegistry registry = new ProjectRegistry(new SingleProjectScope(),
-                new BuildEventConsumer(jobs::add));
+        ProjectRegistry registry =
+                new ProjectRegistry(new SingleProjectScope(), new BuildEventConsumer(jobs::add));
         registry.register(project);
         assertEquals(1, registry.resolve().projects().size());
         Path events = Files.createDirectories(project.resolve(".quill/build-events"));
-        Files.writeString(events.resolve("event.json"),
+        Files.writeString(
+                events.resolve("event.json"),
                 "{\"version\":3,\"buildTool\":\"maven\",\"successful\":false,"
-                        + "\"finishedAt\":" + System.currentTimeMillis()
+                        + "\"finishedAt\":"
+                        + System.currentTimeMillis()
                         + ",\"captureScope\":\"exception_chain\","
                         + "\"failureMessagesBase64\":[],\"diagnosticsBase64\":[]}");
         var tools = new QuillTools(registry);
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
-        var targets = java.util.Optional.of(List.of("One","Two","Three","Four","Five","Six"));
+        var targets = java.util.Optional.of(List.of("One", "Two", "Three", "Four", "Five", "Six"));
         var limit = java.util.Optional.of(40);
         for (int request = 0; request < 3; request++) {
-            String response = assertTimeoutPreemptively(java.time.Duration.ofSeconds(2),
-                    () -> tools.change_session(targets, "Update persistence", java.util.Optional.empty(),
-                            java.util.Optional.empty(), limit, java.util.Optional.empty(), java.util.Optional.empty()));
+            String response =
+                    assertTimeoutPreemptively(
+                                    java.time.Duration.ofSeconds(2),
+                                    () ->
+                                            tools.change_session(
+                                                    targets,
+                                                    "Update persistence",
+                                                    java.util.Optional.empty(),
+                                                    java.util.Optional.empty(),
+                                                    limit,
+                                                    java.util.Optional.empty(),
+                                                    java.util.Optional.empty()))
+                            .toString();
             var pending = json.readTree(response);
             assertEquals("refresh_pending", pending.path("status").asText());
             assertEquals("build_events_queued", pending.path("reason").asText());
@@ -61,20 +71,42 @@ class ProjectRegistryTest {
             assertFalse(pending.has("verification_receipt"));
             assertFalse(pending.path("verified").asBoolean());
         }
-        assertEquals("refresh_pending", json.readTree(tools.verify_change(targets, limit,
-                java.util.Optional.empty())).path("status").asText());
-        assertEquals("refresh_pending", json.readTree(tools.search_symbols("*InvocationStore",
-                java.util.Optional.of("class"), java.util.Optional.empty(), limit,
-                java.util.Optional.empty(), java.util.Optional.empty())).path("status").asText());
-        assertEquals("refresh_pending", json.readTree(tools.find_architecture_violations(
-                java.util.Optional.of("module"), "one", List.of("two"), java.util.Optional.empty(),
-                limit, java.util.Optional.empty(), java.util.Optional.empty())).path("status").asText());
+        assertEquals(
+                "refresh_pending",
+                tools.verify_change(targets, limit, java.util.Optional.empty())
+                        .path("status")
+                        .asText());
+        assertEquals(
+                "refresh_pending",
+                tools.search_symbols(
+                                "*InvocationStore",
+                                java.util.Optional.of("class"),
+                                java.util.Optional.empty(),
+                                limit,
+                                java.util.Optional.empty(),
+                                java.util.Optional.empty())
+                        .path("status")
+                        .asText());
+        assertEquals(
+                "refresh_pending",
+                tools.find_architecture_violations(
+                                java.util.Optional.of("module"),
+                                "one",
+                                List.of("two"),
+                                java.util.Optional.empty(),
+                                limit,
+                                java.util.Optional.empty(),
+                                java.util.Optional.empty())
+                        .path("status")
+                        .asText());
         assertEquals(1, jobs.size(), "Retries must share the running refresh");
         jobs.remove().run();
         assertEquals(1, registry.resolve().projects().size());
         assertFalse(Files.exists(events));
-        assertFalse(json.readTree(project.resolve(".quill/build-state.json").toFile())
-                .path("successful").asBoolean());
+        assertFalse(
+                json.readTree(project.resolve(".quill/build-state.json").toFile())
+                        .path("successful")
+                        .asBoolean());
     }
 
     @Test
@@ -89,8 +121,8 @@ class ProjectRegistryTest {
         registry.register(nested);
 
         assertFalse(registry.isEmpty());
-        ProjectRegistry.ProjectEntry entry = registry.resolve().projects().stream()
-                .findFirst().orElse(null);
+        ProjectRegistry.ProjectEntry entry =
+                registry.resolve().projects().stream().findFirst().orElse(null);
         assertNull(entry, "An unindexed project must not be exposed as queryable");
         ProjectRegistry.Resolution resolution = registry.resolve();
         assertTrue(resolution.errors().getFirst().contains("my-project"));
@@ -129,7 +161,9 @@ class ProjectRegistryTest {
 
         var errors = registry.uninitializedErrors();
         assertEquals(2, errors.size());
-        assertNotEquals(errors.get(0), errors.get(1),
+        assertNotEquals(
+                errors.get(0),
+                errors.get(1),
                 "Two projects with same dir name should get deduplicated names");
     }
 
@@ -184,8 +218,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    void indexedProjectWithNewerSourcesRemainsQueryableButReportsStaleClasses()
-            throws IOException {
+    void indexedProjectWithNewerSourcesRemainsQueryableButReportsStaleClasses() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("stale-project"));
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         Path source = project.resolve("src/main/java/org/acme/App.java");
@@ -195,10 +228,9 @@ class ProjectRegistryTest {
         Files.writeString(source, "package org.acme; public final class App {}\n");
         Files.write(compiled, new byte[] {1});
         long now = System.currentTimeMillis();
-        Files.setLastModifiedTime(compiled,
-                java.nio.file.attribute.FileTime.fromMillis(now - 2_000));
-        Files.setLastModifiedTime(source,
-                java.nio.file.attribute.FileTime.fromMillis(now + 2_000));
+        Files.setLastModifiedTime(
+                compiled, java.nio.file.attribute.FileTime.fromMillis(now - 2_000));
+        Files.setLastModifiedTime(source, java.nio.file.attribute.FileTime.fromMillis(now + 2_000));
         createPublishedDatabase(project, "stale");
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(project);
@@ -218,7 +250,9 @@ class ProjectRegistryTest {
     @Test
     void pureParentPomIsReportedAsMetadataOnly() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("parent"));
-        Files.writeString(project.resolve("pom.xml"), """
+        Files.writeString(
+                project.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>parent</artifactId><version>1</version>
                   <packaging>pom</packaging>
@@ -238,14 +272,18 @@ class ProjectRegistryTest {
     @Test
     void pomAggregatorWithCodeModuleStillRequiresBuild() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("reactor"));
-        Files.writeString(project.resolve("pom.xml"), """
+        Files.writeString(
+                project.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>reactor</artifactId><version>1</version>
                   <packaging>pom</packaging><modules><module>service</module></modules>
                 </project>
                 """);
         Path service = Files.createDirectories(project.resolve("service"));
-        Files.writeString(service.resolve("pom.xml"), """
+        Files.writeString(
+                service.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <parent><groupId>org.acme</groupId><artifactId>reactor</artifactId>
                     <version>1</version></parent><artifactId>service</artifactId>
@@ -265,35 +303,51 @@ class ProjectRegistryTest {
         var resolving = new java.util.concurrent.CountDownLatch(1);
         var resume = new java.util.concurrent.CountDownLatch(1);
         var closing = new java.util.concurrent.CountDownLatch(1);
-        ProjectScope scope = () -> {
-            resolving.countDown();
-            try {
-                if (!resume.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Timed out");
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(interrupted);
-            }
-            return new ProjectScope.Snapshot(1, List.of(new ProjectScope.Project("present", project)));
-        };
+        ProjectScope scope =
+                () -> {
+                    resolving.countDown();
+                    try {
+                        if (!resume.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                            throw new IllegalStateException("Timed out");
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(interrupted);
+                    }
+                    return new ProjectScope.Snapshot(
+                            1, List.of(new ProjectScope.Project("present", project)));
+                };
         var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
         var registry = new ProjectRegistry(scope);
         try {
             var resolved = workers.submit(() -> registry.resolve());
             assertTrue(resolving.await(5, java.util.concurrent.TimeUnit.SECONDS));
-            var closed = workers.submit(() -> {
-                closing.countDown();
-                registry.close();
-            });
+            var closed =
+                    workers.submit(
+                            () -> {
+                                closing.countDown();
+                                registry.close();
+                            });
             assertTrue(closing.await(5, java.util.concurrent.TimeUnit.SECONDS));
-            assertThrows(java.util.concurrent.TimeoutException.class,
+            assertThrows(
+                    java.util.concurrent.TimeoutException.class,
                     () -> closed.get(30, java.util.concurrent.TimeUnit.MILLISECONDS));
             resume.countDown();
-            var database = resolved.get(5, java.util.concurrent.TimeUnit.SECONDS).projects().getFirst().jdbi();
+            var database =
+                    resolved.get(5, java.util.concurrent.TimeUnit.SECONDS)
+                            .projects()
+                            .getFirst()
+                            .jdbi();
             closed.get(5, java.util.concurrent.TimeUnit.SECONDS);
             assertEquals(0, registry.cachedDatabaseCount());
             assertThrows(IllegalStateException.class, registry::resolve);
-            assertEquals("present", database.withHandle(handle -> handle.createQuery(
-                    "SELECT value FROM metadata WHERE key='index_id'").mapTo(String.class).one()));
+            assertEquals(
+                    "present",
+                    database.withHandle(
+                            handle ->
+                                    handle.createQuery(
+                                                    "SELECT value FROM metadata WHERE key='index_id'")
+                                            .mapTo(String.class)
+                                            .one()));
         } finally {
             resume.countDown();
             workers.shutdownNow();
@@ -313,8 +367,14 @@ class ProjectRegistryTest {
             registry.close();
             assertEquals(0, registry.cachedDatabaseCount());
             assertThrows(IllegalStateException.class, registry::resolve);
-            assertEquals("present", database.withHandle(handle -> handle.createQuery(
-                    "SELECT value FROM metadata WHERE key='index_id'").mapTo(String.class).one()));
+            assertEquals(
+                    "present",
+                    database.withHandle(
+                            handle ->
+                                    handle.createQuery(
+                                                    "SELECT value FROM metadata WHERE key='index_id'")
+                                            .mapTo(String.class)
+                                            .one()));
         }
     }
 
@@ -331,19 +391,21 @@ class ProjectRegistryTest {
         var second = registry.resolve().projects().getFirst().jdbi();
 
         assertNotSame(first, second);
-        assertEquals(1, registry.cachedDatabaseCount(),
+        assertEquals(
+                1,
+                registry.cachedDatabaseCount(),
                 "An obsolete immutable generation must not remain cached");
     }
 
     @Test
-    void removedProjectEvictsItsDatabaseWithoutInvalidatingInFlightReference()
-            throws IOException {
+    void removedProjectEvictsItsDatabaseWithoutInvalidatingInFlightReference() throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("removed-project"));
         Files.createFile(project.resolve("pom.xml"));
         createPublishedDatabase(project, "present");
-        AtomicReference<ProjectScope.Snapshot> current = new AtomicReference<>(
-                new ProjectScope.Snapshot(1,
-                        List.of(new ProjectScope.Project("removed-project", project))));
+        AtomicReference<ProjectScope.Snapshot> current =
+                new AtomicReference<>(
+                        new ProjectScope.Snapshot(
+                                1, List.of(new ProjectScope.Project("removed-project", project))));
         ProjectRegistry registry = new ProjectRegistry(current::get);
 
         var inFlight = registry.resolve().projects().getFirst().jdbi();
@@ -351,9 +413,14 @@ class ProjectRegistryTest {
         assertTrue(registry.resolve().projects().isEmpty());
 
         assertEquals(0, registry.cachedDatabaseCount());
-        assertEquals("present", inFlight.withHandle(handle -> handle.createQuery(
-                        "SELECT value FROM metadata WHERE key = 'index_id'")
-                .mapTo(String.class).one()));
+        assertEquals(
+                "present",
+                inFlight.withHandle(
+                        handle ->
+                                handle.createQuery(
+                                                "SELECT value FROM metadata WHERE key = 'index_id'")
+                                        .mapTo(String.class)
+                                        .one()));
     }
 
     @Test
@@ -373,7 +440,8 @@ class ProjectRegistryTest {
         ProjectRegistry.Resolution resolution = registry.resolve("selected");
 
         assertEquals(1, resolution.projects().size());
-        assertTrue(resolution.errors().isEmpty(),
+        assertTrue(
+                resolution.errors().isEmpty(),
                 "An explicitly unselected broken repository must not affect the request");
         assertEquals(1, registry.cachedDatabaseCount());
     }
@@ -391,8 +459,7 @@ class ProjectRegistryTest {
         assertTrue(resolution.errors().isEmpty());
         assertEquals(1, resolution.projects().size());
         assertEquals("single-project", resolution.projects().getFirst().name());
-        assertEquals(project.toAbsolutePath().normalize(),
-                resolution.projects().getFirst().root());
+        assertEquals(project.toAbsolutePath().normalize(), resolution.projects().getFirst().root());
     }
 
     @Test
@@ -410,14 +477,24 @@ class ProjectRegistryTest {
 
     @Test
     void failedOutdatedIndexRebuildsBackOffToAnHour() {
-        assertEquals(List.of(1L, 2L, 4L, 8L, 16L, 32L, 60L, 60L), java.util.stream.IntStream.rangeClosed(1, 8)
-                .mapToObj(failures -> java.time.Duration.ofNanos(ProjectRegistry.repairRetryNanos(failures)).toMinutes()).toList());
+        assertEquals(
+                List.of(1L, 2L, 4L, 8L, 16L, 32L, 60L, 60L),
+                java.util.stream.IntStream.rangeClosed(1, 8)
+                        .mapToObj(
+                                failures ->
+                                        java.time.Duration.ofNanos(
+                                                        ProjectRegistry.repairRetryNanos(failures))
+                                                .toMinutes())
+                        .toList());
     }
 
     @Test
-    void concurrentFirstRequestsRebuildAnOutdatedSchemaInTheBackgroundWithoutRunningABuild() throws Exception {
+    void concurrentFirstRequestsRebuildAnOutdatedSchemaInTheBackgroundWithoutRunningABuild()
+            throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("outdated-project"));
-        Files.writeString(project.resolve("pom.xml"), """
+        Files.writeString(
+                project.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>outdated</artifactId><version>1</version>
                 </project>
@@ -426,21 +503,25 @@ class ProjectRegistryTest {
         Files.createDirectories(source.getParent());
         Files.writeString(source, "package org.acme; public final class App {}\n");
         Path classes = Files.createDirectories(project.resolve("target/classes"));
-        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
-                null, null, null, "-d", classes.toString(), source.toString()));
+        assertEquals(
+                0,
+                ToolProvider.getSystemJavaCompiler()
+                        .run(null, null, null, "-d", classes.toString(), source.toString()));
         Path old = createPublishedDatabase(project, "outdated");
-        QuillDatabase.openWritable(old).useHandle(handle ->
-                handle.execute("PRAGMA user_version = 7"));
+        QuillDatabase.openWritable(old)
+                .useHandle(handle -> handle.execute("PRAGMA user_version = 7"));
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(project);
         var executor = Executors.newFixedThreadPool(8);
         List<java.util.concurrent.Future<ProjectRegistry.Resolution>> resolutions;
         try {
-            resolutions = executor.invokeAll(java.util.stream.IntStream.range(0, 8)
-                    .<java.util.concurrent.Callable<ProjectRegistry.Resolution>>mapToObj(
-                            ignored -> registry::resolve)
-                    .toList());
+            resolutions =
+                    executor.invokeAll(
+                            java.util.stream.IntStream.range(0, 8)
+                                    .<java.util.concurrent.Callable<ProjectRegistry.Resolution>>
+                                            mapToObj(ignored -> registry::resolve)
+                                    .toList());
         } finally {
             executor.shutdownNow();
         }
@@ -449,8 +530,10 @@ class ProjectRegistryTest {
         // index or a retryable refresh_pending; none blocks on the initialization.
         for (var resolution : resolutions) {
             var resolved = resolution.get();
-            assertTrue(resolved.projects().size() == 1 || resolved.issues().stream()
-                            .allMatch(issue -> issue.code().equals("refresh_pending")),
+            assertTrue(
+                    resolved.projects().size() == 1
+                            || resolved.issues().stream()
+                                    .allMatch(issue -> issue.code().equals("refresh_pending")),
                     resolved.issues().toString());
         }
         ProjectRegistry.Resolution ready = registry.resolve();
@@ -461,11 +544,9 @@ class ProjectRegistryTest {
         }
         assertTrue(ready.errors().isEmpty(), ready.errors().toString());
         assertEquals(1, ready.projects().size());
-        Path current = org.treblereel.mcp.index.ProjectIndexStore
-                .findBestAvailableDb(project);
+        Path current = org.treblereel.mcp.index.ProjectIndexStore.findBestAvailableDb(project);
         assertNotNull(current);
-        assertEquals(IndexSchema.VERSION,
-                IndexSchema.inspectVersion(current));
+        assertEquals(IndexSchema.VERSION, IndexSchema.inspectVersion(current));
         assertFalse(current.equals(old), "The outdated generation must not remain active");
         assertFalse(Files.exists(project.resolve(".mvn/extensions.xml")));
         assertFalse(Files.exists(project.resolve("CLAUDE.md")));
@@ -475,16 +556,20 @@ class ProjectRegistryTest {
         Path quillDir = Files.createDirectories(project.resolve(".quill"));
         Path database = quillDir.resolve(indexId + ".db");
         var jdbi = QuillDatabase.create(database);
-        jdbi.useHandle(handle -> {
-            handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                    "index_id", indexId);
-            handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                    "last_commit", "unknown");
-            handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                    "project_root", project.toString());
-        });
-        Files.writeString(quillDir.resolve("refs.json"),
-                "{\"@worktree\":\"" + indexId + "\"}");
+        jdbi.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES (?, ?)", "index_id", indexId);
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                            "last_commit",
+                            "unknown");
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                            "project_root",
+                            project.toString());
+                });
+        Files.writeString(quillDir.resolve("refs.json"), "{\"@worktree\":\"" + indexId + "\"}");
         return database;
     }
 }

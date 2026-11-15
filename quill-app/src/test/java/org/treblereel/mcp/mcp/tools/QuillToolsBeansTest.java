@@ -19,7 +19,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
 
     @Test
     void getBeansReturnsAllBeans() {
-        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, null);
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, null).toString();
         assertTrue(result.contains("OrderService"));
         assertTrue(result.contains("StripePaymentService"));
         assertTrue(result.contains("\"total\":3"));
@@ -28,12 +28,9 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
     @Test
     void getBeansResolvesShortClassName() throws Exception {
         JsonNode shortName =
-                JSON.readTree(
-                        JDBI_READS.getBeans(jdbi, "StripePaymentService", null, null, null, null));
+                JDBI_READS.getBeans(jdbi, "StripePaymentService", null, null, null, null);
         JsonNode fqcn =
-                JSON.readTree(
-                        JDBI_READS.getBeans(
-                                jdbi, "org.acme.StripePaymentService", null, null, null, null));
+                JDBI_READS.getBeans(jdbi, "org.acme.StripePaymentService", null, null, null, null);
 
         assertEquals(1, shortName.get("total").asInt());
         assertEquals(fqcn.get("beans"), shortName.get("beans"));
@@ -73,23 +70,22 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
                                                 true)))));
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .getBeans(
-                                                        readScope,
-                                                        "TwilioSmsConnector",
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        "dependency",
-                                                        50,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .getBeans(
+                                                readScope,
+                                                "TwilioSmsConnector",
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                "dependency",
+                                                50,
+                                                0));
 
         assertEquals(1, result.path("total").asInt());
         JsonNode bean = result.path("beans").get(0);
@@ -113,8 +109,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
 
     @Test
     void getBeansReturnsCandidatesForUnknownClassName() throws Exception {
-        JsonNode result =
-                JSON.readTree(JDBI_READS.getBeans(jdbi, "PaymentServ", null, null, null, null));
+        JsonNode result = JDBI_READS.getBeans(jdbi, "PaymentServ", null, null, null, null);
 
         assertEquals("CLASS_NOT_FOUND", result.path("error_code").asText());
         assertEquals("Class not found", result.path("message").asText());
@@ -139,7 +134,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
                     }
                 };
 
-        String result =
+        JsonNode root =
                 new QuillTools(registry)
                         .list_beans(
                                 Optional.empty(),
@@ -154,14 +149,14 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
                                 Optional.empty(),
                                 Optional.empty());
 
-        JsonNode root = JSON.readTree(result);
         assertTrue(root.get("error").asText().contains("broken-project"));
         assertTrue(root.get("error").asText().contains("beans"));
     }
 
     @Test
     void getBeansFiltersByScope() {
-        String result = JDBI_READS.getBeans(jdbi, null, "@ApplicationScoped", null, null, null);
+        String result =
+                JDBI_READS.getBeans(jdbi, null, "@ApplicationScoped", null, null, null).toString();
         assertTrue(result.contains("OrderService"));
         assertTrue(result.contains("StripePaymentService"));
         assertFalse(result.contains("AuditService"));
@@ -169,7 +164,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
 
     @Test
     void getBeansFiltersByProfile() {
-        String result = JDBI_READS.getBeans(jdbi, null, null, null, "dev", null);
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, "dev", null).toString();
         assertTrue(result.contains("AuditService"));
         assertTrue(result.contains("OrderService"));
         assertFalse(result.contains("StripePaymentService"));
@@ -178,7 +173,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
 
     @Test
     void getBeansFiltersByQualifier() {
-        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, "@Premium");
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, "@Premium").toString();
         assertTrue(result.contains("StripePaymentService"));
         assertFalse(result.contains("OrderService"));
         assertFalse(result.contains("AuditService"));
@@ -188,32 +183,30 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
     @Test
     void beanOriginAcceptsSourceForApplication() throws Exception {
         JsonNode source =
-                JSON.readTree(
-                        ReadQueryContext.<String>read(
-                                jdbi,
-                                reader ->
-                                        new QuillToolQueries()
-                                                .getBeans(
-                                                        reader, null, null, null, null, null, null,
-                                                        null, "SOURCE", 50, 0)));
+                ReadQueryContext.read(
+                        jdbi,
+                        reader ->
+                                new QuillToolQueries()
+                                        .getBeans(
+                                                reader, null, null, null, null, null, null, null,
+                                                "SOURCE", 50, 0));
         JsonNode application =
-                JSON.readTree(
-                        ReadQueryContext.<String>read(
-                                jdbi,
-                                reader ->
-                                        new QuillToolQueries()
-                                                .getBeans(
-                                                        reader,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        null,
-                                                        "application",
-                                                        50,
-                                                        0)));
+                ReadQueryContext.read(
+                        jdbi,
+                        reader ->
+                                new QuillToolQueries()
+                                        .getBeans(
+                                                reader,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                "application",
+                                                50,
+                                                0));
 
         assertFalse(source.has("error_code"), source.toString());
         assertEquals(application.path("beans"), source.path("beans"));
@@ -221,7 +214,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
 
     @Test
     void interfaceInjectionQueryGuidesToConsumers() throws Exception {
-        JsonNode result = JSON.readTree(JDBI_READS.getInjectionPoints(jdbi, "PaymentService"));
+        JsonNode result = JDBI_READS.getInjectionPoints(jdbi, "PaymentService");
         assertEquals("dependencies_injected_into_bean", result.path("query_direction").asText());
         assertEquals("find_usages", result.path("next_step").path("tool").asText());
         assertEquals(
@@ -232,7 +225,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
     @Test
     void getInjectionPointsShowsResolutionEvidenceAndKeepsMissingCandidateUnknown()
             throws Exception {
-        String result = JDBI_READS.getInjectionPoints(jdbi, "OrderService");
+        String result = JDBI_READS.getInjectionPoints(jdbi, "OrderService").toString();
         JsonNode root = JSON.readTree(result);
         assertEquals(2, root.get("injection_points").size());
         assertEquals(2, root.path("injection_points_total").asInt());
@@ -360,7 +353,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
         IndexWriter.writeIncremental(
                 jdbi,
                 new IndexFixture().classes(classes).beans(beans).injectionPoints(ips).snapshot());
-        var response = JSON.readTree(JDBI_READS.getInjectionPoints(jdbi, "example.Consumer"));
+        var response = JDBI_READS.getInjectionPoints(jdbi, "example.Consumer");
         assertEquals("@Singleton", response.path("scope").asText());
         assertEquals(1, response.path("injection_points_total").asInt());
         assertEquals(1, response.path("injection_points_by_kind").path("FIELD").asInt());
@@ -373,7 +366,7 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
 
     @Test
     void getBeansRespectsLimit() throws Exception {
-        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, null, 1);
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, null, 1).toString();
         JsonNode root = JSON.readTree(result);
         assertEquals(1, root.get("showing").asInt());
         assertEquals(3, root.get("total").asInt());
@@ -382,14 +375,13 @@ class QuillToolsBeansTest extends QuillToolsTestBase {
     @Test
     void listBeansUsesStablePaginationEnvelopeAndOffset() throws Exception {
         JsonNode root =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .getBeans(
-                                                        readScope, null, null, null, null, null,
-                                                        null, null, 1, 1)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .getBeans(
+                                                readScope, null, null, null, null, null, null, null,
+                                                1, 1));
 
         assertEquals(1, root.path("showing").asInt());
         assertEquals(3, root.path("total").asInt());

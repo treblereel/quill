@@ -9,20 +9,24 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.IndexRepository;
-import org.treblereel.mcp.db.IndexRepository.FileRow;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.IndexRepository.FileRow;
+import org.treblereel.mcp.db.ReadQueryContext;
 
 /** Compact file navigation over the indexed, worktree-aware file inventory. */
 final class FileNavigationQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    String listProjectTree(ReadQueryContext reader, String path, int depth, boolean includeDeleted,
-            int limit, int offset) {
+    ObjectNode listProjectTree(
+            ReadQueryContext reader,
+            String path,
+            int depth,
+            boolean includeDeleted,
+            int limit,
+            int offset) {
         String base = normalizeBase(path);
-        List<FileRow> files = reader.index.findNavigationFiles( base, includeDeleted);
+        List<FileRow> files = reader.index.findNavigationFiles(base, includeDeleted);
         Map<String, TreeEntry> entries = new LinkedHashMap<>();
         for (FileRow file : files) {
             String relative = relative(base, file.path());
@@ -35,37 +39,60 @@ final class FileNavigationQueries {
                 current.append(parts[i]);
                 boolean directory = i < parts.length - 1;
                 String entryPath = current.toString();
-                entries.putIfAbsent(entryPath, directory
-                        ? new TreeEntry(entryPath, "directory", null)
-                        : new TreeEntry(entryPath, "file", file));
+                entries.putIfAbsent(
+                        entryPath,
+                        directory
+                                ? new TreeEntry(entryPath, "directory", null)
+                                : new TreeEntry(entryPath, "file", file));
             }
         }
-        List<TreeEntry> ordered = entries.values().stream()
-                .sorted(Comparator.comparing(TreeEntry::path)).toList();
+        List<TreeEntry> ordered =
+                entries.values().stream().sorted(Comparator.comparing(TreeEntry::path)).toList();
         return treeResponse(base, depth, ordered, limit, offset);
     }
 
-    String searchFiles(ReadQueryContext reader, String pattern, String module, String kind,
-            String directory, String extension, boolean includeDeleted, int limit, int offset) {
+    ObjectNode searchFiles(
+            ReadQueryContext reader,
+            String pattern,
+            String module,
+            String kind,
+            String directory,
+            String extension,
+            boolean includeDeleted,
+            int limit,
+            int offset) {
         String requested = pattern == null ? "" : pattern.strip().replace('\\', '/');
         String needle = requested.toLowerCase(Locale.ROOT);
         boolean glob = requested.indexOf('*') >= 0 || requested.indexOf('?') >= 0;
         boolean basenameGlob = glob && !requested.contains("/");
-        Pattern matcher = glob ? Pattern.compile(globRegex(requested), Pattern.CASE_INSENSITIVE)
-                : null;
+        Pattern matcher =
+                glob ? Pattern.compile(globRegex(requested), Pattern.CASE_INSENSITIVE) : null;
         String base = normalizeBase(directory);
         String requestedExtension = normalizeExtension(extension);
-        List<ScoredFile> matches = reader.index.findNavigationFiles( base, includeDeleted).stream()
-                .filter(file -> matches(file.path(), matcher, needle, glob, basenameGlob))
-                .filter(file -> module == null || module.isBlank()
-                        || normalizeBase(module).equals(normalizeBase(file.module())))
-                .filter(file -> kind == null || kind.isBlank()
-                        || file.kind().equalsIgnoreCase(kind.strip()))
-                .filter(file -> requestedExtension == null
-                        || extension(file.path()).equalsIgnoreCase(requestedExtension))
-                .map(file -> score(file, requested, needle, glob))
-                .sorted(Comparator.comparingInt(ScoredFile::score)
-                        .thenComparing(value -> value.file().path())).toList();
+        List<ScoredFile> matches =
+                reader.index.findNavigationFiles(base, includeDeleted).stream()
+                        .filter(file -> matches(file.path(), matcher, needle, glob, basenameGlob))
+                        .filter(
+                                file ->
+                                        module == null
+                                                || module.isBlank()
+                                                || normalizeBase(module)
+                                                        .equals(normalizeBase(file.module())))
+                        .filter(
+                                file ->
+                                        kind == null
+                                                || kind.isBlank()
+                                                || file.kind().equalsIgnoreCase(kind.strip()))
+                        .filter(
+                                file ->
+                                        requestedExtension == null
+                                                || extension(file.path())
+                                                        .equalsIgnoreCase(requestedExtension))
+                        .map(file -> score(file, requested, needle, glob))
+                        .sorted(
+                                Comparator.comparingInt(ScoredFile::score)
+                                        .thenComparing(value -> value.file().path()))
+                        .toList();
         int from = Math.min(offset, matches.size());
         int to = Math.min(from + limit, matches.size());
         ObjectNode result = page(matches.size(), to - from, offset, to < matches.size());
@@ -74,16 +101,18 @@ final class FileNavigationQueries {
         if (!base.equals(".")) result.put("directory", base);
         if (requestedExtension != null) result.put("extension", requestedExtension);
         ArrayNode files = result.putArray("files");
-        matches.subList(from, to).forEach(match -> {
-            ObjectNode item = addFile(files, match.file());
-            item.put("rank", match.score());
-            item.put("match", match.reason());
-        });
-        return result.toString();
+        matches.subList(from, to)
+                .forEach(
+                        match -> {
+                            ObjectNode item = addFile(files, match.file());
+                            item.put("rank", match.score());
+                            item.put("match", match.reason());
+                        });
+        return result;
     }
 
-    private static boolean matches(String path, Pattern matcher, String needle,
-            boolean glob, boolean basenameGlob) {
+    private static boolean matches(
+            String path, Pattern matcher, String needle, boolean glob, boolean basenameGlob) {
         if (needle.isEmpty()) return true;
         if (!glob) return path.toLowerCase(Locale.ROOT).contains(needle);
         String candidate = basenameGlob ? basename(path) : path;
@@ -143,9 +172,7 @@ final class FileNavigationQueries {
         return slash < 0 ? path : path.substring(slash + 1);
     }
 
-
-
-    private static String treeResponse(
+    private static ObjectNode treeResponse(
             String base, int depth, List<TreeEntry> entries, int limit, int offset) {
         int from = Math.min(offset, entries.size());
         int to = Math.min(from + limit, entries.size());
@@ -153,13 +180,15 @@ final class FileNavigationQueries {
         result.put("path", base);
         result.put("depth", depth);
         ArrayNode listed = result.putArray("entries");
-        entries.subList(from, to).forEach(entry -> {
-            ObjectNode item = listed.addObject();
-            item.put("path", entry.path());
-            item.put("type", entry.type());
-            if (entry.file() != null) addFileContext(item, entry.file());
-        });
-        return result.toString();
+        entries.subList(from, to)
+                .forEach(
+                        entry -> {
+                            ObjectNode item = listed.addObject();
+                            item.put("path", entry.path());
+                            item.put("type", entry.type());
+                            if (entry.file() != null) addFileContext(item, entry.file());
+                        });
+        return result;
     }
 
     private static ObjectNode page(int total, int showing, int offset, boolean hasMore) {
@@ -191,7 +220,8 @@ final class FileNavigationQueries {
         if (value == null || value.isBlank() || value.equals(".")) return ".";
         String normalized = value.strip().replace('\\', '/');
         while (normalized.startsWith("./")) normalized = normalized.substring(2);
-        while (normalized.endsWith("/")) normalized = normalized.substring(0, normalized.length() - 1);
+        while (normalized.endsWith("/"))
+            normalized = normalized.substring(0, normalized.length() - 1);
         return normalized.isBlank() ? "." : normalized;
     }
 
@@ -201,7 +231,7 @@ final class FileNavigationQueries {
         return path.startsWith(base + "/") ? path.substring(base.length() + 1) : null;
     }
 
-
     private record ScoredFile(FileRow file, int score, String reason) {}
+
     private record TreeEntry(String path, String type, FileRow file) {}
 }

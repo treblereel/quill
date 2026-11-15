@@ -6,13 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 class CallHierarchyCompactionTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private static final String RESPONSE = """
+    private static final String RESPONSE =
+            """
             {"target":"p.Mapper","calls":[
              {"caller":{"class":"p.Mapper","method":"parse","descriptor":"(Ljava/lang/String;)V","source":"src/Mapper.java","origin":"source","module":"."},
               "callee":{"class":"p.Verb","method":"<init>","descriptor":"()V","source":"src/Mapper.java","origin":"source","module":"."},
@@ -39,10 +41,13 @@ class CallHierarchyCompactionTest {
              "has_more":false}
             """;
 
-    /** V32 CQ-030: a 25K transitive answer restated its caller and callee in every path and fixed dispatch target. */
+    /**
+     * V32 CQ-030: a 25K transitive answer restated its caller and callee in every path and fixed
+     * dispatch target.
+     */
     @Test
     void directEdgesAndFixedTargetsStopRestatingTheirEndpoints() throws Exception {
-        JsonNode out = JSON.readTree(CallHierarchyCompaction.compact(RESPONSE));
+        JsonNode out = CallHierarchyCompaction.compactAnswer((ObjectNode) JSON.readTree(RESPONSE));
 
         JsonNode direct = out.path("calls").get(0);
         assertFalse(direct.has("path"), direct.toString());
@@ -67,10 +72,13 @@ class CallHierarchyCompactionTest {
         assertEquals("d2", out.path("calls").get(1).path("dispatch_ref").asText());
     }
 
-    /** What the endpoints do not already say stays: a deeper route, another declaration, candidates, non-default origins. */
+    /**
+     * What the endpoints do not already say stays: a deeper route, another declaration, candidates,
+     * non-default origins.
+     */
     @Test
     void routesResolvedAncestorsCandidatesAndOtherOriginsStay() throws Exception {
-        JsonNode out = JSON.readTree(CallHierarchyCompaction.compact(RESPONSE));
+        JsonNode out = CallHierarchyCompaction.compactAnswer((ObjectNode) JSON.readTree(RESPONSE));
 
         JsonNode deep = out.path("calls").get(2);
         assertEquals(3, deep.path("path").size());
@@ -84,22 +92,48 @@ class CallHierarchyCompactionTest {
     }
 
     @Test
-    void errorsAndNonJsonPassThrough() {
-        assertEquals("{\"error_code\":\"CLASS_NOT_FOUND\"}", CallHierarchyCompaction.compact("{\"error_code\":\"CLASS_NOT_FOUND\"}"));
-        assertEquals("plain", CallHierarchyCompaction.compact("plain"));
+    void errorsPassThrough() throws Exception {
+        assertEquals(
+                "{\"error_code\":\"CLASS_NOT_FOUND\"}",
+                CallHierarchyCompaction.compactAnswer(
+                                (ObjectNode) JSON.readTree("{\"error_code\":\"CLASS_NOT_FOUND\"}"))
+                        .toString());
     }
 
-    /** V41 CQ-045: a 40 KB transitive inbound answer spent 20 KB on routes that restate earlier edges. */
+    /**
+     * V41 CQ-045: a 40 KB transitive inbound answer spent 20 KB on routes that restate earlier
+     * edges.
+     */
     @Test
-    void aDeeperEdgeReachedThroughAnEdgeOnThePagePointsAtItInsteadOfRestatingTheRoute() throws Exception {
-        String edge = "{\"caller\":{\"class\":\"p.%s\",\"method\":\"%s\",\"descriptor\":\"()V\"},\"callee\":{\"class\":\"p.%s\",\"method\":\"%s\",\"descriptor\":\"()V\"},"
-                + "\"depth\":%d,\"traversal_direction\":\"inbound\",\"path\":%s}";
-        String json = "{\"target\":\"p.T\",\"calls\":["
-                + edge.formatted("X", "x", "T", "t", 1, "[\"p.T#t()V\",\"p.X#x()V\"]") + ","
-                + edge.formatted("Y", "y", "X", "x", 2, "[\"p.T#t()V\",\"p.X#x()V\",\"p.Y#y()V\"]") + ","
-                + edge.formatted("Z", "z", "Y", "y", 3, "[\"p.T#t()V\",\"p.X#x()V\",\"p.Y#y()V\",\"p.Z#z()V\"]") + ","
-                + edge.formatted("W", "w", "Q", "q", 3, "[\"p.T#t()V\",\"p.R#r()V\",\"p.Q#q()V\",\"p.W#w()V\"]") + "]}";
-        JsonNode out = JSON.readTree(CallHierarchyCompaction.compact(json));
+    void aDeeperEdgeReachedThroughAnEdgeOnThePagePointsAtItInsteadOfRestatingTheRoute()
+            throws Exception {
+        String edge =
+                "{\"caller\":{\"class\":\"p.%s\",\"method\":\"%s\",\"descriptor\":\"()V\"},\"callee\":{\"class\":\"p.%s\",\"method\":\"%s\",\"descriptor\":\"()V\"},"
+                        + "\"depth\":%d,\"traversal_direction\":\"inbound\",\"path\":%s}";
+        String json =
+                "{\"target\":\"p.T\",\"calls\":["
+                        + edge.formatted("X", "x", "T", "t", 1, "[\"p.T#t()V\",\"p.X#x()V\"]")
+                        + ","
+                        + edge.formatted(
+                                "Y", "y", "X", "x", 2, "[\"p.T#t()V\",\"p.X#x()V\",\"p.Y#y()V\"]")
+                        + ","
+                        + edge.formatted(
+                                "Z",
+                                "z",
+                                "Y",
+                                "y",
+                                3,
+                                "[\"p.T#t()V\",\"p.X#x()V\",\"p.Y#y()V\",\"p.Z#z()V\"]")
+                        + ","
+                        + edge.formatted(
+                                "W",
+                                "w",
+                                "Q",
+                                "q",
+                                3,
+                                "[\"p.T#t()V\",\"p.R#r()V\",\"p.Q#q()V\",\"p.W#w()V\"]")
+                        + "]}";
+        JsonNode out = CallHierarchyCompaction.compactAnswer((ObjectNode) JSON.readTree(json));
         JsonNode calls = out.path("calls");
         assertEquals(0, calls.get(1).path("via").asInt(-1), calls.toString());
         assertFalse(calls.get(1).has("path"));

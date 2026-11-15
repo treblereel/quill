@@ -1,7 +1,5 @@
 package org.treblereel.mcp.mcp.project;
 
-import org.treblereel.mcp.db.ReadQueryContext;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,6 +11,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 
 class ProjectDependencyQueriesTest {
@@ -23,9 +22,11 @@ class ProjectDependencyQueriesTest {
 
     @Test
     void reportsMavenAndGradleArtifactsByConsumingModuleWithoutBuilding() throws Exception {
-        Path mavenJar = temp.resolve("home/.m2/repository/com/acme/widget/1.2/widget-1.2-tests.jar");
-        Path gradleJar = temp.resolve(
-                "home/.gradle/caches/modules-2/files-2.1/org.demo/lib/3.0/hash/lib-3.0.jar");
+        Path mavenJar =
+                temp.resolve("home/.m2/repository/com/acme/widget/1.2/widget-1.2-tests.jar");
+        Path gradleJar =
+                temp.resolve(
+                        "home/.gradle/caches/modules-2/files-2.1/org.demo/lib/3.0/hash/lib-3.0.jar");
         Files.createDirectories(mavenJar.getParent());
         Files.createDirectories(gradleJar.getParent());
         Files.write(mavenJar, new byte[] {1});
@@ -36,13 +37,17 @@ class ProjectDependencyQueriesTest {
         Files.createDirectories(second.getParent());
         Files.writeString(first, mavenJar.toString());
         Files.writeString(second, gradleJar.toString());
-        Files.writeString(temp.resolve("pom.xml"), """
+        Files.writeString(
+                temp.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
                   <modules><module>api</module><module>worker</module></modules>
                 </project>
                 """);
-        Files.writeString(temp.resolve("api/pom.xml"), """
+        Files.writeString(
+                temp.resolve("api/pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>test</groupId><artifactId>api</artifactId><version>1</version>
                   <dependencies><dependency><groupId>com.acme</groupId>
@@ -50,7 +55,9 @@ class ProjectDependencyQueriesTest {
                   </dependency></dependencies>
                 </project>
                 """);
-        Files.writeString(temp.resolve("worker/pom.xml"), """
+        Files.writeString(
+                temp.resolve("worker/pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>test</groupId><artifactId>worker</artifactId><version>1</version>
                 </project>
@@ -59,24 +66,33 @@ class ProjectDependencyQueriesTest {
         module(jdbi, "api");
         module(jdbi, "worker");
 
-        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                .getProjectDependencies(readScope, temp, null, null, null, null, null, null, null, 100, 0)));
+        var result =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ProjectDependencyQueries()
+                                        .getProjectDependencies(
+                                                readScope, temp, null, null, null, null, null, null,
+                                                null, 100, 0));
 
         assertEquals(2, result.path("total").asInt());
         assertFalse(result.path("discovery").path("build_invoked").asBoolean());
-        assertEquals("com.acme:widget:1.2:tests",
+        assertEquals(
+                "com.acme:widget:1.2:tests",
                 result.path("dependencies").get(0).path("id").asText());
-        assertEquals("api",
-                result.path("dependencies").get(0).path("used_by_modules").get(0).asText());
+        assertEquals(
+                "api", result.path("dependencies").get(0).path("used_by_modules").get(0).asText());
         assertEquals(true, result.path("dependencies").get(0).path("direct").asBoolean());
-        assertEquals("compile", result.path("dependencies").get(0)
-                .path("declared_scopes").get(0).asText());
-        assertEquals("api",
+        assertEquals(
+                "compile",
+                result.path("dependencies").get(0).path("declared_scopes").get(0).asText());
+        assertEquals(
+                "api",
                 result.path("dependencies").get(0).path("direct_in_modules").get(0).asText());
-        assertEquals("org.demo:lib:3.0",
-                result.path("dependencies").get(1).path("id").asText());
+        assertEquals("org.demo:lib:3.0", result.path("dependencies").get(1).path("id").asText());
         assertFalse(result.path("dependencies").get(1).path("direct").asBoolean());
-        assertEquals("worker",
+        assertEquals(
+                "worker",
                 result.path("dependencies").get(1).path("transitive_in_modules").get(0).asText());
     }
 
@@ -96,8 +112,14 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        var filtered = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                .getProjectDependencies(readScope, temp, ".", null, "beta", null, null, null, null, 1, 0)));
+        var filtered =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ProjectDependencyQueries()
+                                        .getProjectDependencies(
+                                                readScope, temp, ".", null, "beta", null, null,
+                                                null, null, 1, 0));
 
         assertEquals(1, filtered.path("total").asInt());
         assertEquals("b:beta:2", filtered.path("dependencies").get(0).path("id").asText());
@@ -115,7 +137,9 @@ class ProjectDependencyQueriesTest {
         Path classpath = temp.resolve("target/quill-classpath.txt");
         Files.createDirectories(classpath.getParent());
         Files.writeString(classpath, direct + java.io.File.pathSeparator + transitive);
-        Files.writeString(temp.resolve("pom.xml"), """
+        Files.writeString(
+                temp.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
                   <dependencies><dependency><groupId>com.acme</groupId>
@@ -126,15 +150,26 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                .getProjectDependencies(readScope, temp, null, null, null, "direct", "acme", "widget", "runtime", 100, 0)));
+        var result =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ProjectDependencyQueries()
+                                        .getProjectDependencies(
+                                                readScope, temp, null, null, null, "direct", "acme",
+                                                "widget", "runtime", 100, 0));
 
         assertEquals(1, result.path("total").asInt());
-        assertEquals("com.acme:widget:1",
-                result.path("dependencies").get(0).path("id").asText());
-        // V48 CQ-004: Codex grepped pom.xml to cite where a direct dependency is declared and versioned.
-        assertEquals("[\"pom.xml:4\"]", result.path("dependencies").get(0).path("declared_at").toString(), result.toString());
-        assertEquals("version 1 at pom.xml:4", result.path("dependencies").get(0).path("version_source").asText());
+        assertEquals("com.acme:widget:1", result.path("dependencies").get(0).path("id").asText());
+        // V48 CQ-004: Codex grepped pom.xml to cite where a direct dependency is declared and
+        // versioned.
+        assertEquals(
+                "[\"pom.xml:4\"]",
+                result.path("dependencies").get(0).path("declared_at").toString(),
+                result.toString());
+        assertEquals(
+                "version 1 at pom.xml:4",
+                result.path("dependencies").get(0).path("version_source").asText());
     }
 
     @Test
@@ -153,38 +188,66 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        ReadQueryContext.readWithGraph(jdbi, readScope -> { ProjectDependencyQueries.prewarm(readScope, temp); return null; });
-        var warm = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                .getProjectDependencies(readScope, temp, null, null, null, null, null, null, null, 100, 0)));
+        ReadQueryContext.readWithGraph(
+                jdbi,
+                readScope -> {
+                    ProjectDependencyQueries.prewarm(readScope, temp);
+                    return null;
+                });
+        var warm =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ProjectDependencyQueries()
+                                        .getProjectDependencies(
+                                                readScope, temp, null, null, null, null, null, null,
+                                                null, 100, 0));
         assertEquals("hit", warm.path("discovery").path("metadata_cache").asText());
 
         Files.writeString(classpath, alpha + java.io.File.pathSeparator + beta);
-        var refreshed = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                .getProjectDependencies(readScope, temp, null, null, null, null, null, null, null, 100, 0)));
+        var refreshed =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ProjectDependencyQueries()
+                                        .getProjectDependencies(
+                                                readScope, temp, null, null, null, null, null, null,
+                                                null, 100, 0));
         assertEquals("miss", refreshed.path("discovery").path("metadata_cache").asText());
         assertEquals(2, refreshed.path("total").asInt());
     }
 
     @Test
     void reportsUncoveredTestScopeInsteadOfClaimingAnEmptyAnswerIsComplete() throws Exception {
-        Path connector = temp.resolve(
-                ".m2/repository/io/casehub/connectors-core/1/connectors-core-1.jar");
+        Path connector =
+                temp.resolve(".m2/repository/io/casehub/connectors-core/1/connectors-core-1.jar");
         Files.createDirectories(connector.getParent());
         Files.write(connector, new byte[] {1});
-        mavenModule("planning", "planning", """
+        mavenModule(
+                "planning",
+                "planning",
+                """
                 <dependency><groupId>io.casehub</groupId>
                   <artifactId>persistence-memory</artifactId><version>1</version>
                   <scope>test</scope></dependency>
                 """);
-        mavenModule("persistence-memory", "persistence-memory", """
+        mavenModule(
+                "persistence-memory",
+                "persistence-memory",
+                """
                 <dependency><groupId>io.casehub</groupId>
                   <artifactId>support-core</artifactId><version>1</version></dependency>
                 """);
-        mavenModule("support-core", "support-core", """
+        mavenModule(
+                "support-core",
+                "support-core",
+                """
                 <dependency><groupId>io.casehub</groupId>
                   <artifactId>connectors-core</artifactId><version>1</version></dependency>
                 """);
-        Files.writeString(temp.resolve("pom.xml"), """
+        Files.writeString(
+                temp.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>io.casehub</groupId><artifactId>root</artifactId><version>1</version>
                   <modules><module>planning</module><module>persistence-memory</module>
@@ -199,20 +262,40 @@ class ProjectDependencyQueriesTest {
         module(jdbi, "persistence-memory");
         module(jdbi, "support-core");
 
-        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                .getProjectDependencies(readScope, temp, "planning", null, "connectors-core", null, null, null, null, 100, 0)));
+        var result =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ProjectDependencyQueries()
+                                        .getProjectDependencies(
+                                                readScope,
+                                                temp,
+                                                "planning",
+                                                null,
+                                                "connectors-core",
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                100,
+                                                0));
 
         assertEquals(1, result.path("total").asInt());
         assertFalse(result.path("answer_complete").asBoolean());
         assertFalse(result.path("discovery").path("requested_source_set_covered").asBoolean());
-        assertEquals("main_and_test_runtime",
-                result.path("discovery").path("classpath_scope").asText());
-        assertEquals("planning", result.path("dependencies").get(0)
-                .path("test_runtime_in_modules").get(0).asText());
-        assertEquals("planning", result.path("dependencies").get(0)
-                .path("inferred_in_modules").get(0).asText());
-        assertTrue(result.path("discovery").path("limitations").toString()
-                .contains("reactor declarations"));
+        assertEquals(
+                "main_and_test_runtime", result.path("discovery").path("classpath_scope").asText());
+        assertEquals(
+                "planning",
+                result.path("dependencies").get(0).path("test_runtime_in_modules").get(0).asText());
+        assertEquals(
+                "planning",
+                result.path("dependencies").get(0).path("inferred_in_modules").get(0).asText());
+        assertTrue(
+                result.path("discovery")
+                        .path("limitations")
+                        .toString()
+                        .contains("reactor declarations"));
         assertEquals("partial", result.path("directness").asText());
     }
 
@@ -224,7 +307,9 @@ class ProjectDependencyQueriesTest {
         Files.createDirectories(testOnly.getParent());
         Files.write(runtime, new byte[] {1});
         Files.write(testOnly, new byte[] {1});
-        Files.writeString(temp.resolve("pom.xml"), """
+        Files.writeString(
+                temp.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>test</groupId><artifactId>root</artifactId><version>1</version>
                   <dependencies><dependency><groupId>a</groupId>
@@ -237,18 +322,33 @@ class ProjectDependencyQueriesTest {
         Jdbi jdbi = database();
         module(jdbi, ".");
 
-        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                .getProjectDependencies(readScope, temp, ".", "test", "test-helper", null, null, null, null, 100, 0)));
+        var result =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ProjectDependencyQueries()
+                                        .getProjectDependencies(
+                                                readScope,
+                                                temp,
+                                                ".",
+                                                "test",
+                                                "test-helper",
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                100,
+                                                0));
 
         assertEquals(1, result.path("total").asInt());
         assertTrue(result.path("answer_complete").asBoolean());
         assertTrue(result.path("discovery").path("requested_source_set_covered").asBoolean());
-        assertEquals(".", result.path("dependencies").get(0)
-                .path("test_runtime_in_modules").get(0).asText());
-        assertEquals(0, result.path("dependencies").get(0)
-                .path("main_runtime_in_modules").size());
-        assertEquals("test", result.path("dependencies").get(0)
-                .path("declared_scopes").get(0).asText());
+        assertEquals(
+                ".",
+                result.path("dependencies").get(0).path("test_runtime_in_modules").get(0).asText());
+        assertEquals(0, result.path("dependencies").get(0).path("main_runtime_in_modules").size());
+        assertEquals(
+                "test", result.path("dependencies").get(0).path("declared_scopes").get(0).asText());
     }
 
     @Test
@@ -263,8 +363,14 @@ class ProjectDependencyQueriesTest {
         DebugTrace.configure(true, temp);
         DebugTrace.Trace parent = DebugTrace.start("mcp_tool_call");
         try {
-            var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new ProjectDependencyQueries()
-                    .getProjectDependencies(readScope, temp, ".", "main", "alpha", null, null, null, "runtime", 100, 0)));
+            var result =
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            readScope ->
+                                    new ProjectDependencyQueries()
+                                            .getProjectDependencies(
+                                                    readScope, temp, ".", "main", "alpha", null,
+                                                    null, null, "runtime", 100, 0));
 
             String traceId = result.path("debug").path("trace_id").asText();
             assertFalse(traceId.isBlank());
@@ -281,16 +387,18 @@ class ProjectDependencyQueriesTest {
         }
     }
 
-    private void mavenModule(String path, String artifact, String dependencies)
-            throws Exception {
+    private void mavenModule(String path, String artifact, String dependencies) throws Exception {
         Path directory = temp.resolve(path);
         Files.createDirectories(directory);
-        Files.writeString(directory.resolve("pom.xml"), """
+        Files.writeString(
+                directory.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>io.casehub</groupId><artifactId>%s</artifactId><version>1</version>
                   <dependencies>%s</dependencies>
                 </project>
-                """.formatted(artifact, dependencies));
+                """
+                        .formatted(artifact, dependencies));
     }
 
     private void writeClasspath(String module, String value) throws Exception {
@@ -312,12 +420,18 @@ class ProjectDependencyQueriesTest {
     }
 
     private static void module(Jdbi jdbi, String module) {
-        String path = module.equals(".") ? "src/main/java/App.java"
-                : module + "/src/main/java/App.java";
-        jdbi.useHandle(handle -> handle.createUpdate("""
+        String path =
+                module.equals(".") ? "src/main/java/App.java" : module + "/src/main/java/App.java";
+        jdbi.useHandle(
+                handle ->
+                        handle.createUpdate(
+                                        """
                         INSERT INTO files(project_path, repository_path, kind, origin, lifecycle,
                                           module, source_set)
                         VALUES (:path, :path, 'java', 'source', 'current', :module, 'main')
-                        """).bind("path", path).bind("module", module).execute());
+                        """)
+                                .bind("path", path)
+                                .bind("module", module)
+                                .execute());
     }
 }

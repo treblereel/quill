@@ -2,7 +2,7 @@ package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -10,10 +10,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.SymbolRepository;
-import org.treblereel.mcp.db.SymbolRepository.AnnotatedSymbolResult;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.SymbolRepository.AnnotatedSymbolResult;
 
 /** Finds annotated type and member declarations from the compiled index. */
 public final class AnnotatedSymbolQueries {
@@ -22,11 +21,16 @@ public final class AnnotatedSymbolQueries {
     private static final Set<String> KINDS =
             Set.of("ALL", "TYPE", "METHOD", "FIELD", "CONSTRUCTOR", "PARAMETER");
 
-    public String findAnnotatedSymbols(ReadQueryContext reader, String annotation, String kind,
-            boolean includeMetaAnnotations, int limit, int offset) {
+    public ObjectNode findAnnotatedSymbols(
+            ReadQueryContext reader,
+            String annotation,
+            String kind,
+            boolean includeMetaAnnotations,
+            int limit,
+            int offset) {
         String normalizedKind = kind == null ? "ALL" : kind.strip().toUpperCase(Locale.ROOT);
         if (!KINDS.contains(normalizedKind)) {
-            return errorResponse(
+            return errorNode(
                     "Invalid kind: expected all, type, method, field, constructor, or parameter");
         }
         String requested = annotation.startsWith("@") ? annotation.substring(1) : annotation;
@@ -36,7 +40,7 @@ public final class AnnotatedSymbolQueries {
         if (resolved == null && names.isEmpty()) {
             ObjectNode empty = unindexedAnnotation(requested, "symbols");
             appendMeta(empty, reader, 0);
-            return empty.toString();
+            return empty;
         }
         if (resolved == null) {
             ObjectNode error = JSON.createObjectNode();
@@ -44,11 +48,15 @@ public final class AnnotatedSymbolQueries {
             error.put("annotation", requested);
             error.set("candidates", JSON.valueToTree(names));
             appendMeta(error, reader, 0);
-            return error.toString();
+            return error;
         }
 
-        List<AnnotatedSymbolResult> symbols = reader.symbols.findAnnotatedSymbols(resolved, normalizedKind, includeMetaAnnotations, limit, offset);
-        int total = reader.symbols.countAnnotatedSymbols(resolved, normalizedKind, includeMetaAnnotations);
+        List<AnnotatedSymbolResult> symbols =
+                reader.symbols.findAnnotatedSymbols(
+                        resolved, normalizedKind, includeMetaAnnotations, limit, offset);
+        int total =
+                reader.symbols.countAnnotatedSymbols(
+                        resolved, normalizedKind, includeMetaAnnotations);
         ObjectNode root = JSON.createObjectNode();
         root.put("annotation", resolved);
         root.put("kind", normalizedKind.toLowerCase(Locale.ROOT));
@@ -91,9 +99,11 @@ public final class AnnotatedSymbolQueries {
                 node.put("via_annotation", symbol.viaAnnotation());
             }
             if (symbol.sourceFile() != null) {
-                node.put("source", symbol.sourceLine() > 0
-                        ? symbol.sourceFile() + ":" + symbol.sourceLine()
-                        : symbol.sourceFile());
+                node.put(
+                        "source",
+                        symbol.sourceLine() > 0
+                                ? symbol.sourceFile() + ":" + symbol.sourceLine()
+                                : symbol.sourceFile());
             }
             node.put("origin", symbol.origin());
             if (symbol.module() != null) node.put("module", symbol.module());
@@ -105,7 +115,7 @@ public final class AnnotatedSymbolQueries {
                 .add("Only annotations preserved in compiled bytecode can be discovered");
         appendPage(root, symbols.size(), total, limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
     /**
@@ -118,8 +128,10 @@ public final class AnnotatedSymbolQueries {
         root.put("annotation_indexed", false);
         root.putArray(resultField);
         root.put("showing", 0).put("total", 0).put("has_more", false);
-        root.put("note", "No indexed declaration carries this annotation. Annotations with "
-                + "SOURCE retention, or used only by external dependencies, are not indexed.");
+        root.put(
+                "note",
+                "No indexed declaration carries this annotation. Annotations with "
+                        + "SOURCE retention, or used only by external dependencies, are not indexed.");
         return root;
     }
 

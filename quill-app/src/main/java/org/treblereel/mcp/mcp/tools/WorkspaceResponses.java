@@ -1,13 +1,12 @@
 package org.treblereel.mcp.mcp.tools;
 
-import org.treblereel.mcp.index.BuildStatusInspector;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
-import org.treblereel.mcp.model.MetaEnvelope;
-import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.model.MetaEnvelope;
 
 /** JSON fragments and error shapes shared by the workspace tool responses. */
 final class WorkspaceResponses {
@@ -30,16 +29,21 @@ final class WorkspaceResponses {
         return node;
     }
 
-    static boolean appendFreshness(ObjectNode parent,
-            ProjectRegistry.Resolution resolution) {
+    static boolean appendFreshness(ObjectNode parent, ProjectRegistry.Resolution resolution) {
         ObjectNode freshness = parent.putObject("index_freshness");
         if (resolution.projects().isEmpty()) {
             freshness.put("status", "unavailable");
             freshness.put("complete", false);
             return false;
         }
-        MetaEnvelope meta = resolution.projects().getFirst().read(reader ->
-                org.treblereel.mcp.index.BuildStatusInspector.freshness(reader, 0, 0));
+        MetaEnvelope meta =
+                resolution
+                        .projects()
+                        .getFirst()
+                        .read(
+                                reader ->
+                                        org.treblereel.mcp.index.BuildStatusInspector.freshness(
+                                                reader, 0, 0));
         freshness.put("status", meta.structureStale() ? "stale" : "current");
         freshness.put("complete", !meta.structureStale());
         freshness.put("indexed_at", meta.indexedAt());
@@ -78,17 +82,17 @@ final class WorkspaceResponses {
         return node.path("error").asText(fallback);
     }
 
-    static String workspaceRequired() {
-        return JSON.createObjectNode().put("error", "workspace_mode_required")
-                .put("message", "Start Quill with --workspace <path>").toString();
+    static ObjectNode workspaceRequired() {
+        return JSON.createObjectNode()
+                .put("error", "workspace_mode_required")
+                .put("message", "Start Quill with --workspace <path>");
     }
 
-    static String error(String message) {
-        return JSON.createObjectNode().put("error", message).toString();
+    static ObjectNode error(String message) {
+        return JSON.createObjectNode().put("error", message);
     }
 
-    record ProviderClass(String repository, String module, String className,
-            String sourceFile) {}
+    record ProviderClass(String repository, String module, String className, String sourceFile) {}
 
     private WorkspaceResponses() {}
 }

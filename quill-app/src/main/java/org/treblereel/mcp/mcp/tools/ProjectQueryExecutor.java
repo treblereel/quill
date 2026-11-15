@@ -1,5 +1,6 @@
 package org.treblereel.mcp.mcp.tools;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -16,11 +17,12 @@ import org.treblereel.mcp.mcp.project.ProjectRegistry;
 /** Resolves project indexes and isolates failures while executing read-only tool queries. */
 final class ProjectQueryExecutor {
 
-    private static final ExecutorService QUERY_EXECUTOR = Executors.newThreadPerTaskExecutor(
-            Thread.ofVirtual().name("quill-workspace-query-", 0).factory());
+    private static final ExecutorService QUERY_EXECUTOR =
+            Executors.newThreadPerTaskExecutor(
+                    Thread.ofVirtual().name("quill-workspace-query-", 0).factory());
     private static final Semaphore QUERY_SLOTS = new Semaphore(queryWorkers(), true);
 
-    record QueryResult(String project, String json, String error) {
+    record QueryResult(String project, ObjectNode json, String error) {
         boolean successful() {
             return error == null;
         }
@@ -38,36 +40,58 @@ final class ProjectQueryExecutor {
         this.registry = Objects.requireNonNull(registry, "registry");
     }
 
-    Batch execute(String selector, BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query) {
+    Batch execute(
+            String selector,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, ObjectNode> query) {
         return execute(selector, query, false);
     }
 
-    Batch execute(String selector, BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean withGraph) {
-        ProjectRegistry.Resolution resolution = selector == null || selector.isBlank()
-                ? registry.resolve() : registry.resolve(selector);
-        return new Batch(resolution, executeProjects(resolution.projects(), query, false, withGraph));
+    Batch execute(
+            String selector,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, ObjectNode> query,
+            boolean withGraph) {
+        ProjectRegistry.Resolution resolution =
+                selector == null || selector.isBlank()
+                        ? registry.resolve()
+                        : registry.resolve(selector);
+        return new Batch(
+                resolution, executeProjects(resolution.projects(), query, false, withGraph));
     }
 
-    List<QueryResult> executeProjects(List<ProjectRegistry.ProjectEntry> projects,
-            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query) {
+    List<QueryResult> executeProjects(
+            List<ProjectRegistry.ProjectEntry> projects,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, ObjectNode> query) {
         return executeProjects(projects, query, false);
     }
 
-    List<QueryResult> executeProjects(List<ProjectRegistry.ProjectEntry> projects,
-            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean nested) {
+    List<QueryResult> executeProjects(
+            List<ProjectRegistry.ProjectEntry> projects,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, ObjectNode> query,
+            boolean nested) {
         return executeProjects(projects, query, nested, false);
     }
 
-    private List<QueryResult> executeProjects(List<ProjectRegistry.ProjectEntry> projects,
-            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean nested, boolean withGraph) {
+    private List<QueryResult> executeProjects(
+            List<ProjectRegistry.ProjectEntry> projects,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, ObjectNode> query,
+            boolean nested,
+            boolean withGraph) {
         // Nested work stays on the owner thread and shares its handle and admission slot.
         if (nested || projects.size() <= 1) {
-            return projects.stream().map(project -> executeProject(project, query, !nested, withGraph))
-                    .sorted(Comparator.comparing(QueryResult::project)).toList();
+            return projects.stream()
+                    .map(project -> executeProject(project, query, !nested, withGraph))
+                    .sorted(Comparator.comparing(QueryResult::project))
+                    .toList();
         }
-        List<Future<QueryResult>> pending = projects.stream()
-                .map(project -> QUERY_EXECUTOR.submit(() -> executeProject(project, query, true, withGraph)))
-                .toList();
+        List<Future<QueryResult>> pending =
+                projects.stream()
+                        .map(
+                                project ->
+                                        QUERY_EXECUTOR.submit(
+                                                () ->
+                                                        executeProject(
+                                                                project, query, true, withGraph)))
+                        .toList();
         List<QueryResult> results = new ArrayList<>(pending.size());
         try {
             for (Future<QueryResult> future : pending) results.add(future.get());
@@ -77,27 +101,35 @@ final class ProjectQueryExecutor {
             throw new IllegalStateException("Workspace query interrupted", interrupted);
         } catch (ExecutionException failed) {
             pending.forEach(future -> future.cancel(true));
-            throw new IllegalStateException("Workspace query worker failed",
-                    failed.getCause());
+            throw new IllegalStateException("Workspace query worker failed", failed.getCause());
         }
         results.sort(Comparator.comparing(QueryResult::project));
         return List.copyOf(results);
     }
 
-    QueryResult executeProject(ProjectRegistry.ProjectEntry project,
-            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query) {
+    QueryResult executeProject(
+            ProjectRegistry.ProjectEntry project,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, ObjectNode> query) {
         return executeProject(project, query, true, false);
     }
 
-    private QueryResult executeProject(ProjectRegistry.ProjectEntry project,
-            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, String> query, boolean acquire, boolean withGraph) {
+    private QueryResult executeProject(
+            ProjectRegistry.ProjectEntry project,
+            BiFunction<ProjectRegistry.ProjectEntry, ReadQueryContext, ObjectNode> query,
+            boolean acquire,
+            boolean withGraph) {
         boolean admitted = false;
         try (var metrics = org.treblereel.mcp.diagnostics.QueryMetrics.start()) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
-            if (acquire) { QUERY_SLOTS.acquire(); admitted = true; }
+            if (acquire) {
+                QUERY_SLOTS.acquire();
+                admitted = true;
+            }
             org.treblereel.mcp.core.WorktreeSnapshotCache.shared().refresh(project.root());
-            String response = withGraph ? project.readWithGraph(context -> query.apply(project, context))
-                    : project.read(context -> query.apply(project, context));
+            ObjectNode response =
+                    withGraph
+                            ? project.readWithGraph(context -> query.apply(project, context))
+                            : project.read(context -> query.apply(project, context));
             return new QueryResult(project.name(), response, null);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();

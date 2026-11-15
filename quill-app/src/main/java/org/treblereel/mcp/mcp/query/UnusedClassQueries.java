@@ -14,19 +14,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.diagnostics.QuillLog;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.UnusedClassCandidate;
-import org.treblereel.mcp.core.Json;
-import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Conservatively identifies classes with no indexed inbound evidence. */
 public final class UnusedClassQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    public String findUnusedClasses(ReadQueryContext reader, String module, boolean includeGenerated,
-            boolean includeTests, int limit, int offset) {
+    public ObjectNode findUnusedClasses(
+            ReadQueryContext reader,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            int limit,
+            int offset) {
         ServiceProviders serviceProviders = readServiceProviders(reader);
         Map<String, Integer> excluded = new LinkedHashMap<>();
         List<Candidate> candidates = new ArrayList<>();
@@ -37,26 +42,39 @@ public final class UnusedClassQueries {
             analyzed++;
 
             boolean protectedRoot = false;
-            protectedRoot |= exclude(excluded, "inbound_reference",
-                    evidence.inboundClassCount() > 0);
-            protectedRoot |= exclude(excluded, "hierarchy_reference",
-                    evidence.hierarchyUserCount() > 0);
+            protectedRoot |=
+                    exclude(excluded, "inbound_reference", evidence.inboundClassCount() > 0);
+            protectedRoot |=
+                    exclude(excluded, "hierarchy_reference", evidence.hierarchyUserCount() > 0);
             protectedRoot |= exclude(excluded, "di_bean", cls.isBean());
-            protectedRoot |= exclude(excluded, "direct_class_annotation",
-                    evidence.directAnnotationCount() > 0);
+            protectedRoot |=
+                    exclude(
+                            excluded,
+                            "direct_class_annotation",
+                            evidence.directAnnotationCount() > 0);
             protectedRoot |= exclude(excluded, "main_entry_point", evidence.hasMainMethod());
-            protectedRoot |= exclude(excluded, "service_provider",
-                    serviceProviders.providers().contains(cls.className()));
+            protectedRoot |=
+                    exclude(
+                            excluded,
+                            "service_provider",
+                            serviceProviders.providers().contains(cls.className()));
             protectedRoot |= exclude(excluded, "metadata_class", isMetadataClass(cls));
             if (protectedRoot) continue;
             candidates.add(new Candidate(evidence, confidence(cls)));
         }
-        candidates.sort(Comparator
-                .comparingInt((Candidate candidate) -> confidenceOrder(candidate.confidence()))
-                .thenComparing(Comparator.comparingInt(
-                        (Candidate candidate) -> candidate.evidence().classRecord().sourceTokens())
-                        .reversed())
-                .thenComparing(candidate -> candidate.evidence().classRecord().className()));
+        candidates.sort(
+                Comparator.comparingInt(
+                                (Candidate candidate) -> confidenceOrder(candidate.confidence()))
+                        .thenComparing(
+                                Comparator.comparingInt(
+                                                (Candidate candidate) ->
+                                                        candidate
+                                                                .evidence()
+                                                                .classRecord()
+                                                                .sourceTokens())
+                                        .reversed())
+                        .thenComparing(
+                                candidate -> candidate.evidence().classRecord().className()));
 
         int from = Math.min(offset, candidates.size());
         int to = (int) Math.min((long) from + limit, candidates.size());
@@ -72,9 +90,12 @@ public final class UnusedClassQueries {
         root.set("excluded_reason_counts", JSON.valueToTree(excluded));
         root.put("service_descriptor_evidence_available", serviceProviders.available());
         ArrayNode limitations = root.putArray("limitations");
-        limitations.add("Reflection, native lookups, serialization, configuration files, templates, and external consumers may use a class without an indexed bytecode edge");
-        limitations.add("Directly annotated classes, DI beans, service providers, and main classes are conservatively treated as framework or runtime roots");
-        limitations.add("A candidate means no usage was found in the indexed compiled snapshot; inspect freshness metadata before deleting code");
+        limitations.add(
+                "Reflection, native lookups, serialization, configuration files, templates, and external consumers may use a class without an indexed bytecode edge");
+        limitations.add(
+                "Directly annotated classes, DI beans, service providers, and main classes are conservatively treated as framework or runtime roots");
+        limitations.add(
+                "A candidate means no usage was found in the indexed compiled snapshot; inspect freshness metadata before deleting code");
 
         ArrayNode values = root.putArray("candidates");
         int naiveTokens = 0;
@@ -86,7 +107,11 @@ public final class UnusedClassQueries {
             node.put("kind", cls.kind());
             node.put("confidence", candidate.confidence());
             node.put("reason", "no_indexed_inbound_or_hierarchy_references");
-            node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
+            node.put(
+                    "source",
+                    (cls.sourceLine() > 0
+                            ? cls.sourceFile() + ":" + cls.sourceLine()
+                            : cls.sourceFile()));
             node.put("origin", cls.origin());
             if (cls.module() == null) node.putNull("module");
             else node.put("module", cls.module());
@@ -100,7 +125,8 @@ public final class UnusedClassQueries {
             node.put("hierarchy_users", evidence.hierarchyUserCount());
             ArrayNode cautions = node.putArray("cautions");
             if (!"CLASS".equals(cls.kind())) {
-                cautions.add("Non-class API types are more likely to have external or declarative consumers");
+                cautions.add(
+                        "Non-class API types are more likely to have external or declarative consumers");
             }
             if (!serviceProviders.available()) {
                 cautions.add("Service descriptor metadata is unavailable");
@@ -109,11 +135,15 @@ public final class UnusedClassQueries {
         }
         appendPage(root, page.size(), candidates.size(), limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
-    private static boolean inRequestedScope(ClassRecord cls, String module,
-            boolean includeGenerated, boolean includeTests, Map<String, Integer> excluded) {
+    private static boolean inRequestedScope(
+            ClassRecord cls,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            Map<String, Integer> excluded) {
         if (module != null && !module.equals(cls.module())) {
             increment(excluded, "module_filter");
             return false;
@@ -150,8 +180,7 @@ public final class UnusedClassQueries {
     }
 
     private static String confidence(ClassRecord cls) {
-        return "CLASS".equals(cls.kind()) && "source".equals(cls.origin())
-                ? "medium" : "low";
+        return "CLASS".equals(cls.kind()) && "source".equals(cls.origin()) ? "medium" : "low";
     }
 
     private static int confidenceOrder(String confidence) {

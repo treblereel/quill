@@ -14,18 +14,38 @@ class LambdaCallHierarchyTest {
 
     @TempDir Path root;
 
-    /** V21 CQ-027: agents asked for lambda$onStart$0, which call evidence names, and got METHOD_NOT_FOUND. */
+    /**
+     * V21 CQ-027: agents asked for lambda$onStart$0, which call evidence names, and got
+     * METHOD_NOT_FOUND.
+     */
     @Test
     void aLambdaNamedByCallEvidenceHasItsOwnCalls() throws Exception {
-        var db = JavaEvidenceFixture.index(root, """
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        """
                 package p;
                 class Fixture {
                     void start(java.util.List<String> paths) { paths.forEach(path -> persist(path.trim())); }
                     void persist(String path) {}
                 }
                 """);
-        String text = TestReads.<String>read(db, reader -> new CallHierarchyQueries()
-                .getCallHierarchy(reader, "p.Fixture", "lambda$start$0", null, "outbound", false, 1, 20, 0));
+        String text =
+                TestReads.read(
+                                db,
+                                reader ->
+                                        new CallHierarchyQueries()
+                                                .getCallHierarchy(
+                                                        reader,
+                                                        "p.Fixture",
+                                                        "lambda$start$0",
+                                                        null,
+                                                        "outbound",
+                                                        false,
+                                                        1,
+                                                        20,
+                                                        0))
+                        .toString();
         var answer = new ObjectMapper().readTree(text);
 
         assertTrue(!answer.has("error_code"), text);
@@ -33,10 +53,16 @@ class LambdaCallHierarchyTest {
         assertTrue(answer.path("calls").toString().contains("persist"), text);
     }
 
-    /** V41 CQ-014: Codex asked for getTemplate, the class declares getTemplates, and the error listed no candidates. */
+    /**
+     * V41 CQ-014: Codex asked for getTemplate, the class declares getTemplates, and the error
+     * listed no candidates.
+     */
     @Test
     void anUnknownMethodNamesTheClosestDeclaredMethods() throws Exception {
-        var db = JavaEvidenceFixture.index(root, """
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        """
                 package p;
                 class Fixture {
                     java.util.List<String> getTemplates() { return null; }
@@ -44,8 +70,22 @@ class LambdaCallHierarchyTest {
                     void close() {}
                 }
                 """);
-        String text = TestReads.<String>read(db, reader -> new CallHierarchyQueries()
-                .getCallHierarchy(reader, "p.Fixture", "getTemplate", null, "outbound", false, 1, 20, 0));
+        String text =
+                TestReads.read(
+                                db,
+                                reader ->
+                                        new CallHierarchyQueries()
+                                                .getCallHierarchy(
+                                                        reader,
+                                                        "p.Fixture",
+                                                        "getTemplate",
+                                                        null,
+                                                        "outbound",
+                                                        false,
+                                                        1,
+                                                        20,
+                                                        0))
+                        .toString();
         var answer = new ObjectMapper().readTree(text);
 
         assertEquals("METHOD_NOT_FOUND", answer.path("error_code").asText(), text);

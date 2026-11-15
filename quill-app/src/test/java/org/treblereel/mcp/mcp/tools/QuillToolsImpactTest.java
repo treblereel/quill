@@ -3,6 +3,7 @@ package org.treblereel.mcp.mcp.tools;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -51,15 +52,16 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                 });
         String answer =
                 ReadQueryContext.readWithGraph(
-                        jdbi,
-                        context ->
-                                new ContextQueries()
-                                        .getContext(
-                                                context,
-                                                List.of("OrderService"),
-                                                false,
-                                                10,
-                                                "impact"));
+                                jdbi,
+                                context ->
+                                        new ContextQueries()
+                                                .getContext(
+                                                        context,
+                                                        List.of("OrderService"),
+                                                        false,
+                                                        10,
+                                                        "impact"))
+                        .toString();
         JsonNode result = JSON.readTree(answer);
 
         assertEquals(0, result.path("unresolved_target_count").asInt(), result.toString());
@@ -91,9 +93,7 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
     void getContextComposesCompactEvidenceAndKeepsPartialResults() throws Exception {
 
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.getContext(
-                                jdbi, List.of("OrderService", "MissingService"), false, 5));
+                JDBI_READS.getContext(jdbi, List.of("OrderService", "MissingService"), false, 5);
 
         assertEquals(1, result.path("resolved_target_count").asInt());
         assertEquals(1, result.path("unresolved_target_count").asInt());
@@ -107,7 +107,9 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
         assertTrue(context.path("risk").has("risk_score"));
         assertFalse(context.path("risk").has("_meta"));
         assertTrue(result.has("impacted_tests"));
-        JsonNode tool = JSON.readTree(ContextQueries.summarizeImpactedTests(result.toString()));
+        JsonNode tool =
+                ContextQueries.summarizeImpactedTests(
+                        (ObjectNode) JSON.readTree(result.toString()));
         assertFalse(
                 tool.path("impacted_tests").has("tests"),
                 "find_impacted_tests lists them on request");
@@ -124,9 +126,10 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                 result.path("impacted_tests").path("answer_complete"),
                 tool.path("impacted_tests").path("answer_complete"));
         JsonNode failed =
-                JSON.readTree(
-                        ContextQueries.summarizeImpactedTests(
-                                "{\"impacted_tests\":{\"error_code\":\"AMBIGUOUS_CLASS\"}}"));
+                ContextQueries.summarizeImpactedTests(
+                        (ObjectNode)
+                                JSON.readTree(
+                                        "{\"impacted_tests\":{\"error_code\":\"AMBIGUOUS_CLASS\"}}"));
         assertFalse(
                 failed.path("impacted_tests").has("request"),
                 "No follow-up without resolved targets");
@@ -137,14 +140,13 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
 
     @Test
     void getContextRequiresTargetsAndReportsEveryUnresolvedTarget() throws Exception {
-        JsonNode empty = JSON.readTree(JDBI_READS.getContext(jdbi, List.of(), false, 10));
+        JsonNode empty = JDBI_READS.getContext(jdbi, List.of(), false, 10);
         JsonNode tooMany =
-                JSON.readTree(
-                        JDBI_READS.getContext(
-                                jdbi,
-                                List.of("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"),
-                                false,
-                                10));
+                JDBI_READS.getContext(
+                        jdbi,
+                        List.of("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"),
+                        false,
+                        10);
 
         assertEquals("At least one target is required", empty.path("message").asText());
         assertEquals(11, tooMany.path("requested_targets").size());
@@ -169,24 +171,23 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                     }
                 });
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                indexed,
-                                readScope ->
-                                        new TestImpactQueries()
-                                                .findImpactedTests(
-                                                        readScope,
-                                                        List.of(
-                                                                "OrderService",
-                                                                "PaymentService",
-                                                                "StripePaymentService",
-                                                                "AuditService",
-                                                                "Related5",
-                                                                "Related6"),
-                                                        true,
-                                                        3,
-                                                        40,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        indexed,
+                        readScope ->
+                                new TestImpactQueries()
+                                        .findImpactedTests(
+                                                readScope,
+                                                List.of(
+                                                        "OrderService",
+                                                        "PaymentService",
+                                                        "StripePaymentService",
+                                                        "AuditService",
+                                                        "Related5",
+                                                        "Related6"),
+                                                true,
+                                                3,
+                                                40,
+                                                0));
         assertEquals(5000, inboundReads.get());
         assertTrue(result.path("traversal_truncated").asBoolean());
         assertFalse(result.path("answer_complete").asBoolean());
@@ -213,24 +214,23 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                     }
                 });
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                indexed,
-                                readScope ->
-                                        new TestImpactQueries()
-                                                .findImpactedTests(
-                                                        readScope,
-                                                        List.of(
-                                                                "OrderService",
-                                                                "PaymentService",
-                                                                "StripePaymentService",
-                                                                "AuditService",
-                                                                "Related5",
-                                                                "Related6"),
-                                                        true,
-                                                        3,
-                                                        40,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        indexed,
+                        readScope ->
+                                new TestImpactQueries()
+                                        .findImpactedTests(
+                                                readScope,
+                                                List.of(
+                                                        "OrderService",
+                                                        "PaymentService",
+                                                        "StripePaymentService",
+                                                        "AuditService",
+                                                        "Related5",
+                                                        "Related6"),
+                                                true,
+                                                3,
+                                                40,
+                                                0));
         assertEquals(1, result.path("total").asInt());
         JsonNode test = result.path("tests").get(0);
         assertEquals(2, test.path("dependency_depth").asInt());
@@ -272,9 +272,7 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.findImpactedTests(
-                                jdbi, List.of("OrderService"), true, 3, 10, 0));
+                JDBI_READS.findImpactedTests(jdbi, List.of("OrderService"), true, 3, 10, 0);
 
         assertEquals("class", result.path("granularity").asText());
         assertFalse(result.path("runtime_coverage_measured").asBoolean(true));
@@ -339,39 +337,37 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                 });
         var queries = new QuillToolQueries();
         JsonNode first =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findImpactedTests(
-                                                readScope,
-                                                List.of(
-                                                        SymbolContract.id(
-                                                                "org.acme.OrderService",
-                                                                "METHOD",
-                                                                "process",
-                                                                "(I)V")),
-                                                true,
-                                                3,
-                                                1,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findImpactedTests(
+                                        readScope,
+                                        List.of(
+                                                SymbolContract.id(
+                                                        "org.acme.OrderService",
+                                                        "METHOD",
+                                                        "process",
+                                                        "(I)V")),
+                                        true,
+                                        3,
+                                        1,
+                                        0));
         JsonNode second =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findImpactedTests(
-                                                readScope,
-                                                List.of(
-                                                        SymbolContract.id(
-                                                                "org.acme.OrderService",
-                                                                "METHOD",
-                                                                "process",
-                                                                "(I)V")),
-                                                true,
-                                                3,
-                                                1,
-                                                1)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findImpactedTests(
+                                        readScope,
+                                        List.of(
+                                                SymbolContract.id(
+                                                        "org.acme.OrderService",
+                                                        "METHOD",
+                                                        "process",
+                                                        "(I)V")),
+                                        true,
+                                        3,
+                                        1,
+                                        1));
         assertEquals("selected_method_reference_page", first.path("test_ranking_scope").asText());
         assertFalse(first.path("runtime_coverage_measured").asBoolean(true));
         JsonNode refs = first.path("selected_method_references");
@@ -383,22 +379,21 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                 refs.path("usages").get(0).path("caller"),
                 second.path("selected_method_references").path("usages").get(0).path("caller"));
         JsonNode all =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findImpactedTests(
-                                                readScope,
-                                                List.of(
-                                                        SymbolContract.id(
-                                                                "org.acme.OrderService",
-                                                                "METHOD",
-                                                                "process",
-                                                                "(I)V")),
-                                                true,
-                                                3,
-                                                20,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findImpactedTests(
+                                        readScope,
+                                        List.of(
+                                                SymbolContract.id(
+                                                        "org.acme.OrderService",
+                                                        "METHOD",
+                                                        "process",
+                                                        "(I)V")),
+                                        true,
+                                        3,
+                                        20,
+                                        0));
         assertEquals(
                 5,
                 all.path("selected_method_references")
@@ -408,100 +403,87 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                         .sum());
         assertEquals("org.acme.OrderServiceTest", all.path("tests").get(0).path("class").asText());
         JsonNode old =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findImpactedTests(
-                                                readScope,
-                                                List.of("OrderService"),
-                                                true,
-                                                3,
-                                                20,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findImpactedTests(
+                                        readScope, List.of("OrderService"), true, 3, 20, 0));
         assertEquals(old.path("tests"), all.path("class_level_candidates").path("tests"));
         assertEquals(
                 2, all.path("tests").get(0).path("invocation_instruction_occurrences").asInt());
         assertEquals(
                 "AMBIGUOUS_SYMBOL",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findImpactedTests(
-                                                        readScope,
-                                                        List.of("OrderService#process"),
-                                                        true,
-                                                        3,
-                                                        20,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findImpactedTests(
+                                                readScope,
+                                                List.of("OrderService#process"),
+                                                true,
+                                                3,
+                                                20,
+                                                0))
                         .path("error_code")
                         .asText());
         assertEquals(
                 "SYMBOL_NOT_FOUND",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findImpactedTests(
-                                                        readScope,
-                                                        List.of(
-                                                                SymbolContract.id(
-                                                                        "org.acme.OrderService",
-                                                                        "METHOD",
-                                                                        "process",
-                                                                        "(J)V")),
-                                                        true,
-                                                        3,
-                                                        20,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findImpactedTests(
+                                                readScope,
+                                                List.of(
+                                                        SymbolContract.id(
+                                                                "org.acme.OrderService",
+                                                                "METHOD",
+                                                                "process",
+                                                                "(J)V")),
+                                                true,
+                                                3,
+                                                20,
+                                                0))
                         .path("error_code")
                         .asText());
         assertEquals(
                 "INVALID_ARGUMENT",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findImpactedTests(
-                                                        readScope,
-                                                        List.of(
-                                                                "OrderService#process",
-                                                                "AuditService"),
-                                                        true,
-                                                        3,
-                                                        20,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findImpactedTests(
+                                                readScope,
+                                                List.of("OrderService#process", "AuditService"),
+                                                true,
+                                                3,
+                                                20,
+                                                0))
                         .path("error_code")
                         .asText());
         assertEquals(
                 "INVALID_ARGUMENT",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findImpactedTests(
-                                                        readScope,
-                                                        List.of("OrderService#"),
-                                                        true,
-                                                        3,
-                                                        20,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findImpactedTests(
+                                                readScope,
+                                                List.of("OrderService#"),
+                                                true,
+                                                3,
+                                                20,
+                                                0))
                         .path("error_code")
                         .asText());
         assertEquals(
                 "UNSUPPORTED_SYMBOL_ID_VERSION",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findImpactedTests(
-                                                        readScope,
-                                                        List.of("quill:symbol:v0:any"),
-                                                        true,
-                                                        3,
-                                                        20,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findImpactedTests(
+                                                readScope,
+                                                List.of("quill:symbol:v0:any"),
+                                                true,
+                                                3,
+                                                20,
+                                                0))
                         .path("error_code")
                         .asText());
         jdbi.useHandle(
@@ -512,47 +494,39 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                   type_name, parameter_types, modifiers, annotations)
                 VALUES (1, 'METHOD', 'unique', 'unique():void', '()V', 'void', '[]', 'public', '[]')"""));
         JsonNode unique =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findImpactedTests(
-                                                readScope,
-                                                List.of("OrderService#unique"),
-                                                true,
-                                                3,
-                                                20,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findImpactedTests(
+                                        readScope, List.of("OrderService#unique"), true, 3, 20, 0));
         assertEquals("unique", unique.path("selected_method_references").path("name").asText());
         assertEquals(0, unique.path("selected_method_references").path("total").asInt());
         assertEquals(old.path("tests"), unique.path("class_level_candidates").path("tests"));
         assertTrue(unique.path("tests").isEmpty());
         JsonNode typed =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findImpactedTests(
+                                        readScope,
+                                        List.of("OrderService#process( int )"),
+                                        true,
+                                        3,
+                                        20,
+                                        0));
+        assertEquals("(I)V", typed.path("selected_method_references").path("descriptor").asText());
+        assertEquals(
+                "SYMBOL_NOT_FOUND",
+                ReadQueryContext.readWithGraph(
                                 jdbi,
                                 readScope ->
                                         queries.findImpactedTests(
                                                 readScope,
-                                                List.of("OrderService#process( int )"),
+                                                List.of("OrderService#process(long)"),
                                                 true,
                                                 3,
                                                 20,
-                                                0)));
-        assertEquals("(I)V", typed.path("selected_method_references").path("descriptor").asText());
-        assertEquals(
-                "SYMBOL_NOT_FOUND",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findImpactedTests(
-                                                        readScope,
-                                                        List.of("OrderService#process(long)"),
-                                                        true,
-                                                        3,
-                                                        20,
-                                                        0)))
+                                                0))
                         .path("error_code")
                         .asText());
         jdbi.useHandle(
@@ -565,17 +539,16 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                   'java.lang.String', '["int"]', 'public', '[]')"""));
         assertEquals(
                 "AMBIGUOUS_SYMBOL",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findImpactedTests(
-                                                        readScope,
-                                                        List.of("OrderService#process(int)"),
-                                                        true,
-                                                        3,
-                                                        20,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findImpactedTests(
+                                                readScope,
+                                                List.of("OrderService#process(int)"),
+                                                true,
+                                                3,
+                                                20,
+                                                0))
                         .path("error_code")
                         .asText());
     }
@@ -603,13 +576,11 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                         .orElseThrow();
         String id = SymbolContract.id(cls, "METHOD", "work", "()V");
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findImpactedTests(
-                                                        readScope, List.of(id), true, 3, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findImpactedTests(readScope, List.of(id), true, 3, 10, 0));
         assertFalse(result.has("error_code"), result.toString());
         assertEquals(id, result.path("selected_method_references").path("symbol_id").asText());
         assertFalse(result.path("answer_complete").asBoolean());
@@ -639,18 +610,17 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                             "INSERT INTO metadata(key,value) VALUES ('invokedynamic_evidence_protocol','2')");
                 });
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .findImpactedTests(
-                                                        readScope,
-                                                        List.of("OrderService#work()"),
-                                                        true,
-                                                        3,
-                                                        10,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .findImpactedTests(
+                                                readScope,
+                                                List.of("OrderService#work()"),
+                                                true,
+                                                3,
+                                                10,
+                                                0));
         assertFalse(result.has("error_code"), result.toString());
         assertEquals(1, result.path("tests").size());
         assertEquals(3, result.path("tests").get(0).path("reference_occurrences").asInt());
@@ -663,11 +633,8 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
     @Test
     void findImpactedTestsReportsMissingCompiledTestCoverage() throws Exception {
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.findImpactedTests(
-                                jdbi, List.of("AuditService"), true, 3, 10, 0));
-        JsonNode invalid =
-                JSON.readTree(JDBI_READS.findImpactedTests(jdbi, List.of(), true, 3, 10, 0));
+                JDBI_READS.findImpactedTests(jdbi, List.of("AuditService"), true, 3, 10, 0);
+        JsonNode invalid = JDBI_READS.findImpactedTests(jdbi, List.of(), true, 3, 10, 0);
 
         assertFalse(result.path("compiled_test_outputs_indexed").asBoolean());
         assertTrue(result.path("limitations").get(0).asText().contains("No compiled test classes"));
@@ -677,15 +644,14 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
     @Test
     void compareDesignImpactRanksExistingHostsAndPreservesSemanticCaveat() throws Exception {
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .compareDesignImpact(
-                                                        readScope,
-                                                        List.of("OrderService", "AuditService"),
-                                                        3)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .compareDesignImpact(
+                                                readScope,
+                                                List.of("OrderService", "AuditService"),
+                                                3));
 
         assertEquals(2, result.path("candidates").size());
         assertEquals(1, result.path("candidates").get(0).path("rank").asInt());
@@ -699,7 +665,7 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
 
     @Test
     void getRiskReturnsScoreAndSignals() throws Exception {
-        String result = JDBI_READS.getRisk(jdbi, "StripePaymentService");
+        String result = JDBI_READS.getRisk(jdbi, "StripePaymentService").toString();
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
@@ -728,9 +694,7 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
         assertTrue(root.has("_meta"));
 
         JsonNode sourcePath =
-                JSON.readTree(
-                        JDBI_READS.getRisk(
-                                jdbi, "src/main/java/org/acme/StripePaymentService.java"));
+                JDBI_READS.getRisk(jdbi, "src/main/java/org/acme/StripePaymentService.java");
         assertEquals("class", sourcePath.path("target_type").asText());
         assertEquals("org.acme.StripePaymentService", sourcePath.path("target").asText());
     }
@@ -778,7 +742,7 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
                                         "unknown"))
                         .snapshot());
 
-        String result = JDBI_READS.getRisk(noGitJdbi, "Bar");
+        String result = JDBI_READS.getRisk(noGitJdbi, "Bar").toString();
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.Bar", root.get("target").asText());
@@ -795,7 +759,7 @@ class QuillToolsImpactTest extends QuillToolsTestBase {
 
     @Test
     void getRiskClassNotFound() {
-        String result = JDBI_READS.getRisk(jdbi, "NonExistentClass");
+        String result = JDBI_READS.getRisk(jdbi, "NonExistentClass").toString();
         assertTrue(result.contains("error"));
         assertTrue(result.contains("Class not found"));
     }

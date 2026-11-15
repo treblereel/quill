@@ -2,8 +2,8 @@ package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupError;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupErrorNode;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -16,27 +16,36 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.model.ClassRecord;
-import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.model.ClassRecord;
 
 /** Builds paged ancestor and descendant paths for an indexed type. */
 public final class TypeHierarchyQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    public String getTypeHierarchy(ReadQueryContext reader, String target, String direction,
-            int maxDepth, int limit, int offset) {
+    public ObjectNode getTypeHierarchy(
+            ReadQueryContext reader,
+            String target,
+            String direction,
+            int maxDepth,
+            int limit,
+            int offset) {
         String normalizedDirection = normalizeDirection(direction);
         if (normalizedDirection == null) {
-            return errorResponse(
-                    "Invalid direction: expected ancestors, descendants, or both");
+            return errorNode("Invalid direction: expected ancestors, descendants, or both");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
-        String dependency = lookup.error() == null ? null : DependencyTypeAnswers.referencedType(reader, lookup, target);
-        if (lookup.error() != null && dependency == null) return classLookupError(reader, lookup, target);
-        ClassRecord rootClass = dependency != null ? DependencyTypeAnswers.standIn(dependency) : lookup.cls();
+        String dependency =
+                lookup.error() == null
+                        ? null
+                        : DependencyTypeAnswers.referencedType(reader, lookup, target);
+        if (lookup.error() != null && dependency == null)
+            return classLookupErrorNode(reader, lookup, target);
+        ClassRecord rootClass =
+                dependency != null ? DependencyTypeAnswers.standIn(dependency) : lookup.cls();
 
         List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<String, ClassRecord> byName = new HashMap<>();
@@ -52,8 +61,11 @@ public final class TypeHierarchyQueries {
                         .add(new ChildEdge(cls, "implements"));
             }
         }
-        children.values().forEach(values -> values.sort(
-                Comparator.comparing(edge -> edge.child().className())));
+        children.values()
+                .forEach(
+                        values ->
+                                values.sort(
+                                        Comparator.comparing(edge -> edge.child().className())));
 
         Map<String, HierarchyPath> paths = new LinkedHashMap<>();
         if (!"descendants".equals(normalizedDirection)) {
@@ -62,11 +74,13 @@ public final class TypeHierarchyQueries {
         if (!"ancestors".equals(normalizedDirection)) {
             collectDescendants(rootClass, children, maxDepth, paths);
         }
-        List<HierarchyPath> ordered = paths.values().stream()
-                .sorted(Comparator.comparing(HierarchyPath::direction)
-                        .thenComparingInt(HierarchyPath::depth)
-                        .thenComparing(HierarchyPath::className))
-                .toList();
+        List<HierarchyPath> ordered =
+                paths.values().stream()
+                        .sorted(
+                                Comparator.comparing(HierarchyPath::direction)
+                                        .thenComparingInt(HierarchyPath::depth)
+                                        .thenComparing(HierarchyPath::className))
+                        .toList();
         int from = Math.min(offset, ordered.size());
         int to = (int) Math.min((long) from + limit, ordered.size());
         List<HierarchyPath> page = ordered.subList(from, to);
@@ -74,13 +88,23 @@ public final class TypeHierarchyQueries {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", rootClass.className());
         root.put("kind", rootClass.kind());
-        root.put("source", (rootClass.sourceLine() > 0 ? rootClass.sourceFile() + ":" + rootClass.sourceLine() : rootClass.sourceFile()));
+        root.put(
+                "source",
+                (rootClass.sourceLine() > 0
+                        ? rootClass.sourceFile() + ":" + rootClass.sourceLine()
+                        : rootClass.sourceFile()));
         root.put("direction", normalizedDirection);
         root.put("max_depth", maxDepth);
-        root.put("ancestor_count", paths.values().stream()
-                .filter(path -> "ancestor".equals(path.direction())).count());
-        root.put("descendant_count", paths.values().stream()
-                .filter(path -> "descendant".equals(path.direction())).count());
+        root.put(
+                "ancestor_count",
+                paths.values().stream()
+                        .filter(path -> "ancestor".equals(path.direction()))
+                        .count());
+        root.put(
+                "descendant_count",
+                paths.values().stream()
+                        .filter(path -> "descendant".equals(path.direction()))
+                        .count());
         ArrayNode entries = root.putArray("hierarchy");
         int naiveTokens = rootClass.sourceTokens();
         for (HierarchyPath path : page) {
@@ -95,7 +119,11 @@ public final class TypeHierarchyQueries {
             if (path.indexedClass() != null) {
                 ClassRecord cls = path.indexedClass();
                 node.put("kind", cls.kind());
-                node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
+                node.put(
+                        "source",
+                        (cls.sourceLine() > 0
+                                ? cls.sourceFile() + ":" + cls.sourceLine()
+                                : cls.sourceFile()));
                 node.put("origin", cls.origin());
                 if (cls.module() == null) node.putNull("module");
                 else node.put("module", cls.module());
@@ -106,11 +134,14 @@ public final class TypeHierarchyQueries {
         }
         appendPage(root, page.size(), ordered.size(), limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
-    private static void collectAncestors(ClassRecord root, Map<String, ClassRecord> byName,
-            int maxDepth, Map<String, HierarchyPath> result) {
+    private static void collectAncestors(
+            ClassRecord root,
+            Map<String, ClassRecord> byName,
+            int maxDepth,
+            Map<String, HierarchyPath> result) {
         ArrayDeque<Traversal> queue = new ArrayDeque<>();
         enqueueParents(queue, root, 0, List.of(root.className()), List.of());
         Map<String, Integer> visited = new HashMap<>();
@@ -120,34 +151,54 @@ public final class TypeHierarchyQueries {
             if (previousDepth != null && previousDepth <= current.depth()) continue;
             visited.put(current.className(), current.depth());
             ClassRecord indexed = byName.get(current.className());
-            result.put("ancestor:" + current.className(), new HierarchyPath(
-                    current.className(), "ancestor", current.depth(), current.path(),
-                    current.relations(), indexed));
+            result.put(
+                    "ancestor:" + current.className(),
+                    new HierarchyPath(
+                            current.className(),
+                            "ancestor",
+                            current.depth(),
+                            current.path(),
+                            current.relations(),
+                            indexed));
             if (indexed != null && current.depth() < maxDepth) {
-                enqueueParents(queue, indexed, current.depth(),
-                        current.path(), current.relations());
+                enqueueParents(
+                        queue, indexed, current.depth(), current.path(), current.relations());
             }
         }
     }
 
-    private static void enqueueParents(ArrayDeque<Traversal> queue, ClassRecord child,
-            int childDepth, List<String> path, List<String> relations) {
+    private static void enqueueParents(
+            ArrayDeque<Traversal> queue,
+            ClassRecord child,
+            int childDepth,
+            List<String> path,
+            List<String> relations) {
         if (child.superclass() != null) {
-            queue.addLast(new Traversal(child.superclass(), childDepth + 1,
-                    append(path, child.superclass()), append(relations, "extends")));
+            queue.addLast(
+                    new Traversal(
+                            child.superclass(),
+                            childDepth + 1,
+                            append(path, child.superclass()),
+                            append(relations, "extends")));
         }
         for (String implemented : child.interfaces()) {
-            queue.addLast(new Traversal(implemented, childDepth + 1,
-                    append(path, implemented), append(relations, "implements")));
+            queue.addLast(
+                    new Traversal(
+                            implemented,
+                            childDepth + 1,
+                            append(path, implemented),
+                            append(relations, "implements")));
         }
     }
 
-    private static void collectDescendants(ClassRecord root,
-            Map<String, List<ChildEdge>> children, int maxDepth,
+    private static void collectDescendants(
+            ClassRecord root,
+            Map<String, List<ChildEdge>> children,
+            int maxDepth,
             Map<String, HierarchyPath> result) {
         ArrayDeque<Traversal> queue = new ArrayDeque<>();
-        enqueueChildren(queue, children.get(root.className()), 0,
-                List.of(root.className()), List.of());
+        enqueueChildren(
+                queue, children.get(root.className()), 0, List.of(root.className()), List.of());
         Map<String, Integer> visited = new HashMap<>();
         while (!queue.isEmpty()) {
             Traversal current = queue.removeFirst();
@@ -155,32 +206,66 @@ public final class TypeHierarchyQueries {
             if (previousDepth != null && previousDepth <= current.depth()) continue;
             visited.put(current.className(), current.depth());
             ChildEdge edge = current.edge();
-            result.put("descendant:" + current.className(), new HierarchyPath(
-                    current.className(), "descendant", current.depth(), current.path(),
-                    current.relations(), edge.child()));
+            result.put(
+                    "descendant:" + current.className(),
+                    new HierarchyPath(
+                            current.className(),
+                            "descendant",
+                            current.depth(),
+                            current.path(),
+                            current.relations(),
+                            edge.child()));
             if (current.depth() < maxDepth) {
-                enqueueChildren(queue, children.get(current.className()), current.depth(),
-                        current.path(), current.relations());
+                enqueueChildren(
+                        queue,
+                        children.get(current.className()),
+                        current.depth(),
+                        current.path(),
+                        current.relations());
             }
         }
     }
 
-    private static void enqueueChildren(ArrayDeque<Traversal> queue, List<ChildEdge> edges,
-            int parentDepth, List<String> path, List<String> relations) {
+    private static void enqueueChildren(
+            ArrayDeque<Traversal> queue,
+            List<ChildEdge> edges,
+            int parentDepth,
+            List<String> path,
+            List<String> relations) {
         if (edges == null) return;
         for (ChildEdge edge : edges) {
-            queue.addLast(new Traversal(edge.child().className(), parentDepth + 1,
-                    append(path, edge.child().className()), append(relations, edge.relation()),
-                    edge));
+            queue.addLast(
+                    new Traversal(
+                            edge.child().className(),
+                            parentDepth + 1,
+                            append(path, edge.child().className()),
+                            append(relations, edge.relation()),
+                            edge));
         }
     }
 
     private static String normalizeDirection(String direction) {
         if (direction == null || direction.isBlank()) return "both";
         return switch (direction.trim().toLowerCase(Locale.ROOT)) {
-            case "ancestor", "ancestors", "up", "supertype", "supertypes", "super", "parents", "superclasses" -> "ancestors";
-            case "descendant", "descendants", "down", "subtype", "subtypes", "sub", "children", "subclasses",
-                    "implementations" -> "descendants";
+            case "ancestor",
+                    "ancestors",
+                    "up",
+                    "supertype",
+                    "supertypes",
+                    "super",
+                    "parents",
+                    "superclasses" ->
+                    "ancestors";
+            case "descendant",
+                    "descendants",
+                    "down",
+                    "subtype",
+                    "subtypes",
+                    "sub",
+                    "children",
+                    "subclasses",
+                    "implementations" ->
+                    "descendants";
             case "both", "all" -> "both";
             default -> null;
         };

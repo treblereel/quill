@@ -40,11 +40,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                             'org.acme.Order', '["java.lang.String"]', 'public', '[]')""");
                 });
 
-        JsonNode first =
-                JSON.readTree(JDBI_READS.getSymbolDetails(jdbi, "OrderService", true, null, 1, 0));
-        JsonNode methods =
-                JSON.readTree(
-                        JDBI_READS.getSymbolDetails(jdbi, "OrderService", true, "method", 10, 0));
+        JsonNode first = JDBI_READS.getSymbolDetails(jdbi, "OrderService", true, null, 1, 0);
+        JsonNode methods = JDBI_READS.getSymbolDetails(jdbi, "OrderService", true, "method", 10, 0);
 
         assertEquals("org.acme.OrderService", first.path("class").asText());
         assertEquals("java", first.path("language").asText());
@@ -93,13 +90,10 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
     @Test
     void getSymbolDetailsCanSkipMembersAndValidatesMemberKind() throws Exception {
-        JsonNode compact =
-                JSON.readTree(
-                        JDBI_READS.getSymbolDetails(jdbi, "PaymentService", false, null, 10, 0));
+        JsonNode compact = JDBI_READS.getSymbolDetails(jdbi, "PaymentService", false, null, 10, 0);
+
         JsonNode invalid =
-                JSON.readTree(
-                        JDBI_READS.getSymbolDetails(
-                                jdbi, "PaymentService", true, "property", 10, 0));
+                JDBI_READS.getSymbolDetails(jdbi, "PaymentService", true, "property", 10, 0);
 
         assertFalse(compact.path("members_included").asBoolean());
         assertFalse(compact.has("members"));
@@ -140,9 +134,7 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                                 false,
                                 false)));
 
-        JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.getSymbolDetails(jdbi, "OrderService", false, null, 10, 0));
+        JsonNode result = JDBI_READS.getSymbolDetails(jdbi, "OrderService", false, null, 10, 0);
 
         assertEquals("kotlin", result.path("language").asText());
         assertEquals("OrderService", result.path("source_name").asText());
@@ -170,13 +162,10 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                         0, 50, 'source', 'current', '.', 'main')"""));
 
         JsonNode descendants =
-                JSON.readTree(
-                        JDBI_READS.getTypeHierarchy(
-                                jdbi, "PaymentService", "descendants", 5, 10, 0));
+                JDBI_READS.getTypeHierarchy(jdbi, "PaymentService", "descendants", 5, 10, 0);
         JsonNode ancestors =
-                JSON.readTree(
-                        JDBI_READS.getTypeHierarchy(
-                                jdbi, "PremiumStripePaymentService", "ancestors", 5, 10, 0));
+                JDBI_READS.getTypeHierarchy(
+                        jdbi, "PremiumStripePaymentService", "ancestors", 5, 10, 0);
 
         assertEquals(2, descendants.path("descendant_count").asInt());
         assertEquals(
@@ -228,11 +217,9 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
     @Test
     void getTypeHierarchyValidatesDirectionAndPaginates() throws Exception {
-        JsonNode page =
-                JSON.readTree(JDBI_READS.getTypeHierarchy(jdbi, "PaymentService", "down", 5, 1, 0));
+        JsonNode page = JDBI_READS.getTypeHierarchy(jdbi, "PaymentService", "down", 5, 1, 0);
         JsonNode invalid =
-                JSON.readTree(
-                        JDBI_READS.getTypeHierarchy(jdbi, "PaymentService", "sideways", 5, 10, 0));
+                JDBI_READS.getTypeHierarchy(jdbi, "PaymentService", "sideways", 5, 10, 0);
 
         assertEquals("descendants", page.path("direction").asText());
         assertEquals(1, page.path("showing").asInt());
@@ -267,8 +254,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                             'kotlin_metadata', 0, 0)""");
                 });
 
-        JsonNode result = JSON.readTree(JDBI_READS.searchSymbols(jdbi, "order", "method", 10, 0));
-        JsonNode invalid = JSON.readTree(JDBI_READS.searchSymbols(jdbi, "order", "package", 10, 0));
+        JsonNode result = JDBI_READS.searchSymbols(jdbi, "order", "method", 10, 0);
+        JsonNode invalid = JDBI_READS.searchSymbols(jdbi, "order", "package", 10, 0);
 
         assertEquals(1, result.path("total").asInt());
         JsonNode symbol = result.path("symbols").get(0);
@@ -285,13 +272,12 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertEquals("org.acme.Order", symbol.path("type").asText());
         assertTrue(symbol.path("annotations").toString().contains("Transactional"));
         JsonNode kotlinResult =
-                JSON.readTree(JDBI_READS.searchSymbols(jdbi, "createKotlinOrder", "method", 10, 0));
-        JsonNode kotlinOnly =
-                JSON.readTree(JDBI_READS.searchSymbols(jdbi, "order", null, "kotlin", 10, 0));
-        JsonNode invalidLanguage =
-                JSON.readTree(JDBI_READS.searchSymbols(jdbi, "order", null, "scala", 10, 0));
+                JDBI_READS.searchSymbols(jdbi, "createKotlinOrder", "method", 10, 0);
+        JsonNode kotlinOnly = JDBI_READS.searchSymbols(jdbi, "order", null, "kotlin", 10, 0);
+        JsonNode invalidLanguage = JDBI_READS.searchSymbols(jdbi, "order", null, "scala", 10, 0);
         JsonNode property =
-                JSON.readTree(JDBI_READS.searchSymbols(jdbi, "orders", "field", "kotlin", 10, 0))
+                JDBI_READS
+                        .searchSymbols(jdbi, "orders", "field", "kotlin", 10, 0)
                         .path("symbols")
                         .get(0);
         JsonNode kotlinSymbol = kotlinResult.path("symbols").get(0);
@@ -334,7 +320,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                 });
 
         JsonNode symbol =
-                JSON.readTree(JDBI_READS.searchSymbols(jdbi, "orderRepository", "field", 10, 0))
+                JDBI_READS
+                        .searchSymbols(jdbi, "orderRepository", "field", 10, 0)
                         .path("symbols")
                         .get(0);
 
@@ -357,7 +344,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                 VALUES (1, 'METHOD', 'runPrecisely', 'runPrecisely()', '()V', 'void',
                         '[]', 'public', '[]')"""));
         JsonNode symbol =
-                JSON.readTree(JDBI_READS.searchSymbols(jdbi, "runPrecisely", "method", 10, 0))
+                JDBI_READS
+                        .searchSymbols(jdbi, "runPrecisely", "method", 10, 0)
                         .path("symbols")
                         .get(0);
         assertTrue(symbol.path("location").path("line").isNull());
@@ -365,9 +353,7 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertTrue(symbol.path("location").path("class_declaration_line").asInt() > 0);
         assertFalse(symbol.path("source").asText().matches(".*:[0-9]+"));
         JsonNode detail =
-                JSON.readTree(
-                        JDBI_READS.getSymbolDetails(
-                                jdbi, "org.acme.OrderService", true, "method", 100, 0));
+                JDBI_READS.getSymbolDetails(jdbi, "org.acme.OrderService", true, "method", 100, 0);
         JsonNode member =
                 detail.path("members")
                         .valueStream()
@@ -380,8 +366,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
     @Test
     void searchSymbolsIncludesTypesAndPaginates() throws Exception {
-        JsonNode page = JSON.readTree(JDBI_READS.searchSymbols(jdbi, "Service", null, 2, 1));
-        JsonNode blank = JSON.readTree(JDBI_READS.searchSymbols(jdbi, " ", null, 10, 0));
+        JsonNode page = JDBI_READS.searchSymbols(jdbi, "Service", null, 2, 1);
+        JsonNode blank = JDBI_READS.searchSymbols(jdbi, " ", null, 10, 0);
 
         assertEquals(4, page.path("total").asInt());
         assertEquals(2, page.path("showing").asInt());
@@ -444,19 +430,18 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode ambiguous =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "OrderService",
-                                                "submit",
-                                                "method",
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "OrderService",
+                                        "submit",
+                                        "method",
+                                        null,
+                                        "all",
+                                        10,
+                                        0));
         assertFalse(ambiguous.has("error"));
         assertEquals("AMBIGUOUS_SYMBOL", ambiguous.path("error_code").asText());
         assertEquals("Ambiguous symbol", ambiguous.path("message").asText());
@@ -467,71 +452,60 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertTrue(candidateId.startsWith("quill:symbol:v3:"));
 
         JsonNode selectedById =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                candidateId,
-                                                null,
-                                                null,
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope, candidateId, null, null, null, "all", 10, 0));
         assertFalse(selectedById.has("error"));
         assertEquals(candidateId, selectedById.path("symbol_id").asText());
 
         JsonNode method =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "OrderService",
-                                                "submit",
-                                                "method",
-                                                "(Ljava/lang/String;)V",
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "OrderService",
+                                        "submit",
+                                        "method",
+                                        "(Ljava/lang/String;)V",
+                                        "all",
+                                        10,
+                                        0));
         for (String selector :
                 List.of("submit(java.lang.String)", "(java.lang.String)", "(String)")) {
             JsonNode source =
-                    JSON.readTree(
-                            ReadQueryContext.<String>readWithGraph(
-                                    jdbi,
-                                    context ->
-                                            queries.findSymbolUsages(
-                                                    context,
-                                                    "OrderService",
-                                                    "submit",
-                                                    "method",
-                                                    selector,
-                                                    "all",
-                                                    10,
-                                                    0)));
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            context ->
+                                    queries.findSymbolUsages(
+                                            context,
+                                            "OrderService",
+                                            "submit",
+                                            "method",
+                                            selector,
+                                            "all",
+                                            10,
+                                            0));
             assertEquals(method.path("symbol_id"), source.path("symbol_id"), selector);
             assertEquals(method.path("usages"), source.path("usages"), selector);
         }
         assertEquals(1, method.path("total").asInt());
         assertEquals("(Ljava/lang/String;)V", method.path("descriptor").asText());
         JsonNode byParameters =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "OrderService",
-                                                "submit",
-                                                "method",
-                                                "(java.lang.String)",
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "OrderService",
+                                        "submit",
+                                        "method",
+                                        "(java.lang.String)",
+                                        "all",
+                                        10,
+                                        0));
         assertEquals(method.path("symbol_id"), byParameters.path("symbol_id"));
         assertEquals(method.path("usages"), byParameters.path("usages"));
         assertEquals(
@@ -548,87 +522,82 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertTrue(method.path("symbol_id").asText().startsWith("quill:symbol:v3:"));
 
         JsonNode kotlinMethod =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "OrderService",
-                                                "submitOrder",
-                                                "method",
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "OrderService",
+                                        "submitOrder",
+                                        "method",
+                                        null,
+                                        "all",
+                                        10,
+                                        0));
         assertEquals(1, kotlinMethod.path("total").asInt());
         assertEquals("kotlin", kotlinMethod.path("language").asText());
         assertEquals("submitOrder", kotlinMethod.path("kotlin_name").asText());
         assertEquals("submit", kotlinMethod.path("jvm_name").asText());
         assertTrue(kotlinMethod.path("default_parameters").asBoolean());
         JsonNode byId =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                kotlinMethod.path("symbol_id").asText(),
-                                                null,
-                                                null,
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        kotlinMethod.path("symbol_id").asText(),
+                                        null,
+                                        null,
+                                        null,
+                                        "all",
+                                        10,
+                                        0));
         assertEquals(kotlinMethod.path("symbol_id").asText(), byId.path("symbol_id").asText());
         assertEquals(1, byId.path("total").asInt());
 
         JsonNode constructor =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "OrderService",
-                                                null,
-                                                "constructor",
-                                                "OrderService(java.lang.String)",
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "OrderService",
+                                        null,
+                                        "constructor",
+                                        "OrderService(java.lang.String)",
+                                        "all",
+                                        10,
+                                        0));
         assertEquals(1, constructor.path("total").asInt());
         assertEquals("special", constructor.path("usages").get(0).path("invocation_kind").asText());
         JsonNode constructorParameters =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "OrderService",
-                                                null,
-                                                "constructor",
-                                                "(java.lang.String)",
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "OrderService",
+                                        null,
+                                        "constructor",
+                                        "(java.lang.String)",
+                                        "all",
+                                        10,
+                                        0));
         assertEquals(constructor.path("symbol_id"), constructorParameters.path("symbol_id"));
 
         JsonNode reads =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "OrderService",
-                                                "status",
-                                                "field",
-                                                null,
-                                                "read",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "OrderService",
+                                        "status",
+                                        "field",
+                                        null,
+                                        "read",
+                                        10,
+                                        0));
         assertEquals(1, reads.path("total").asInt());
         assertEquals("read", reads.path("usages").get(0).path("usage_kind").asText());
         assertEquals(2, reads.path("usages").get(0).path("occurrence_count").asInt());
@@ -648,100 +617,95 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         QuillToolQueries queries = new QuillToolQueries();
 
         JsonNode missingClass =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                SymbolContract.id(
-                                                        "org.acme.RemovedService",
-                                                        "METHOD",
-                                                        "submit",
-                                                        "(I)V"),
-                                                null,
-                                                null,
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        SymbolContract.id(
+                                                "org.acme.RemovedService",
+                                                "METHOD",
+                                                "submit",
+                                                "(I)V"),
+                                        null,
+                                        null,
+                                        null,
+                                        "all",
+                                        10,
+                                        0));
         assertEquals("CLASS_NOT_FOUND", missingClass.path("error_code").asText());
 
         JsonNode removedMember =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                SymbolContract.id(
-                                                        "org.acme.OrderService",
-                                                        "METHOD",
-                                                        "removed",
-                                                        "()V"),
-                                                null,
-                                                null,
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        SymbolContract.id(
+                                                "org.acme.OrderService",
+                                                "METHOD",
+                                                "removed",
+                                                "()V"),
+                                        null,
+                                        null,
+                                        null,
+                                        "all",
+                                        10,
+                                        0));
         assertEquals("SYMBOL_NOT_FOUND", removedMember.path("error_code").asText());
         assertFalse(removedMember.has("symbol_id"));
 
         String staleDescriptor =
                 SymbolContract.id("org.acme.OrderService", "METHOD", "submit", "(J)V");
         JsonNode changedUsage =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                staleDescriptor,
-                                                null,
-                                                null,
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        staleDescriptor,
+                                        null,
+                                        null,
+                                        null,
+                                        "all",
+                                        10,
+                                        0));
         assertEquals("SYMBOL_NOT_FOUND", changedUsage.path("error_code").asText());
         assertEquals("(I)V", changedUsage.path("candidates").get(0).path("descriptor").asText());
         assertNotEquals(
                 staleDescriptor, changedUsage.path("candidates").get(0).path("symbol_id").asText());
 
         JsonNode changedHierarchy =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getCallHierarchy(
-                                                readScope,
-                                                staleDescriptor,
-                                                null,
-                                                null,
-                                                "both",
-                                                false,
-                                                1,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getCallHierarchy(
+                                        readScope,
+                                        staleDescriptor,
+                                        null,
+                                        null,
+                                        "both",
+                                        false,
+                                        1,
+                                        10,
+                                        0));
         assertEquals("METHOD_NOT_FOUND", changedHierarchy.path("error_code").asText());
         assertEquals(
                 "(I)V", changedHierarchy.path("candidates").get(0).path("descriptor").asText());
 
         JsonNode futureVersion =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findSymbolUsages(
-                                                readScope,
-                                                "quill:symbol:v4:anything",
-                                                null,
-                                                null,
-                                                null,
-                                                "all",
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findSymbolUsages(
+                                        readScope,
+                                        "quill:symbol:v4:anything",
+                                        null,
+                                        null,
+                                        null,
+                                        "all",
+                                        10,
+                                        0));
         assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", futureVersion.path("error_code").asText());
         assertFalse(futureVersion.has("error"));
     }
@@ -792,27 +756,23 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                 });
 
         JsonNode all =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(
-                                jdbi, "PaymentService", "processPayment", null, true, 10, 0));
+                JDBI_READS.findMethodOverrides(
+                        jdbi, "PaymentService", "processPayment", null, true, 10, 0);
         JsonNode direct =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(
-                                jdbi, "PaymentService", "processPayment", null, false, 10, 0));
+                JDBI_READS.findMethodOverrides(
+                        jdbi, "PaymentService", "processPayment", null, false, 10, 0);
         JsonNode overload =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(
-                                jdbi,
-                                "PaymentService",
-                                "processPayment",
-                                "processPayment(java.lang.String):void",
-                                true,
-                                10,
-                                0));
+                JDBI_READS.findMethodOverrides(
+                        jdbi,
+                        "PaymentService",
+                        "processPayment",
+                        "processPayment(java.lang.String):void",
+                        true,
+                        10,
+                        0);
         JsonNode kotlin =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(
-                                jdbi, "PaymentService", "processKotlinPayment", null, true, 10, 0));
+                JDBI_READS.findMethodOverrides(
+                        jdbi, "PaymentService", "processKotlinPayment", null, true, 10, 0);
 
         assertEquals(3, all.path("total").asInt());
         assertEquals(2, all.path("base_declarations").size());
@@ -830,15 +790,14 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertEquals(1, direct.path("total").asInt());
         assertEquals(1, overload.path("total").asInt());
         JsonNode parameterOverload =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(
-                                jdbi,
-                                "PaymentService",
-                                "processPayment",
-                                "(java.lang.String)",
-                                true,
-                                10,
-                                0));
+                JDBI_READS.findMethodOverrides(
+                        jdbi,
+                        "PaymentService",
+                        "processPayment",
+                        "(java.lang.String)",
+                        true,
+                        10,
+                        0);
         assertEquals(overload.path("overrides"), parameterOverload.path("overrides"));
         assertEquals(
                 "processPayment(java.lang.String):void",
@@ -850,9 +809,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                 List.of("processPayment"),
                 kotlin.path("jvm_names").valueStream().map(JsonNode::asText).toList());
         String symbolId = kotlin.path("base_declarations").get(0).path("symbol_id").asText();
-        JsonNode byId =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(jdbi, symbolId, null, null, true, 10, 0));
+        JsonNode byId = JDBI_READS.findMethodOverrides(jdbi, symbolId, null, null, true, 10, 0);
+
         assertEquals(symbolId, byId.path("base_declarations").get(0).path("symbol_id").asText());
     }
 
@@ -870,9 +828,7 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                        (2,'METHOD','get','get():java.lang.Object','()Ljava/lang/Object;',
                         'java.lang.Object','[]','public','[]')"""));
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(
-                                jdbi, "PaymentService", "get", "()", true, 10, 0));
+                JDBI_READS.findMethodOverrides(jdbi, "PaymentService", "get", "()", true, 10, 0);
         assertEquals("AMBIGUOUS_METHOD", result.path("error_code").asText());
         assertEquals(2, result.path("candidates").size());
         assertTrue(result.path("retryable").asBoolean());
@@ -892,15 +848,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                         'public abstract', '[]')"""));
 
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.findMethodOverrides(
-                                jdbi,
-                                "PaymentService",
-                                "processPayment",
-                                "missing()",
-                                true,
-                                10,
-                                0));
+                JDBI_READS.findMethodOverrides(
+                        jdbi, "PaymentService", "processPayment", "missing()", true, 10, 0);
 
         assertEquals("Method signature not found", result.path("message").asText());
         assertEquals("processPayment(double):void", result.path("candidates").get(0).asText());
@@ -909,12 +858,9 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
     @Test
     void memberKindAcceptsItsPlural() throws Exception {
         JsonNode plural =
-                JSON.readTree(
-                        JDBI_READS.getSymbolDetails(
-                                jdbi, "PaymentService", true, "methods", 10, 0));
+                JDBI_READS.getSymbolDetails(jdbi, "PaymentService", true, "methods", 10, 0);
         JsonNode singular =
-                JSON.readTree(
-                        JDBI_READS.getSymbolDetails(jdbi, "PaymentService", true, "method", 10, 0));
+                JDBI_READS.getSymbolDetails(jdbi, "PaymentService", true, "method", 10, 0);
 
         assertFalse(plural.has("error_code"), plural.toString());
         assertEquals(singular.path("members"), plural.path("members"));
@@ -923,18 +869,11 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
     @Test
     void searchClassesReportsExactTotalAndNextOffset() throws Exception {
         JsonNode root =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .searchClasses(
-                                                        readScope,
-                                                        "org.acme.*",
-                                                        null,
-                                                        null,
-                                                        1,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .searchClasses(readScope, "org.acme.*", null, null, 1, 0));
 
         assertEquals(1, root.path("showing").asInt());
         assertEquals(4, root.path("total").asInt());
@@ -944,7 +883,7 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
     @Test
     void searchClassesIncludesOriginAndLifecycle() throws Exception {
-        JsonNode result = JSON.readTree(JDBI_READS.searchClasses(jdbi, "OrderService", 10));
+        JsonNode result = JDBI_READS.searchClasses(jdbi, "OrderService", 10);
 
         assertEquals("source", result.path("classes").get(0).path("origin").asText());
         assertEquals("current", result.path("classes").get(0).path("lifecycle").asText());
@@ -969,12 +908,10 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode all =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getAnnotatedClasses(
-                                                readScope, "@Tracked", true, 1, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getAnnotatedClasses(readScope, "@Tracked", true, 1, 0));
         assertEquals("org.acme.Tracked", all.path("annotation").asText());
         assertEquals(2, all.path("annotated_class_count").asInt());
         assertEquals(1, all.path("direct_class_count").asInt());
@@ -985,24 +922,21 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertTrue(all.path("has_more").asBoolean());
 
         JsonNode meta =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getAnnotatedClasses(
-                                                readScope, "org.acme.Tracked", true, 10, 1)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getAnnotatedClasses(
+                                        readScope, "org.acme.Tracked", true, 10, 1));
         assertEquals("meta", meta.path("classes").get(0).path("match").asText());
         assertEquals(
                 "org.acme.Specialized",
                 meta.path("classes").get(0).path("via_annotations").get(0).asText());
 
         JsonNode directOnly =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getAnnotatedClasses(
-                                                readScope, "Tracked", false, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getAnnotatedClasses(readScope, "Tracked", false, 10, 0));
         assertEquals(1, directOnly.path("annotated_class_count").asInt());
         assertEquals("direct", directOnly.path("classes").get(0).path("match").asText());
     }
@@ -1024,13 +958,11 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .getAnnotatedClasses(
-                                                        readScope, "Tracked", true, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .getAnnotatedClasses(readScope, "Tracked", true, 10, 0));
 
         assertEquals("Ambiguous annotation name", result.path("error").asText());
         assertEquals(
@@ -1075,12 +1007,11 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode all =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findAnnotatedSymbols(
-                                                readScope, "@Tracked", "all", true, 2, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findAnnotatedSymbols(
+                                        readScope, "@Tracked", "all", true, 2, 0));
         assertEquals("org.acme.Tracked", all.path("annotation").asText());
         assertEquals(4, all.path("total").asInt());
         assertEquals(2, all.path("showing").asInt());
@@ -1091,17 +1022,11 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                 "org.acme.Specialized", all.path("symbols").get(0).path("via_annotation").asText());
 
         JsonNode fields =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findAnnotatedSymbols(
-                                                readScope,
-                                                "org.acme.Tracked",
-                                                "field",
-                                                false,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findAnnotatedSymbols(
+                                        readScope, "org.acme.Tracked", "field", false, 10, 0));
         assertEquals(1, fields.path("total").asInt());
         assertEquals("audit", fields.path("symbols").get(0).path("name").asText());
         assertEquals("direct", fields.path("symbols").get(0).path("match").asText());
@@ -1109,12 +1034,11 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertTrue(fields.path("_meta").isObject());
 
         JsonNode parameters =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findAnnotatedSymbols(
-                                                readScope, "Tracked", "parameter", false, 10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findAnnotatedSymbols(
+                                        readScope, "Tracked", "parameter", false, 10, 0));
         assertEquals(1, parameters.path("total").asInt());
         assertEquals("PARAMETER", parameters.path("symbols").get(0).path("kind").asText());
         assertEquals("METHOD", parameters.path("symbols").get(0).path("declared_kind").asText());
@@ -1158,46 +1082,39 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode search =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.searchClasses(
-                                                readScope,
-                                                "StripePaymentService",
-                                                "app-two",
-                                                "main",
-                                                10)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.searchClasses(
+                                        readScope, "StripePaymentService", "app-two", "main", 10));
         JsonNode found = search.path("classes").get(0);
         assertEquals(2, found.path("occurrence_count").asInt());
         assertEquals("app-one", found.path("class_occurrences").get(0).path("module").asText());
         assertEquals("app-two", found.path("class_occurrences").get(1).path("module").asText());
 
         JsonNode beans =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getBeans(
-                                                readScope,
-                                                "*StripePaymentService*",
-                                                null,
-                                                null,
-                                                null,
-                                                null,
-                                                "app-two",
-                                                "main",
-                                                10)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getBeans(
+                                        readScope,
+                                        "*StripePaymentService*",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        "app-two",
+                                        "main",
+                                        10));
         assertEquals(1, beans.path("total").asInt());
         assertEquals(2, beans.path("beans").get(0).path("occurrence_count").asInt());
 
         JsonNode dependencies =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getDependencies(
-                                                readScope, "StripePaymentService", "both", 1)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getDependencies(
+                                        readScope, "StripePaymentService", "both", 1));
         assertEquals(2, dependencies.path("occurrence_count").asInt());
     }
 
@@ -1232,9 +1149,7 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.findImplementations(
-                                jdbi, "PaymentService", true, null, null, 10, 0));
+                JDBI_READS.findImplementations(jdbi, "PaymentService", true, null, null, 10, 0);
 
         assertEquals("org.acme.PaymentService", result.path("target").asText());
         assertEquals(1, result.path("implementation_class_count").asInt());
@@ -1256,9 +1171,8 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
         assertEquals(2, result.path("implementations").get(0).path("occurrence_count").asInt());
 
         JsonNode filtered =
-                JSON.readTree(
-                        JDBI_READS.findImplementations(
-                                jdbi, "PaymentService", true, "checkout-two", null, 10, 0));
+                JDBI_READS.findImplementations(
+                        jdbi, "PaymentService", true, "checkout-two", null, 10, 0);
         assertEquals(1, filtered.path("implementation_occurrence_count").asInt());
         assertEquals(
                 List.of("checkout-two"),
@@ -1281,13 +1195,9 @@ class QuillToolsSymbolTest extends QuillToolsTestBase {
                         0, 20, 'source', 'current', 'payments', 'main')"""));
 
         JsonNode direct =
-                JSON.readTree(
-                        JDBI_READS.findImplementations(
-                                jdbi, "PaymentService", false, null, null, 10, 0));
+                JDBI_READS.findImplementations(jdbi, "PaymentService", false, null, null, 10, 0);
         JsonNode transitive =
-                JSON.readTree(
-                        JDBI_READS.findImplementations(
-                                jdbi, "PaymentService", true, null, null, 10, 0));
+                JDBI_READS.findImplementations(jdbi, "PaymentService", true, null, null, 10, 0);
 
         assertEquals(1, direct.path("implementation_class_count").asInt());
         assertEquals(2, transitive.path("implementation_class_count").asInt());

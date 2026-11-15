@@ -1,7 +1,5 @@
 package org.treblereel.mcp.index;
 
-import org.treblereel.mcp.index.BuildProblemInspector;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -19,8 +17,7 @@ class BuildProblemInspectorTest {
 
     @Test
     void explainsWhenNoBuildHasBeenObserved() throws Exception {
-        JsonNode result = JSON.readTree(
-                BuildProblemInspector.inspect(tempDir, "all", null, 50, 0));
+        JsonNode result = BuildProblemInspector.inspect(tempDir, "all", null, 50, 0);
 
         assertEquals("unknown", result.path("build_status").asText());
         assertEquals(0, result.path("total").asInt());
@@ -30,22 +27,24 @@ class BuildProblemInspectorTest {
 
     @Test
     void parsesLocationsDeduplicatesAndFiltersByModule() throws Exception {
-        writeState(false, "maven", """
+        writeState(
+                false,
+                "maven",
+                """
                 org.apache.maven.plugin.compiler.CompilationFailureException: Compilation failure
                 %s/module-a/src/main/java/acme/Broken.java:[12,7] cannot find symbol
                 %s/module-a/src/main/java/acme/Broken.java:[12,7] cannot find symbol
                 %s/module-b/src/main/kotlin/acme/Other.kt:8:3: unresolved reference
-                """.formatted(tempDir, tempDir, tempDir));
+                """
+                        .formatted(tempDir, tempDir, tempDir));
 
-        JsonNode result = JSON.readTree(BuildProblemInspector.inspect(
-                tempDir, "error", "module-a", 1, 0));
+        JsonNode result = BuildProblemInspector.inspect(tempDir, "error", "module-a", 1, 0);
 
         assertEquals("failed", result.path("build_status").asText());
         assertEquals("maven", result.path("build_tool").asText());
         assertEquals(1, result.path("total").asInt());
         JsonNode problem = result.path("problems").get(0);
-        assertEquals("module-a/src/main/java/acme/Broken.java",
-                problem.path("source").asText());
+        assertEquals("module-a/src/main/java/acme/Broken.java", problem.path("source").asText());
         assertEquals(12, problem.path("line").asInt());
         assertEquals(7, problem.path("column").asInt());
         assertEquals("module-a", problem.path("module").asText());
@@ -56,8 +55,7 @@ class BuildProblemInspectorTest {
     void successfulBuildClearsReportedProblems() throws Exception {
         writeState(true, "gradle", "stale failure text");
 
-        JsonNode result = JSON.readTree(
-                BuildProblemInspector.inspect(tempDir, "all", null, 50, 0));
+        JsonNode result = BuildProblemInspector.inspect(tempDir, "all", null, 50, 0);
 
         assertEquals("success", result.path("build_status").asText());
         assertEquals(0, result.path("total").asInt());
@@ -66,18 +64,28 @@ class BuildProblemInspectorTest {
 
     @Test
     void filtersCapturedProblemsBySeveralSourcePaths() throws Exception {
-        writeState(false, "maven", """
+        writeState(
+                false,
+                "maven",
+                """
                 %s/module-a/src/main/java/acme/Broken.java:[12,7] cannot find symbol
                 %s/module-b/src/main/java/acme/Other.java:[3,1] incompatible types
                 java.lang.IllegalStateException: unlocated build failure
-                """.formatted(tempDir, tempDir));
+                """
+                        .formatted(tempDir, tempDir));
 
-        JsonNode result = JSON.readTree(BuildProblemInspector.inspect(
-                tempDir, "all", null,
-                java.util.List.of("module-b/src/main/java/acme/Other.java"), 50, 0));
+        JsonNode result =
+                BuildProblemInspector.inspect(
+                        tempDir,
+                        "all",
+                        null,
+                        java.util.List.of("module-b/src/main/java/acme/Other.java"),
+                        50,
+                        0);
 
         assertEquals(1, result.path("total").asInt());
-        assertEquals("module-b/src/main/java/acme/Other.java",
+        assertEquals(
+                "module-b/src/main/java/acme/Other.java",
                 result.path("problems").get(0).path("source").asText());
         assertEquals(1, result.path("requested_paths").size());
         assertEquals(0, result.path("unlocated_problems_excluded").asInt());
@@ -86,15 +94,17 @@ class BuildProblemInspectorTest {
 
     @Test
     void reportsSeverityRangeCodeCategoryAndRawDiagnostic() throws Exception {
-        writeState(false, "maven", """
+        writeState(
+                false,
+                "maven",
+                """
                 [WARNING] %s/module-a/src/main/java/acme/Legacy.java:[4,2]-[4,12] [compiler.warn.deprecation] old API
                 e: %s/module-b/src/main/kotlin/acme/Broken.kt: (8, 3): unresolved reference: Missing
-                """.formatted(tempDir, tempDir));
+                """
+                        .formatted(tempDir, tempDir));
 
-        JsonNode warnings = JSON.readTree(BuildProblemInspector.inspect(
-                tempDir, "warning", null, 50, 0));
-        JsonNode errors = JSON.readTree(BuildProblemInspector.inspect(
-                tempDir, "error", null, 50, 0));
+        JsonNode warnings = BuildProblemInspector.inspect(tempDir, "warning", null, 50, 0);
+        JsonNode errors = BuildProblemInspector.inspect(tempDir, "error", null, 50, 0);
 
         assertEquals(1, warnings.path("total").asInt());
         JsonNode warning = warnings.path("problems").get(0);
@@ -103,15 +113,20 @@ class BuildProblemInspectorTest {
         assertEquals("compiler.warn.deprecation", warning.path("code").asText());
         assertTrue(warning.path("raw").asText().contains("Legacy.java"));
         assertEquals(1, errors.path("total").asInt());
-        assertEquals("symbol_not_found",
-                errors.path("problems").get(0).path("category").asText());
+        assertEquals("symbol_not_found", errors.path("problems").get(0).path("category").asText());
         assertEquals(8, errors.path("problems").get(0).path("line").asInt());
     }
 
-    /** V23 CQ-049: archunit failed test discovery; the problem carried the whole surefire stack and read as a compile error. */
+    /**
+     * V23 CQ-049: archunit failed test discovery; the problem carried the whole surefire stack and
+     * read as a compile error.
+     */
     @Test
     void aFailedTestRunIsATestFailureWithoutItsStackFrames() throws Exception {
-        writeState(false, "maven", """
+        writeState(
+                false,
+                "maven",
+                """
                 org.apache.maven.lifecycle.LifecycleExecutionException: Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project cryostat:\s
                 There was an error in the forked process
                 TestEngine with ID 'archunit' failed to discover tests
@@ -121,24 +136,42 @@ class BuildProblemInspectorTest {
                 \t... 12 more
                 """);
 
-        JsonNode problem = JSON.readTree(BuildProblemInspector.inspect(tempDir, "all", null, 50, 0))
-                .path("problems").get(0);
+        JsonNode problem =
+                BuildProblemInspector.inspect(tempDir, "all", null, 50, 0).path("problems").get(0);
 
         assertEquals("test_failure", problem.path("category").asText(), problem.toString());
-        assertTrue(problem.path("message").asText().contains("failed to discover tests"), problem.toString());
-        assertFalse(problem.toString().contains("ForkStarter") || problem.toString().contains("more"), problem.toString());
+        assertTrue(
+                problem.path("message").asText().contains("failed to discover tests"),
+                problem.toString());
+        assertFalse(
+                problem.toString().contains("ForkStarter") || problem.toString().contains("more"),
+                problem.toString());
     }
 
-    /** V26 CQ-049: three problems of one surefire exception chain were 21.6 KB, each message also restated as raw. */
+    /**
+     * V26 CQ-049: three problems of one surefire exception chain were 21.6 KB, each message also
+     * restated as raw.
+     */
     @Test
     void anExceptionChainStatesEachCauseOnceAndNoRawCopyOfTheMessage() throws Exception {
-        String discovery = "There was an error in the forked process\nTestEngine with ID 'junit-jupiter' encountered 3 critical issues"
-                + " during test discovery:\n(1) [ERROR] ClassSelector [className = 'p.MapperTest'] resolution failed\n" + "detail ".repeat(300);
-        String reports = "See /project/target/surefire-reports for the individual test results.\n" + discovery;
-        String goal = "Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project app: \n\n" + reports;
+        String discovery =
+                "There was an error in the forked process\nTestEngine with ID 'junit-jupiter' encountered 3 critical issues"
+                        + " during test discovery:\n(1) [ERROR] ClassSelector [className = 'p.MapperTest'] resolution failed\n"
+                        + "detail ".repeat(300);
+        String reports =
+                "See /project/target/surefire-reports for the individual test results.\n"
+                        + discovery;
+        String goal =
+                "Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project app: \n\n"
+                        + reports;
         Path quill = Files.createDirectories(tempDir.resolve(".quill"));
-        var state = JSON.createObjectNode().put("version", 2).put("buildTool", "maven").put("successful", false)
-                .put("finishedAt", System.currentTimeMillis()).put("captureScope", "exception_chain");
+        var state =
+                JSON.createObjectNode()
+                        .put("version", 2)
+                        .put("buildTool", "maven")
+                        .put("successful", false)
+                        .put("finishedAt", System.currentTimeMillis())
+                        .put("captureScope", "exception_chain");
         state.putArray("diagnostics");
         state.putArray("failureMessages")
                 .add("org.apache.maven.lifecycle.LifecycleExecutionException: " + goal)
@@ -146,23 +179,32 @@ class BuildProblemInspectorTest {
                 .add("org.apache.maven.surefire.booter.SurefireBooterForkException: " + discovery);
         JSON.writeValue(quill.resolve("build-state.json").toFile(), state);
 
-        JsonNode result = JSON.readTree(BuildProblemInspector.inspect(tempDir, "all", null, 50, 0));
+        JsonNode result = BuildProblemInspector.inspect(tempDir, "all", null, 50, 0);
         JsonNode problems = result.path("problems");
 
         assertEquals(3, problems.size(), result.toString());
-        assertTrue(problems.get(0).path("message").asText().startsWith("Failed to execute goal"), result.toString());
-        assertFalse(problems.get(0).path("message").asText().contains("surefire-reports"), "The cause is its own problem: " + problems.get(0));
-        assertFalse(problems.get(1).path("message").asText().contains("TestEngine"), problems.get(1).toString());
-        assertTrue(problems.get(2).path("message").asText().contains("ClassSelector"), problems.get(2).toString());
+        assertTrue(
+                problems.get(0).path("message").asText().startsWith("Failed to execute goal"),
+                result.toString());
+        assertFalse(
+                problems.get(0).path("message").asText().contains("surefire-reports"),
+                "The cause is its own problem: " + problems.get(0));
+        assertFalse(
+                problems.get(1).path("message").asText().contains("TestEngine"),
+                problems.get(1).toString());
+        assertTrue(
+                problems.get(2).path("message").asText().contains("ClassSelector"),
+                problems.get(2).toString());
         for (JsonNode problem : problems) {
             assertEquals("test_failure", problem.path("category").asText(), problem.toString());
             assertFalse(problem.has("raw"), "raw restates the message: " + problem);
         }
-        assertTrue(result.path("problems").toString().length() < 4_500, "Chain restated: " + result.path("problems").toString().length());
+        assertTrue(
+                result.path("problems").toString().length() < 4_500,
+                "Chain restated: " + result.path("problems").toString().length());
     }
 
-    private void writeState(boolean successful, String buildTool, String message)
-            throws Exception {
+    private void writeState(boolean successful, String buildTool, String message) throws Exception {
         Path quill = Files.createDirectories(tempDir.resolve(".quill"));
         var state = JSON.createObjectNode();
         state.put("version", 2);

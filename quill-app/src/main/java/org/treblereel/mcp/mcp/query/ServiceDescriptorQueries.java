@@ -1,7 +1,7 @@
 package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,8 +9,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Returns the ordered provider declarations captured from META-INF/services. */
@@ -18,29 +18,32 @@ public final class ServiceDescriptorQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    public String inspect(ReadQueryContext reader, String serviceFilter) {
+    public ObjectNode inspect(ReadQueryContext reader, String serviceFilter) {
         Map<String, String> metadata = reader.index.getMetadata();
         String detail = metadata.get("service_registrations_detail");
         if (detail == null) {
-            return errorResponse("Service descriptor details are unavailable; re-run 'quill init'");
+            return errorNode("Service descriptor details are unavailable; re-run 'quill init'");
         }
         JsonNode registrations;
         try {
             registrations = JSON.readTree(detail);
         } catch (Exception error) {
             QuillLog.swallowed(error);
-            return errorResponse("Indexed service descriptor metadata is invalid");
+            return errorNode("Indexed service descriptor metadata is invalid");
         }
         Map<String, Descriptor> descriptors = new LinkedHashMap<>();
         for (JsonNode registration : registrations) {
             String service = registration.path("serviceType").asText();
-            if (serviceFilter != null && !service.equals(serviceFilter)
+            if (serviceFilter != null
+                    && !service.equals(serviceFilter)
                     && !service.endsWith("." + serviceFilter)) continue;
             String path = registration.path("descriptorPath").asText();
-            Descriptor descriptor = descriptors.computeIfAbsent(path,
-                    ignored -> new Descriptor(service, path));
+            Descriptor descriptor =
+                    descriptors.computeIfAbsent(path, ignored -> new Descriptor(service, path));
             int position = descriptor.providers.size() + 1;
-            descriptor.providers.addObject()
+            descriptor
+                    .providers
+                    .addObject()
                     .put("provider", registration.path("providerType").asText())
                     .put("line", registration.path("line").asInt())
                     .put("position", position);
@@ -53,18 +56,22 @@ public final class ServiceDescriptorQueries {
             item.put("service", descriptor.service);
             item.set("providers", descriptor.providers);
             item.put("provider_count", descriptor.providers.size());
-            boolean annotationProcessors = descriptor.service.endsWith("annotation.processing.Processor")
-                    && descriptor.providers.size() > 1;
+            boolean annotationProcessors =
+                    descriptor.service.endsWith("annotation.processing.Processor")
+                            && descriptor.providers.size() > 1;
             item.put("order_can_affect_execution", annotationProcessors);
-            item.put("order_sensitivity", annotationProcessors
-                    ? "potentially_significant" : "not_inferred");
-            item.put("reason", annotationProcessors
-                    ? "Multiple annotation processors may exchange generated types across processing rounds; preserve the declared provider order when diagnosing pipeline behavior."
-                    : "Quill preserves provider order but does not infer ordering semantics for this service type.");
+            item.put(
+                    "order_sensitivity",
+                    annotationProcessors ? "potentially_significant" : "not_inferred");
+            item.put(
+                    "reason",
+                    annotationProcessors
+                            ? "Multiple annotation processors may exchange generated types across processing rounds; preserve the declared provider order when diagnosing pipeline behavior."
+                            : "Quill preserves provider order but does not infer ordering semantics for this service type.");
         }
         root.put("showing", result.size());
         appendMeta(root, reader, 0);
-        return root.toString();
+        return root;
     }
 
     private static final class Descriptor {

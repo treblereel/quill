@@ -13,33 +13,44 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.UsageRepository.MethodInboundUsage;
+import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
-import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
-import org.treblereel.mcp.core.Json;
 
 /** Finds private methods with no matching inbound bytecode call. */
 public final class UnusedMethodQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
-    private static final Set<String> CONVENTIONAL_CALLBACKS = Set.of(
-            "readObject", "readObjectNoData", "readResolve",
-            "writeObject", "writeReplace", "finalize");
+    private static final Set<String> CONVENTIONAL_CALLBACKS =
+            Set.of(
+                    "readObject",
+                    "readObjectNoData",
+                    "readResolve",
+                    "writeObject",
+                    "writeReplace",
+                    "finalize");
 
-    public String findUnusedMethods(ReadQueryContext reader, String module, boolean includeGenerated,
-            boolean includeTests, int limit, int offset) {
+    public ObjectNode findUnusedMethods(
+            ReadQueryContext reader,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            int limit,
+            int offset) {
         List<ClassRecord> classes = reader.symbols.findAllClasses();
-        Map<Integer, List<ClassMemberRecord>> members = reader.symbols.findClassMembers(classes.stream().map(ClassRecord::id).toList());
+        Map<Integer, List<ClassMemberRecord>> members =
+                reader.symbols.findClassMembers(classes.stream().map(ClassRecord::id).toList());
         Map<MethodKey, MethodInboundUsage> usages = new HashMap<>();
         for (MethodInboundUsage usage : reader.usages.findMethodInboundUsages()) {
             usages.put(new MethodKey(usage.classId(), usage.method(), usage.descriptor()), usage);
         }
 
         Map<String, Integer> excluded = new java.util.LinkedHashMap<>();
-        Set<Integer> handleOwners = new HashSet<>(reader.usages.findHandleReferenceOwners("METHOD_HANDLE_REFERENCE"));
+        Set<Integer> handleOwners =
+                new HashSet<>(reader.usages.findHandleReferenceOwners("METHOD_HANDLE_REFERENCE"));
         List<Candidate> candidates = new ArrayList<>();
         int analyzedPrivateMethods = 0;
         for (ClassRecord cls : classes) {
@@ -47,7 +58,10 @@ public final class UnusedMethodQueries {
             for (ClassMemberRecord member : members.getOrDefault(cls.id(), List.of())) {
                 if (!"METHOD".equals(member.kind()) || !hasModifier(member, "private")) continue;
                 analyzedPrivateMethods++;
-                if (handleOwners.contains(cls.id())) { increment(excluded,"unclassified_method_handle_reference"); continue; }
+                if (handleOwners.contains(cls.id())) {
+                    increment(excluded, "unclassified_method_handle_reference");
+                    continue;
+                }
                 if (!member.annotations().isEmpty()) {
                     increment(excluded, "annotated_method");
                     continue;
@@ -65,20 +79,21 @@ public final class UnusedMethodQueries {
                     increment(excluded, "descriptor_not_resolved");
                     continue;
                 }
-                MethodInboundUsage usage = usages.get(
-                        new MethodKey(cls.id(), member.name(), descriptor));
+                MethodInboundUsage usage =
+                        usages.get(new MethodKey(cls.id(), member.name(), descriptor));
                 if (usage != null) {
                     increment(excluded, "inbound_bytecode_call");
                     continue;
                 }
-                candidates.add(new Candidate(cls, member, descriptor,
-                        cls.isBean() ? "low" : "medium"));
+                candidates.add(
+                        new Candidate(cls, member, descriptor, cls.isBean() ? "low" : "medium"));
             }
         }
-        candidates.sort(Comparator
-                .comparingInt((Candidate candidate) -> confidenceOrder(candidate.confidence()))
-                .thenComparing(candidate -> candidate.owner().className())
-                .thenComparing(candidate -> candidate.member().signature()));
+        candidates.sort(
+                Comparator.comparingInt(
+                                (Candidate candidate) -> confidenceOrder(candidate.confidence()))
+                        .thenComparing(candidate -> candidate.owner().className())
+                        .thenComparing(candidate -> candidate.member().signature()));
 
         int from = Math.min(offset, candidates.size());
         int to = (int) Math.min((long) from + limit, candidates.size());
@@ -93,10 +108,14 @@ public final class UnusedMethodQueries {
         root.put("analyzed_private_methods", analyzedPrivateMethods);
         root.set("excluded_reason_counts", JSON.valueToTree(excluded));
         ArrayNode limitations = root.putArray("limitations");
-        limitations.add("Reflection, JNI, serialization, configuration, and framework conventions can invoke private methods without a bytecode call");
-        limitations.add("Annotated, native, and known Java serialization callback methods are excluded conservatively");
-        limitations.add("Method identity is matched by owner, name, and erased JVM descriptor; unresolved generic descriptors are excluded");
-        limitations.add("Only the indexed compiled snapshot is analyzed; inspect freshness metadata before deleting code");
+        limitations.add(
+                "Reflection, JNI, serialization, configuration, and framework conventions can invoke private methods without a bytecode call");
+        limitations.add(
+                "Annotated, native, and known Java serialization callback methods are excluded conservatively");
+        limitations.add(
+                "Method identity is matched by owner, name, and erased JVM descriptor; unresolved generic descriptors are excluded");
+        limitations.add(
+                "Only the indexed compiled snapshot is analyzed; inspect freshness metadata before deleting code");
 
         ArrayNode values = root.putArray("candidates");
         int naiveTokens = 0;
@@ -115,15 +134,21 @@ public final class UnusedMethodQueries {
             node.put("confidence", candidate.confidence());
             node.put("reason", "no_matching_inbound_bytecode_call");
             if (cls.sourceFile() == null) node.putNull("source");
-            else node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
+            else
+                node.put(
+                        "source",
+                        (cls.sourceLine() > 0
+                                ? cls.sourceFile() + ":" + cls.sourceLine()
+                                : cls.sourceFile()));
             node.put("origin", cls.origin());
             if (cls.module() == null) node.putNull("module");
             else node.put("module", cls.module());
             if (cls.sourceSet() == null) node.putNull("source_set");
             else node.put("source_set", cls.sourceSet());
             if (cls.isBean()) {
-                node.putArray("cautions").add(
-                        "Declaring class is a DI bean; framework lifecycle conventions may apply");
+                node.putArray("cautions")
+                        .add(
+                                "Declaring class is a DI bean; framework lifecycle conventions may apply");
             } else {
                 node.putArray("cautions");
             }
@@ -131,11 +156,15 @@ public final class UnusedMethodQueries {
         }
         appendPage(root, page.size(), candidates.size(), limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
-    private static boolean inRequestedScope(ClassRecord cls, String module,
-            boolean includeGenerated, boolean includeTests, Map<String, Integer> excluded) {
+    private static boolean inRequestedScope(
+            ClassRecord cls,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            Map<String, Integer> excluded) {
         if (module != null && !module.equals(cls.module())) {
             increment(excluded, "module_filter");
             return false;
@@ -170,8 +199,5 @@ public final class UnusedMethodQueries {
     private record MethodKey(int classId, String method, String descriptor) {}
 
     private record Candidate(
-            ClassRecord owner,
-            ClassMemberRecord member,
-            String descriptor,
-            String confidence) {}
+            ClassRecord owner, ClassMemberRecord member, String descriptor, String confidence) {}
 }

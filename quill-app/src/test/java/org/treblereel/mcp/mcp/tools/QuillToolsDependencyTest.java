@@ -12,15 +12,14 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
 
     @Test
     void getDependenciesShowsOutbound() {
-        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1);
+        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1).toString();
         assertTrue(result.contains("StripePaymentService"));
         assertTrue(result.contains("CDI_INJECT"));
     }
 
     @Test
     void getDependenciesReturnsCallSiteEvidence() throws Exception {
-        JsonNode result =
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "AuditService", "inbound", 1));
+        JsonNode result = JDBI_READS.getDependencies(jdbi, "AuditService", "inbound", 1);
         JsonNode edge = result.get("depended_by").get(0);
         assertEquals("CONSTRUCTS", edge.get("kind").asText());
         assertEquals(
@@ -33,9 +32,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
     @Test
     void findUsagesReturnsConstructorEvidenceAndFiltersKinds() throws Exception {
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.findUsages(
-                                jdbi, "AuditService", "constructor_call", null, 10, 0));
+                JDBI_READS.findUsages(jdbi, "AuditService", "constructor_call", null, 10, 0);
 
         assertEquals("org.acme.AuditService", result.path("target").asText());
         assertEquals("class", result.path("granularity").asText());
@@ -67,12 +64,10 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
                       (3, 'callback', '()V', 1, 'selected', '(I)V', 'dynamic', 4, '[50]'),
                       (4, 'otherTarget', '()V', 2, 'notThisTarget', '()V', 'interface', 1, '[60]')""");
                 });
-        JsonNode first =
-                JSON.readTree(
-                        JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 1, 0));
-        JsonNode second =
-                JSON.readTree(
-                        JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 1, 1));
+        JsonNode first = JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 1, 0);
+
+        JsonNode second = JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 1, 1);
+
         assertEquals(2, first.path("total").asInt());
         assertTrue(first.path("has_more").asBoolean());
         assertEquals("org.acme.AuditService", first.path("usages").get(0).path("class").asText());
@@ -91,9 +86,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
                 "(Ljava/lang/String;)V",
                 usage.path("invoked_members").get(1).path("descriptor").asText());
         JsonNode callback =
-                JSON.readTree(
-                        JDBI_READS.findUsages(
-                                jdbi, "OrderService", "callback_reference", null, 10, 0));
+                JDBI_READS.findUsages(jdbi, "OrderService", "callback_reference", null, 10, 0);
         assertFalse(callback.path("usages").get(0).has("invoked_members"));
         assertTrue(
                 org.treblereel.mcp.db.IndexReader.findInvokedMembers(jdbi, 1, List.of()).isEmpty());
@@ -120,9 +113,8 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
                                 "m" + index);
                     }
                 });
-        JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 10, 0));
+        JsonNode result = JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 10, 0);
+
         JsonNode usage = result.path("usages").get(0);
         assertEquals(40, usage.path("invoked_member_groups").asInt());
         assertEquals(32, usage.path("invoked_members").size());
@@ -139,10 +131,8 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
                   (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
                 VALUES (1, 2, 'TYPE_USE', 2, '[18,21]')"""));
 
-        JsonNode first =
-                JSON.readTree(JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 0));
-        JsonNode second =
-                JSON.readTree(JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 1));
+        JsonNode first = JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 0);
+        JsonNode second = JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 1);
 
         assertEquals(2, first.path("total").asInt());
         assertTrue(first.path("has_more").asBoolean());
@@ -156,22 +146,16 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
         jdbi.useHandle(
                 handle -> handle.execute("UPDATE classes SET module = 'payments' WHERE id = 3"));
 
-        JsonNode matching =
-                JSON.readTree(JDBI_READS.findUsages(jdbi, "AuditService", null, "payments", 10, 0));
-        JsonNode excluded =
-                JSON.readTree(JDBI_READS.findUsages(jdbi, "AuditService", null, "orders", 10, 0));
-        JsonNode invalid =
-                JSON.readTree(
-                        JDBI_READS.findUsages(jdbi, "AuditService", "reflection", null, 10, 0));
+        JsonNode matching = JDBI_READS.findUsages(jdbi, "AuditService", null, "payments", 10, 0);
+        JsonNode excluded = JDBI_READS.findUsages(jdbi, "AuditService", null, "orders", 10, 0);
+        JsonNode invalid = JDBI_READS.findUsages(jdbi, "AuditService", "reflection", null, 10, 0);
 
         assertEquals(1, matching.path("total").asInt());
         assertEquals(0, excluded.path("total").asInt());
         assertTrue(invalid.path("message").asText().startsWith("Invalid usage_kind"));
-        JsonNode alias =
-                JSON.readTree(JDBI_READS.findUsages(jdbi, "AuditService", "di", null, 10, 0));
-        JsonNode canonical =
-                JSON.readTree(
-                        JDBI_READS.findUsages(jdbi, "AuditService", "injection", null, 10, 0));
+        JsonNode alias = JDBI_READS.findUsages(jdbi, "AuditService", "di", null, 10, 0);
+        JsonNode canonical = JDBI_READS.findUsages(jdbi, "AuditService", "injection", null, 10, 0);
+
         assertEquals(canonical.path("usages"), alias.path("usages"));
         assertEquals("injection", alias.path("usage_kind").asText());
     }
@@ -196,8 +180,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
                     dependencies.execute();
                 });
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1));
+        JsonNode result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1);
         assertEquals(200, result.get("depends_on").size());
         assertTrue(result.get("truncated").asBoolean());
         assertEquals(251, result.get("total").asInt());
@@ -206,7 +189,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
 
     @Test
     void getDependenciesDepth2ExpandsTransitive() throws Exception {
-        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 2);
+        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 2).toString();
         JsonNode root = JSON.readTree(result);
         JsonNode graph = root.get("graph");
         assertEquals(2, graph.size());
@@ -219,7 +202,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
 
     @Test
     void getDependenciesDepth1DoesNotExpandNested() throws Exception {
-        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1);
+        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1).toString();
         JsonNode root = JSON.readTree(result);
         JsonNode dependsOn = root.get("depends_on");
         assertNull(
@@ -230,9 +213,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
     @Test
     void getDependenciesCanReturnCompactMetricsOnly() throws Exception {
         JsonNode root =
-                JSON.readTree(
-                        JDBI_READS.getDependencies(
-                                jdbi, "OrderService", "both", 1, false, 50, 0, null));
+                JDBI_READS.getDependencies(jdbi, "OrderService", "both", 1, false, 50, 0, null);
 
         assertFalse(root.get("nodes_included").asBoolean());
         assertEquals(1, root.get("metrics").get("fan_out").asInt());
@@ -244,18 +225,16 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
     @Test
     void getDependenciesPaginatesDepthOneWithOffset() throws Exception {
         JsonNode first =
-                JSON.readTree(
-                        JDBI_READS.getDependencies(
-                                jdbi, "StripePaymentService", "both", 1, true, 1, 0, null));
+                JDBI_READS.getDependencies(
+                        jdbi, "StripePaymentService", "both", 1, true, 1, 0, null);
         assertEquals(1, first.get("showing").asInt());
         assertEquals(2, first.get("total").asInt());
         assertEquals(1, first.get("next_offset").asInt());
         assertTrue(first.get("has_more").asBoolean());
 
         JsonNode second =
-                JSON.readTree(
-                        JDBI_READS.getDependencies(
-                                jdbi, "StripePaymentService", "both", 1, true, 1, 1, null));
+                JDBI_READS.getDependencies(
+                        jdbi, "StripePaymentService", "both", 1, true, 1, 1, null);
         assertEquals(1, second.get("showing").asInt());
         assertEquals(2, second.get("total").asInt());
         assertFalse(second.get("has_more").asBoolean());
@@ -265,9 +244,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
     @Test
     void getDependenciesContinuesDeepBreadthFirstTraversalWithCursor() throws Exception {
         JsonNode first =
-                JSON.readTree(
-                        JDBI_READS.getDependencies(
-                                jdbi, "OrderService", "outbound", 2, true, 1, 0, null));
+                JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 2, true, 1, 0, null);
         assertEquals(
                 "org.acme.StripePaymentService", first.get("graph").get(0).get("class").asText());
         assertEquals(1, first.get("graph").get(0).get("depth").asInt());
@@ -275,9 +252,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
         String cursor = first.get("next_cursor").asText();
 
         JsonNode second =
-                JSON.readTree(
-                        JDBI_READS.getDependencies(
-                                jdbi, "OrderService", "outbound", 2, true, 1, 0, cursor));
+                JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 2, true, 1, 0, cursor);
         assertEquals("org.acme.AuditService", second.get("graph").get(0).get("class").asText());
         assertEquals(2, second.get("graph").get(0).get("depth").asInt());
         assertFalse(second.get("has_more").asBoolean());
@@ -286,21 +261,18 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
     @Test
     void getDependenciesRejectsCursorForDifferentTraversal() throws Exception {
         JsonNode first =
-                JSON.readTree(
-                        JDBI_READS.getDependencies(
-                                jdbi, "OrderService", "outbound", 2, true, 1, 0, null));
+                JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 2, true, 1, 0, null);
         String cursor = first.get("next_cursor").asText();
 
         JsonNode invalid =
-                JSON.readTree(
-                        JDBI_READS.getDependencies(
-                                jdbi, "OrderService", "both", 2, true, 1, 0, cursor));
+                JDBI_READS.getDependencies(jdbi, "OrderService", "both", 2, true, 1, 0, cursor);
         assertEquals("Invalid or expired dependency cursor", invalid.path("message").asText());
     }
 
     @Test
     void getExternalDepsForClassShowsTypesByKind() throws Exception {
-        String result = JDBI_READS.getExternalDeps(jdbi, "StripePaymentService", null, 20);
+        String result =
+                JDBI_READS.getExternalDeps(jdbi, "StripePaymentService", null, 20).toString();
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
@@ -320,7 +292,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
 
     @Test
     void getExternalDepsLibrarySummary() throws Exception {
-        String result = JDBI_READS.getExternalDeps(jdbi, null, null, 20);
+        String result = JDBI_READS.getExternalDeps(jdbi, null, null, 20).toString();
         JsonNode root = JSON.readTree(result);
 
         JsonNode libraries = root.get("libraries");
@@ -340,7 +312,7 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
 
     @Test
     void getExternalDepsFilterByLibrary() throws Exception {
-        String result = JDBI_READS.getExternalDeps(jdbi, null, "com.stripe", 20);
+        String result = JDBI_READS.getExternalDeps(jdbi, null, "com.stripe", 20).toString();
         JsonNode root = JSON.readTree(result);
 
         assertEquals("com.stripe", root.get("library_filter").asText());

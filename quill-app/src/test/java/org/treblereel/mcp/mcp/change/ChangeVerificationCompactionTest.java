@@ -6,14 +6,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 class ChangeVerificationCompactionTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** V26 CQ-049: a supported build protocol, matching source sets and untracked config files took 3 KB of verify_change. */
-    @Test void settledBuildFactsAndNonStructuralFilesAreCounted() throws Exception {
-        String answer = """
+    /**
+     * V26 CQ-049: a supported build protocol, matching source sets and untracked config files took
+     * 3 KB of verify_change.
+     */
+    @Test
+    void settledBuildFactsAndNonStructuralFilesAreCounted() throws Exception {
+        String answer =
+                """
             {"verdict":"needs_build",
              "worktree":{"dirty":true,"changes":[
                {"path":".claude/settings.json","status":"untracked","structural":false},
@@ -25,7 +31,8 @@ class ChangeVerificationCompactionTest {
                         {"source_set":"main","status":"matching","output":"/p/target/classes"},
                         {"source_set":"test","status":"matching","output":"/p/target/test-classes"}]}}}
             """;
-        JsonNode result = JSON.readTree(ChangeVerificationQueries.compactAnswer(answer));
+        JsonNode result =
+                ChangeVerificationQueries.compactAnswer((ObjectNode) JSON.readTree(answer));
 
         assertEquals(1, result.at("/worktree/changes").size(), result.toString());
         assertEquals("src/main/java/p/Mapper.java", result.at("/worktree/changes/0/path").asText());
@@ -33,15 +40,21 @@ class ChangeVerificationCompactionTest {
         assertFalse(result.at("/build/integration").has("protocol"), result.toString());
         assertEquals("installed", result.at("/build/integration/state").asText());
         assertFalse(result.at("/build/compiled_outputs").has("source_sets"), result.toString());
-        assertEquals(2, result.at("/build/compiled_outputs/source_sets_matching").asInt(), result.toString());
+        assertEquals(
+                2,
+                result.at("/build/compiled_outputs/source_sets_matching").asInt(),
+                result.toString());
     }
 
-    @Test void anUnsupportedProtocolOrAStaleSourceSetStaysWhole() throws Exception {
-        String answer = """
+    @Test
+    void anUnsupportedProtocolOrAStaleSourceSetStaysWhole() throws Exception {
+        String answer =
+                """
             {"build":{"integration":{"state":"installed","protocol":{"status":"unsupported"}},
                       "compiled_outputs":{"source_sets":[{"source_set":"main","status":"stale"}]}}}
             """;
-        JsonNode result = JSON.readTree(ChangeVerificationQueries.compactAnswer(answer));
+        JsonNode result =
+                ChangeVerificationQueries.compactAnswer((ObjectNode) JSON.readTree(answer));
         assertTrue(result.at("/build/integration").has("protocol"), result.toString());
         assertTrue(result.at("/build/compiled_outputs").has("source_sets"), result.toString());
     }

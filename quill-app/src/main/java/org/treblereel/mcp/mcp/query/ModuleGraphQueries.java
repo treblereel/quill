@@ -2,7 +2,7 @@ package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -14,11 +14,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.mcp.support.ArgumentAliases;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
-import org.treblereel.mcp.mcp.support.ArgumentAliases;
-import org.treblereel.mcp.core.Json;
 
 /** Describes project-module dependencies and transitive classpath visibility. */
 public final class ModuleGraphQueries {
@@ -26,12 +26,17 @@ public final class ModuleGraphQueries {
     private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
 
-    public String getModuleGraph(ReadQueryContext reader, String module, String direction,
-            int depth, int limit, int offset) {
-        String normalizedDirection = direction == null
-                ? "both" : ArgumentAliases.graphDirection(direction);
+    public ObjectNode getModuleGraph(
+            ReadQueryContext reader,
+            String module,
+            String direction,
+            int depth,
+            int limit,
+            int offset) {
+        String normalizedDirection =
+                direction == null ? "both" : ArgumentAliases.graphDirection(direction);
         if (!DIRECTIONS.contains(normalizedDirection)) {
-            return errorResponse("Invalid direction: expected inbound, outbound, or both");
+            return errorNode("Invalid direction: expected inbound, outbound, or both");
         }
 
         List<ModuleClasspathRecord> classpath = reader.index.findAllModuleClasspath();
@@ -43,11 +48,10 @@ public final class ModuleGraphQueries {
             error.put("error", "Module not found: " + module);
             error.set("available_modules", JSON.valueToTree(available));
             appendMeta(error, reader, 0);
-            return error.toString();
+            return error;
         }
 
-        List<Relation> relations = relations(
-                classpath, selected, normalizedDirection, depth);
+        List<Relation> relations = relations(classpath, selected, normalizedDirection, depth);
         int from = Math.min(offset, relations.size());
         int to = (int) Math.min((long) from + limit, relations.size());
         List<Relation> page = relations.subList(from, to);
@@ -58,24 +62,31 @@ public final class ModuleGraphQueries {
         root.put("direction", normalizedDirection);
         root.put("max_depth", depth);
         root.put("module_count", available.size());
-        root.put("edge_semantics",
+        root.put(
+                "edge_semantics",
                 "distance_1_is_declared_project_dependency; distance_greater_than_1_is_transitive_classpath_visibility");
-        root.put("direct_relations", relations.stream()
-                .filter(relation -> relation.distance() == 1).count());
-        root.put("transitive_relations", relations.stream()
-                .filter(relation -> relation.distance() > 1).count());
+        root.put(
+                "direct_relations",
+                relations.stream().filter(relation -> relation.distance() == 1).count());
+        root.put(
+                "transitive_relations",
+                relations.stream().filter(relation -> relation.distance() > 1).count());
 
         Map<String, String> metadata = reader.index.getMetadata();
         ObjectNode discovery = root.putObject("discovery");
         discovery.put("scope", metadata.getOrDefault("module_discovery_scope", "unknown"));
-        discovery.put("complete", Boolean.parseBoolean(
-                metadata.getOrDefault("module_discovery_complete", "false")));
+        discovery.put(
+                "complete",
+                Boolean.parseBoolean(metadata.getOrDefault("module_discovery_complete", "false")));
         discovery.put("stored_classpath_entries", classpath.size());
 
         ArrayNode limitations = root.putArray("limitations");
-        limitations.add("The graph covers project modules discovered from compiled output directories; external libraries are not module nodes");
-        limitations.add("Maven edges include compile/runtime project dependencies; Gradle edges are inferred statically from project(...) references and may include other configurations");
-        limitations.add("Dynamic Gradle dependency declarations and build-plugin mutations may be absent because Quill does not run the target build");
+        limitations.add(
+                "The graph covers project modules discovered from compiled output directories; external libraries are not module nodes");
+        limitations.add(
+                "Maven edges include compile/runtime project dependencies; Gradle edges are inferred statically from project(...) references and may include other configurations");
+        limitations.add(
+                "Dynamic Gradle dependency declarations and build-plugin mutations may be absent because Quill does not run the target build");
 
         ArrayNode edges = root.putArray("relations");
         for (Relation relation : page) {
@@ -83,69 +94,95 @@ public final class ModuleGraphQueries {
             edge.put("from", relation.from());
             edge.put("to", relation.to());
             edge.put("distance", relation.distance());
-            edge.put("kind", relation.distance() == 1
-                    ? "direct_project_dependency" : "transitive_classpath_visibility");
+            edge.put(
+                    "kind",
+                    relation.distance() == 1
+                            ? "direct_project_dependency"
+                            : "transitive_classpath_visibility");
             edge.put("direction_from_selected", relation.direction());
             edge.put("indexed_relation", relation.indexedRelation());
         }
 
         Set<String> pageModules = new LinkedHashSet<>();
         if (selected != null) pageModules.add(selected);
-        page.forEach(relation -> {
-            pageModules.add(relation.from());
-            pageModules.add(relation.to());
-        });
+        page.forEach(
+                relation -> {
+                    pageModules.add(relation.from());
+                    pageModules.add(relation.to());
+                });
         if (selected == null && page.isEmpty()) pageModules.addAll(available);
         Map<String, ModuleSummary> summaries = summarize(classes, available);
         ArrayNode nodes = root.putArray("nodes");
         pageModules.stream().sorted().forEach(name -> appendNode(nodes, name, summaries.get(name)));
 
-        int naiveTokens = pageModules.stream()
-                .map(summaries::get).filter(summary -> summary != null)
-                .mapToInt(ModuleSummary::sourceTokens).sum();
+        int naiveTokens =
+                pageModules.stream()
+                        .map(summaries::get)
+                        .filter(summary -> summary != null)
+                        .mapToInt(ModuleSummary::sourceTokens)
+                        .sum();
         appendPage(root, page.size(), relations.size(), limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
-    private static List<Relation> relations(List<ModuleClasspathRecord> classpath,
-            String selected, String direction, int depth) {
+    private static List<Relation> relations(
+            List<ModuleClasspathRecord> classpath, String selected, String direction, int depth) {
         List<Relation> result = new ArrayList<>();
         for (ModuleClasspathRecord entry : classpath) {
             if (entry.distance() == 0 || entry.distance() > depth) continue;
             if (selected == null) {
                 if (entry.distance() == 1) {
-                    result.add(new Relation(entry.applicationModule(), entry.visibleModule(),
-                            entry.distance(), "graph", entry.relation()));
+                    result.add(
+                            new Relation(
+                                    entry.applicationModule(),
+                                    entry.visibleModule(),
+                                    entry.distance(),
+                                    "graph",
+                                    entry.relation()));
                 }
                 continue;
             }
             if (!"inbound".equals(direction) && entry.applicationModule().equals(selected)) {
-                result.add(new Relation(entry.applicationModule(), entry.visibleModule(),
-                        entry.distance(), "outbound", entry.relation()));
+                result.add(
+                        new Relation(
+                                entry.applicationModule(),
+                                entry.visibleModule(),
+                                entry.distance(),
+                                "outbound",
+                                entry.relation()));
             }
             if (!"outbound".equals(direction) && entry.visibleModule().equals(selected)) {
-                result.add(new Relation(entry.applicationModule(), entry.visibleModule(),
-                        entry.distance(), "inbound", entry.relation()));
+                result.add(
+                        new Relation(
+                                entry.applicationModule(),
+                                entry.visibleModule(),
+                                entry.distance(),
+                                "inbound",
+                                entry.relation()));
             }
         }
-        return result.stream().distinct()
-                .sorted(Comparator.comparingInt(Relation::distance)
-                        .thenComparing(Relation::direction)
-                        .thenComparing(Relation::from)
-                        .thenComparing(Relation::to))
+        return result.stream()
+                .distinct()
+                .sorted(
+                        Comparator.comparingInt(Relation::distance)
+                                .thenComparing(Relation::direction)
+                                .thenComparing(Relation::from)
+                                .thenComparing(Relation::to))
                 .toList();
     }
 
-    private static Set<String> availableModules(List<ModuleClasspathRecord> classpath,
-            List<ClassRecord> classes) {
+    private static Set<String> availableModules(
+            List<ModuleClasspathRecord> classpath, List<ClassRecord> classes) {
         Set<String> result = new java.util.TreeSet<>();
         for (ModuleClasspathRecord entry : classpath) {
             result.add(entry.applicationModule());
             result.add(entry.visibleModule());
         }
-        classes.stream().map(ClassRecord::module)
-                .filter(value -> value != null && !value.isBlank()).forEach(result::add);
+        classes.stream()
+                .map(ClassRecord::module)
+                .filter(value -> value != null && !value.isBlank())
+                .forEach(result::add);
         return result;
     }
 
@@ -156,12 +193,11 @@ public final class ModuleGraphQueries {
         if (normalized.isEmpty()) normalized = ".";
         if (available.contains(normalized)) return normalized;
         String candidate = normalized;
-        List<String> caseInsensitive = available.stream()
-                .filter(value -> value.equalsIgnoreCase(candidate)).toList();
+        List<String> caseInsensitive =
+                available.stream().filter(value -> value.equalsIgnoreCase(candidate)).toList();
         if (caseInsensitive.size() == 1) return caseInsensitive.getFirst();
         String suffix = "/" + candidate;
-        List<String> byLeaf = available.stream()
-                .filter(value -> value.endsWith(suffix)).toList();
+        List<String> byLeaf = available.stream().filter(value -> value.endsWith(suffix)).toList();
         return byLeaf.size() == 1 ? byLeaf.getFirst() : null;
     }
 
@@ -171,8 +207,8 @@ public final class ModuleGraphQueries {
         available.forEach(name -> mutable.put(name, new MutableSummary()));
         for (ClassRecord cls : classes) {
             if (cls.module() == null || cls.module().isBlank()) continue;
-            MutableSummary summary = mutable.computeIfAbsent(
-                    cls.module(), ignored -> new MutableSummary());
+            MutableSummary summary =
+                    mutable.computeIfAbsent(cls.module(), ignored -> new MutableSummary());
             summary.classes++;
             summary.sourceTokens += cls.sourceTokens();
             if (cls.isBean()) summary.beans++;
@@ -181,14 +217,21 @@ public final class ModuleGraphQueries {
             if ("test".equals(cls.sourceSet())) summary.tests++;
         }
         Map<String, ModuleSummary> result = new LinkedHashMap<>();
-        mutable.forEach((name, value) -> result.put(name, new ModuleSummary(
-                value.classes, value.source, value.generated, value.tests,
-                value.beans, value.sourceTokens)));
+        mutable.forEach(
+                (name, value) ->
+                        result.put(
+                                name,
+                                new ModuleSummary(
+                                        value.classes,
+                                        value.source,
+                                        value.generated,
+                                        value.tests,
+                                        value.beans,
+                                        value.sourceTokens)));
         return result;
     }
 
-    private static void appendNode(
-            ArrayNode nodes, String name, ModuleSummary summary) {
+    private static void appendNode(ArrayNode nodes, String name, ModuleSummary summary) {
         ObjectNode node = nodes.addObject();
         node.put("module", name);
         if (summary == null) summary = new ModuleSummary(0, 0, 0, 0, 0, 0);
@@ -200,11 +243,16 @@ public final class ModuleGraphQueries {
         node.put("source_tokens", summary.sourceTokens());
     }
 
-    private record Relation(String from, String to, int distance,
-                            String direction, String indexedRelation) {}
+    private record Relation(
+            String from, String to, int distance, String direction, String indexedRelation) {}
 
-    private record ModuleSummary(int classes, int sourceClasses, int generatedClasses,
-                                 int testClasses, int beans, int sourceTokens) {}
+    private record ModuleSummary(
+            int classes,
+            int sourceClasses,
+            int generatedClasses,
+            int testClasses,
+            int beans,
+            int sourceTokens) {}
 
     private static final class MutableSummary {
         private int classes;

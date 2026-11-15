@@ -14,30 +14,37 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.UsageRepository.FieldUsage;
+import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
-import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
-import org.treblereel.mcp.core.Json;
 
 /** Finds private fields with no indexed reads, conservatively excluding runtime-managed fields. */
 public final class UnusedFieldQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    public String findUnusedFields(ReadQueryContext reader, String module, boolean includeGenerated,
-            boolean includeTests, boolean includeWriteOnly, int limit, int offset) {
+    public ObjectNode findUnusedFields(
+            ReadQueryContext reader,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            boolean includeWriteOnly,
+            int limit,
+            int offset) {
         List<ClassRecord> classes = reader.symbols.findAllClasses();
-        Map<Integer, List<ClassMemberRecord>> members = reader.symbols.findClassMembers(classes.stream().map(ClassRecord::id).toList());
+        Map<Integer, List<ClassMemberRecord>> members =
+                reader.symbols.findClassMembers(classes.stream().map(ClassRecord::id).toList());
         Map<FieldKey, FieldUsage> usages = new HashMap<>();
         for (FieldUsage usage : reader.usages.findFieldUsages()) {
             usages.put(new FieldKey(usage.classId(), usage.fieldName(), usage.descriptor()), usage);
         }
         Set<String> serializableClasses = serializableClasses(classes);
         Map<String, Integer> excluded = new LinkedHashMap<>();
-        Set<Integer> handleOwners = new HashSet<>(reader.usages.findHandleReferenceOwners("FIELD_HANDLE_REFERENCE"));
+        Set<Integer> handleOwners =
+                new HashSet<>(reader.usages.findHandleReferenceOwners("FIELD_HANDLE_REFERENCE"));
         List<Candidate> candidates = new ArrayList<>();
         int analyzedPrivateFields = 0;
         for (ClassRecord cls : classes) {
@@ -45,7 +52,10 @@ public final class UnusedFieldQueries {
             for (ClassMemberRecord member : members.getOrDefault(cls.id(), List.of())) {
                 if (!"FIELD".equals(member.kind()) || !hasModifier(member, "private")) continue;
                 analyzedPrivateFields++;
-                if (handleOwners.contains(cls.id())) { increment(excluded,"unclassified_field_handle_reference"); continue; }
+                if (handleOwners.contains(cls.id())) {
+                    increment(excluded, "unclassified_field_handle_reference");
+                    continue;
+                }
                 if (!member.annotations().isEmpty()) {
                     increment(excluded, "annotated_field");
                     continue;
@@ -76,14 +86,15 @@ public final class UnusedFieldQueries {
                 }
                 String classification = writes > 0 ? "write_only" : "never_accessed";
                 String confidence = writes > 0 || cls.isBean() ? "low" : "medium";
-                candidates.add(new Candidate(cls, member, descriptor, usage,
-                        classification, confidence));
+                candidates.add(
+                        new Candidate(cls, member, descriptor, usage, classification, confidence));
             }
         }
-        candidates.sort(Comparator
-                .comparingInt((Candidate candidate) -> confidenceOrder(candidate.confidence()))
-                .thenComparing(candidate -> candidate.owner().className())
-                .thenComparing(candidate -> candidate.member().name()));
+        candidates.sort(
+                Comparator.comparingInt(
+                                (Candidate candidate) -> confidenceOrder(candidate.confidence()))
+                        .thenComparing(candidate -> candidate.owner().className())
+                        .thenComparing(candidate -> candidate.member().name()));
 
         int from = Math.min(offset, candidates.size());
         int to = (int) Math.min((long) from + limit, candidates.size());
@@ -99,10 +110,13 @@ public final class UnusedFieldQueries {
         root.put("analyzed_private_fields", analyzedPrivateFields);
         root.set("excluded_reason_counts", JSON.valueToTree(excluded));
         ArrayNode limitations = root.putArray("limitations");
-        limitations.add("Reflection, JNI, serialization, persistence, templates, configuration, and framework conventions can access private fields without bytecode instructions");
-        limitations.add("Annotated fields, static-final constants, and fields on known Serializable classes are excluded conservatively");
+        limitations.add(
+                "Reflection, JNI, serialization, persistence, templates, configuration, and framework conventions can access private fields without bytecode instructions");
+        limitations.add(
+                "Annotated fields, static-final constants, and fields on known Serializable classes are excluded conservatively");
         limitations.add("Write-only fields are lower-confidence candidates and are opt-in");
-        limitations.add("Only the indexed compiled snapshot is analyzed; inspect freshness metadata before deleting code");
+        limitations.add(
+                "Only the indexed compiled snapshot is analyzed; inspect freshness metadata before deleting code");
 
         ArrayNode values = root.putArray("candidates");
         Set<Integer> countedClasses = new HashSet<>();
@@ -125,7 +139,12 @@ public final class UnusedFieldQueries {
             node.put("write_occurrences", usage == null ? 0 : usage.writeOccurrences());
             node.put("writer_classes", usage == null ? 0 : usage.writerClassCount());
             if (cls.sourceFile() == null) node.putNull("source");
-            else node.put("source", (cls.sourceLine() > 0 ? cls.sourceFile() + ":" + cls.sourceLine() : cls.sourceFile()));
+            else
+                node.put(
+                        "source",
+                        (cls.sourceLine() > 0
+                                ? cls.sourceFile() + ":" + cls.sourceLine()
+                                : cls.sourceFile()));
             node.put("origin", cls.origin());
             if (cls.module() == null) node.putNull("module");
             else node.put("module", cls.module());
@@ -134,13 +153,14 @@ public final class UnusedFieldQueries {
             ArrayNode cautions = node.putArray("cautions");
             if (cls.isBean()) cautions.add("Declaring class is a DI bean");
             if ("write_only".equals(candidate.classification())) {
-                cautions.add("The field is written by indexed bytecode but no indexed read was found");
+                cautions.add(
+                        "The field is written by indexed bytecode but no indexed read was found");
             }
             if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
         }
         appendPage(root, page.size(), candidates.size(), limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
     private static Set<String> serializableClasses(List<ClassRecord> classes) {
@@ -150,17 +170,22 @@ public final class UnusedFieldQueries {
             changed = false;
             for (ClassRecord cls : classes) {
                 if (result.contains(cls.className())) continue;
-                boolean serializable = cls.interfaces().contains("java.io.Serializable")
-                        || result.contains(cls.superclass())
-                        || cls.interfaces().stream().anyMatch(result::contains);
+                boolean serializable =
+                        cls.interfaces().contains("java.io.Serializable")
+                                || result.contains(cls.superclass())
+                                || cls.interfaces().stream().anyMatch(result::contains);
                 if (serializable && result.add(cls.className())) changed = true;
             }
         } while (changed);
         return result;
     }
 
-    private static boolean inRequestedScope(ClassRecord cls, String module,
-            boolean includeGenerated, boolean includeTests, Map<String, Integer> excluded) {
+    private static boolean inRequestedScope(
+            ClassRecord cls,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            Map<String, Integer> excluded) {
         if (module != null && !module.equals(cls.module())) {
             increment(excluded, "module_filter");
             return false;

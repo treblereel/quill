@@ -69,7 +69,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
 
     @Test
     void inspectServiceDescriptorsPreservesProviderOrder() throws Exception {
-        JsonNode result = JSON.readTree(JDBI_READS.inspectServiceDescriptors(jdbi, "Processor"));
+        JsonNode result = JDBI_READS.inspectServiceDescriptors(jdbi, "Processor");
         JsonNode descriptor = result.get("descriptors").get(0);
         assertEquals(2, descriptor.get("provider_count").asInt());
         assertEquals(
@@ -95,9 +95,8 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
                     }
                 };
 
-        JsonNode result =
-                JSON.readTree(
-                        new QuillTools(registry).get_overview(Optional.empty(), Optional.empty()));
+        JsonNode result = new QuillTools(registry).get_overview(Optional.empty(), Optional.empty());
+
         assertEquals("a-project", result.get("projects").get(0).get("project").asText());
         assertEquals("z-project", result.get("projects").get(1).get("project").asText());
     }
@@ -107,9 +106,8 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
         ProjectRegistry registry = singleProjectRegistry("only-project");
         QuillTools tools = new QuillTools(registry);
 
-        JsonNode implicit = JSON.readTree(tools.get_overview(Optional.of(false), Optional.empty()));
-        JsonNode explicit =
-                JSON.readTree(tools.get_overview(Optional.of(false), Optional.of("ONLY-PROJECT")));
+        JsonNode implicit = tools.get_overview(Optional.of(false), Optional.empty());
+        JsonNode explicit = tools.get_overview(Optional.of(false), Optional.of("ONLY-PROJECT"));
 
         assertTrue(implicit.has("project"));
         assertFalse(
@@ -125,8 +123,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
     void singleProjectUnknownFilterReportsTheConfiguredProject() throws Exception {
         QuillTools tools = new QuillTools(singleProjectRegistry("only-project"));
 
-        JsonNode result =
-                JSON.readTree(tools.get_overview(Optional.empty(), Optional.of("missing")));
+        JsonNode result = tools.get_overview(Optional.empty(), Optional.of("missing"));
 
         assertEquals(
                 "Project 'missing' not found. Available: [only-project]",
@@ -135,7 +132,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
 
     @Test
     void getOverviewReturnsProjectSummary() throws Exception {
-        String result = JDBI_READS.getOverview(jdbi);
+        String result = JDBI_READS.getOverview(jdbi).toString();
         JsonNode root = JSON.readTree(result);
 
         JsonNode project = root.get("project");
@@ -251,7 +248,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
                                         "unknown"))
                         .snapshot());
 
-        String result = JDBI_READS.getOverview(noGitJdbi);
+        String result = JDBI_READS.getOverview(noGitJdbi).toString();
         JsonNode root = JSON.readTree(result);
         assertTrue(root.get("git_summary").isNull());
         assertEquals(1, root.get("project").get("beans").asInt());
@@ -261,18 +258,16 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
     void compactOverviewOmitsDiagnosticSamplesAndDuplicateRankings() throws Exception {
         ProjectOverviewQueries overview = new ProjectOverviewQueries(new GitToolQueries());
         JsonNode root =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi, readScope -> overview.getOverview(readScope, false)));
+                ReadQueryContext.readWithGraph(
+                        jdbi, readScope -> overview.getOverview(readScope, false));
 
         assertFalse(root.has("architecture_hub_rankings"));
         assertFalse(root.path("problems").has("unknown_injection_points_sample"));
         assertEquals(1, root.path("problems").path("unknown_count").asInt());
 
         JsonNode detailed =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi, readScope -> overview.getOverview(readScope, true)));
+                ReadQueryContext.readWithGraph(
+                        jdbi, readScope -> overview.getOverview(readScope, true));
         assertTrue(detailed.has("architecture_hub_rankings"));
         assertTrue(detailed.path("problems").has("unknown_injection_points_sample"));
     }
@@ -314,7 +309,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
                         .snapshot());
 
         Files.writeString(repository.resolve("README.md"), "documentation only\n");
-        JsonNode meta = JSON.readTree(JDBI_READS.getOverview(docsDb)).path("_meta");
+        JsonNode meta = JDBI_READS.getOverview(docsDb).path("_meta");
 
         assertTrue(meta.path("worktree_dirty").asBoolean());
         assertEquals(1, meta.path("worktree_changed_files").asInt());
@@ -365,7 +360,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
 
         Files.writeString(service, "example.SecondProcessor\nexample.FirstProcessor\n");
 
-        JsonNode overview = JSON.readTree(JDBI_READS.getOverview(dirtyDb));
+        JsonNode overview = JDBI_READS.getOverview(dirtyDb);
         JsonNode meta = overview.path("_meta");
         assertEquals(analysis.headHash(), meta.path("indexed_commit").asText());
         assertEquals(analysis.headHash(), meta.path("current_commit").asText());
@@ -375,7 +370,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
         assertTrue(meta.path("stale_reasons").toString().contains("worktree_changed_after_index"));
         assertTrue(meta.path("stale_reasons").toString().contains("dirty_worktree_not_compiled"));
 
-        JsonNode hotspots = JSON.readTree(JDBI_READS.getHotspots(dirtyDb, 10, null, false));
+        JsonNode hotspots = JDBI_READS.getHotspots(dirtyDb, 10, null, false);
         assertTrue(
                 hotspots.path("worktree_changes")
                         .toString()
@@ -383,10 +378,9 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
         assertTrue(hotspots.path("worktree_changes").toString().contains("modified"));
 
         JsonNode trackedRisk =
-                JSON.readTree(
-                        JDBI_READS.getRisk(
-                                dirtyDb,
-                                "src/main/resources/META-INF/services/javax.annotation.processing.Processor"));
+                JDBI_READS.getRisk(
+                        dirtyDb,
+                        "src/main/resources/META-INF/services/javax.annotation.processing.Processor");
         assertEquals("file", trackedRisk.path("target_type").asText());
         assertEquals("service_descriptor", trackedRisk.path("kind").asText());
         assertEquals("modified", trackedRisk.path("worktree_status").asText());
@@ -400,10 +394,8 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
         Files.writeString(untrackedService, "example.Provider\n");
         WorktreeSnapshotCache.shared().invalidate(repository);
         JsonNode untrackedRisk =
-                JSON.readTree(
-                        JDBI_READS.getRisk(
-                                dirtyDb,
-                                "src/main/resources/META-INF/services/example.NewProvider"));
+                JDBI_READS.getRisk(
+                        dirtyDb, "src/main/resources/META-INF/services/example.NewProvider");
         assertEquals("file", untrackedRisk.path("target_type").asText());
         assertEquals("untracked", untrackedRisk.path("worktree_status").asText());
         assertEquals("CRITICAL", untrackedRisk.path("risk_level").asText());
@@ -418,7 +410,7 @@ class QuillToolsProjectTest extends QuillToolsTestBase {
 
         Files.writeString(repository.resolve("pom.xml"), "<project/>\n");
         WorktreeSnapshotCache.shared().invalidate(repository);
-        JsonNode buildRisk = JSON.readTree(JDBI_READS.getRisk(dirtyDb, "./pom.xml"));
+        JsonNode buildRisk = JDBI_READS.getRisk(dirtyDb, "./pom.xml");
         assertEquals("file", buildRisk.path("target_type").asText());
         assertEquals("build_configuration", buildRisk.path("kind").asText());
         assertEquals("CRITICAL", buildRisk.path("risk_level").asText());

@@ -22,41 +22,56 @@ import org.treblereel.mcp.diagnostics.QuillLog;
 public final class BuildProblemInspector {
 
     private static final ObjectMapper JSON = Json.MAPPER;
-    private static final Pattern MAVEN_LOCATION = Pattern.compile(
-            "^(?:\\[(?:ERROR|WARNING)]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]\\s*(.*)$");
-    private static final Pattern RANGE_LOCATION = Pattern.compile(
-            "^(?:\\[(?:ERROR|WARNING)]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]-\\[(\\d+),(\\d+)]\\s*(.*)$");
-    private static final Pattern COMPILER_LOCATION = Pattern.compile(
-            "^(?:\\[(?:ERROR|WARNING)]\\s*|[ewEW]:\\s*)?(.+?\\.(?:java|kt|groovy)):(\\d+)(?::(\\d+))?:\\s*(.*)$");
-    private static final Pattern KOTLIN_LOCATION = Pattern.compile(
-            "^(?:[ewEW]:\\s*)?(.+?\\.kt):\\s*\\((\\d+),\\s*(\\d+)\\):\\s*(.*)$");
-    private static final Pattern DIAGNOSTIC_CODE = Pattern.compile(
-            "^\\[([a-zA-Z0-9_.-]+)]\\s*(.*)$", Pattern.DOTALL);
-    private static final Pattern EXCEPTION_PREFIX = Pattern.compile(
-            "^([a-zA-Z_$][a-zA-Z0-9_$.]*(?:Exception|Error|Failure))(?::\\s*(.*))?$",
-            Pattern.DOTALL);
+    private static final Pattern MAVEN_LOCATION =
+            Pattern.compile(
+                    "^(?:\\[(?:ERROR|WARNING)]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]\\s*(.*)$");
+    private static final Pattern RANGE_LOCATION =
+            Pattern.compile(
+                    "^(?:\\[(?:ERROR|WARNING)]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]-\\[(\\d+),(\\d+)]\\s*(.*)$");
+    private static final Pattern COMPILER_LOCATION =
+            Pattern.compile(
+                    "^(?:\\[(?:ERROR|WARNING)]\\s*|[ewEW]:\\s*)?(.+?\\.(?:java|kt|groovy)):(\\d+)(?::(\\d+))?:\\s*(.*)$");
+    private static final Pattern KOTLIN_LOCATION =
+            Pattern.compile("^(?:[ewEW]:\\s*)?(.+?\\.kt):\\s*\\((\\d+),\\s*(\\d+)\\):\\s*(.*)$");
+    private static final Pattern DIAGNOSTIC_CODE =
+            Pattern.compile("^\\[([a-zA-Z0-9_.-]+)]\\s*(.*)$", Pattern.DOTALL);
+    private static final Pattern EXCEPTION_PREFIX =
+            Pattern.compile(
+                    "^([a-zA-Z_$][a-zA-Z0-9_$.]*(?:Exception|Error|Failure))(?::\\s*(.*))?$",
+                    Pattern.DOTALL);
     private static final Pattern ANSI = Pattern.compile("\\u001B\\[[0-9;]*m");
-    /** Stack frames restate where the build tool failed, not what to fix; V23 CQ-049 carried 2 KB of them per problem. */
-    private static final Pattern STACK_FRAME = Pattern.compile(
-            "(?m)^[ \\t]*(?:at [\\w$.<>/]+\\(.*\\)|\\.\\.\\. \\d+ more)[ \\t]*(?:\\R|$)");
+
+    /**
+     * Stack frames restate where the build tool failed, not what to fix; V23 CQ-049 carried 2 KB of
+     * them per problem.
+     */
+    private static final Pattern STACK_FRAME =
+            Pattern.compile(
+                    "(?m)^[ \\t]*(?:at [\\w$.<>/]+\\(.*\\)|\\.\\.\\. \\d+ more)[ \\t]*(?:\\R|$)");
 
     private BuildProblemInspector() {}
 
-    public static String inspect(Path projectRoot, String severity, String module,
-            int limit, int offset) {
+    public static ObjectNode inspect(
+            Path projectRoot, String severity, String module, int limit, int offset) {
         return inspect(projectRoot, severity, module, List.of(), limit, offset);
     }
 
-    public static String inspect(Path projectRoot, String severity, String module,
-            List<String> paths, int limit, int offset) {
+    public static ObjectNode inspect(
+            Path projectRoot,
+            String severity,
+            String module,
+            List<String> paths,
+            int limit,
+            int offset) {
         Path root = projectRoot.toAbsolutePath().normalize();
-        String normalizedSeverity = severity == null
-                ? "all" : severity.strip().toLowerCase(Locale.ROOT);
-        if (!normalizedSeverity.equals("all") && !normalizedSeverity.equals("error")
+        String normalizedSeverity =
+                severity == null ? "all" : severity.strip().toLowerCase(Locale.ROOT);
+        if (!normalizedSeverity.equals("all")
+                && !normalizedSeverity.equals("error")
                 && !normalizedSeverity.equals("warning")) {
             ObjectNode error = JSON.createObjectNode();
             error.put("error", "Invalid severity: expected all, error, or warning");
-            return error.toString();
+            return error;
         }
 
         Path stateFile = root.resolve(".quill/build-state.json");
@@ -64,9 +79,10 @@ public final class BuildProblemInspector {
             ObjectNode result = base("unknown", null, null);
             result.putArray("problems");
             page(result, 0, 0, limit, offset);
-            result.put("recommended_action",
+            result.put(
+                    "recommended_action",
                     "Run the project build to capture diagnostics; Quill will not start it");
-            return result.toString();
+            return result;
         }
 
         try {
@@ -74,38 +90,59 @@ public final class BuildProblemInspector {
             String buildTool = state.path("buildTool").asText("unknown");
             long finishedAt = state.path("finishedAt").asLong(0);
             boolean successful = state.path("successful").asBoolean(false);
-            ObjectNode result = base(successful ? "success" : "failed",
-                    buildTool, finishedAt > 0 ? Instant.ofEpochMilli(finishedAt) : null);
+            ObjectNode result =
+                    base(
+                            successful ? "success" : "failed",
+                            buildTool,
+                            finishedAt > 0 ? Instant.ofEpochMilli(finishedAt) : null);
             String captureScope = state.path("captureScope").asText("exception_chain");
             result.put("capture_scope", captureScope);
             result.remove("limitations");
             ArrayNode limitations = result.putArray("limitations");
             if (captureScope.equals("task_output")) {
-                limitations.add("Diagnostics are bounded to the first 200 captured build-output chunks");
+                limitations.add(
+                        "Diagnostics are bounded to the first 200 captured build-output chunks");
             } else {
-                limitations.add("Maven diagnostics are limited to messages exposed by the build exception chain");
+                limitations.add(
+                        "Maven diagnostics are limited to messages exposed by the build exception chain");
             }
-            List<Problem> problems = successful ? List.of()
-                    : parseProblems(root, state.path("diagnostics"),
-                            state.path("failureMessages"));
+            List<Problem> problems =
+                    successful
+                            ? List.of()
+                            : parseProblems(
+                                    root, state.path("diagnostics"), state.path("failureMessages"));
             if (!normalizedSeverity.equals("all")) {
-                problems = problems.stream()
-                        .filter(problem -> problem.severity().equals(normalizedSeverity)).toList();
+                problems =
+                        problems.stream()
+                                .filter(problem -> problem.severity().equals(normalizedSeverity))
+                                .toList();
             }
             if (module != null && !module.isBlank()) {
-                problems = problems.stream()
-                        .filter(problem -> module.equals(problem.module())).toList();
+                problems =
+                        problems.stream()
+                                .filter(problem -> module.equals(problem.module()))
+                                .toList();
             }
             List<String> normalizedPaths = normalizePaths(paths);
-            long unlocatedProblems = problems.stream()
-                    .filter(problem -> problem.source() == null).count();
+            long unlocatedProblems =
+                    problems.stream().filter(problem -> problem.source() == null).count();
             if (!normalizedPaths.isEmpty()) {
-                problems = problems.stream()
-                        .filter(problem -> problem.source() != null
-                                && normalizedPaths.stream().anyMatch(path ->
-                                        problem.source().equals(path)
-                                                || problem.source().endsWith("/" + path)))
-                        .toList();
+                problems =
+                        problems.stream()
+                                .filter(
+                                        problem ->
+                                                problem.source() != null
+                                                        && normalizedPaths.stream()
+                                                                .anyMatch(
+                                                                        path ->
+                                                                                problem.source()
+                                                                                                .equals(
+                                                                                                        path)
+                                                                                        || problem.source()
+                                                                                                .endsWith(
+                                                                                                        "/"
+                                                                                                                + path)))
+                                .toList();
                 ArrayNode requested = result.putArray("requested_paths");
                 normalizedPaths.forEach(requested::add);
                 result.put("unlocated_problems_excluded", unlocatedProblems);
@@ -129,18 +166,21 @@ public final class BuildProblemInspector {
                 if (problem.raw() != null) node.put("raw", problem.raw());
             }
             page(result, to - from, problems.size(), limit, offset);
-            result.put("located_problem_count", problems.stream()
-                    .filter(problem -> problem.source() != null).count());
-            result.put("recommended_action", successful ? "none"
-                    : "Fix the reported problems and run the project build again");
-            return result.toString();
+            result.put(
+                    "located_problem_count",
+                    problems.stream().filter(problem -> problem.source() != null).count());
+            result.put(
+                    "recommended_action",
+                    successful
+                            ? "none"
+                            : "Fix the reported problems and run the project build again");
+            return result;
         } catch (IOException | RuntimeException error) {
             ObjectNode result = base("unavailable", null, null);
-            result.put("error", "Could not read captured build diagnostics: "
-                    + safeMessage(error));
+            result.put("error", "Could not read captured build diagnostics: " + safeMessage(error));
             result.putArray("problems");
             page(result, 0, 0, limit, offset);
-            return result.toString();
+            return result;
         }
     }
 
@@ -154,20 +194,31 @@ public final class BuildProblemInspector {
         result.put("build_was_started", false);
         result.put("located_problem_count", 0);
         result.put("capture_scope", "unknown");
-        result.putArray("limitations").add(
-                "Compiler diagnostics written only to console may not appear in the captured exception chain");
+        result.putArray("limitations")
+                .add(
+                        "Compiler diagnostics written only to console may not appear in the captured exception chain");
         return result;
     }
 
-    private static List<Problem> parseProblems(
-            Path root, JsonNode diagnostics, JsonNode messages) {
+    private static List<Problem> parseProblems(Path root, JsonNode diagnostics, JsonNode messages) {
         Map<String, Problem> unique = new LinkedHashMap<>();
         parseValues(root, diagnostics, unique);
         parseValues(root, messages, unique);
         if (unique.isEmpty()) {
-            Problem fallback = new Problem("error", "Build failed without diagnostic messages",
-                    null, null, null, null, null, null, null, null,
-                    "build_failure", "Build failed without diagnostic messages");
+            Problem fallback =
+                    new Problem(
+                            "error",
+                            "Build failed without diagnostic messages",
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "build_failure",
+                            "Build failed without diagnostic messages");
             unique.put(fallback.key(), fallback);
         }
         return withoutRestatedCauses(new ArrayList<>(unique.values()));
@@ -178,9 +229,9 @@ public final class BuildProblemInspector {
 
     /**
      * Maven reports each exception of a chain with its causes appended, so every cause was stated
-     * again by each outer problem. In V26 CQ-049 three problems of one surefire failure were
-     * 21.6 KB. An outer message now ends where a later problem's cause begins; its category was
-     * read from the whole text and stays.
+     * again by each outer problem. In V26 CQ-049 three problems of one surefire failure were 21.6
+     * KB. An outer message now ends where a later problem's cause begins; its category was read
+     * from the whole text and stays.
      */
     private static List<Problem> withoutRestatedCauses(List<Problem> problems) {
         List<Problem> result = new ArrayList<>(problems);
@@ -190,20 +241,33 @@ public final class BuildProblemInspector {
             int cut = -1;
             for (int j = 0; j < result.size(); j++) {
                 Problem cause = result.get(j);
-                if (j == i || cause.source() != null || cause.message().length() < CAUSE_PROBE) continue;
+                if (j == i || cause.source() != null || cause.message().length() < CAUSE_PROBE)
+                    continue;
                 int at = outer.message().indexOf(cause.message().substring(0, CAUSE_PROBE));
                 if (at > 0 && (cut < 0 || at < cut)) cut = at;
             }
             if (cut > 0) {
-                result.set(i, new Problem(outer.severity(), outer.message().substring(0, cut).strip(), null, null, null,
-                        null, null, outer.module(), outer.exception(), outer.code(), outer.category(), null));
+                result.set(
+                        i,
+                        new Problem(
+                                outer.severity(),
+                                outer.message().substring(0, cut).strip(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                outer.module(),
+                                outer.exception(),
+                                outer.code(),
+                                outer.category(),
+                                null));
             }
         }
         return result;
     }
 
-    private static void parseValues(
-            Path root, JsonNode messages, Map<String, Problem> unique) {
+    private static void parseValues(Path root, JsonNode messages, Map<String, Problem> unique) {
         if (messages.isArray()) {
             for (JsonNode value : messages) {
                 if (!value.isTextual() || value.textValue().isBlank()) continue;
@@ -224,37 +288,70 @@ public final class BuildProblemInspector {
             String severity = severity(stripped, location.message());
             CodedMessage coded = codedMessage(cleanMessage(location.message()));
             String message = coded.message().isBlank() ? "Compilation failed" : coded.message();
-            Problem problem = new Problem(severity, message, source, location.line(),
-                    location.column(), location.endLine(), location.endColumn(), module(source),
-                    exception, coded.code(), category(message, coded.code()), stripped);
+            Problem problem =
+                    new Problem(
+                            severity,
+                            message,
+                            source,
+                            location.line(),
+                            location.column(),
+                            location.endLine(),
+                            location.endColumn(),
+                            module(source),
+                            exception,
+                            coded.code(),
+                            category(message, coded.code()),
+                            stripped);
             target.putIfAbsent(problem.key(), problem);
             located = true;
         }
         if (located) return;
         Matcher prefix = EXCEPTION_PREFIX.matcher(raw.strip());
-        String message = prefix.matches() && prefix.group(2) != null
-                ? prefix.group(2).strip() : raw.strip();
+        String message =
+                prefix.matches() && prefix.group(2) != null ? prefix.group(2).strip() : raw.strip();
         if (message.length() > 4_000) message = message.substring(0, 4_000);
         // raw is the exception name and the message again; it is stated only when it says more.
         String whole = truncated(raw.strip());
         String rest = prefix.matches() && prefix.group(2) != null ? prefix.group(2).strip() : whole;
         boolean restated = rest.startsWith(message) || message.startsWith(rest);
-        Problem problem = new Problem("error", message, null, null, null, null, null,
-                null, exception, null, category(message, null), restated ? null : whole);
+        Problem problem =
+                new Problem(
+                        "error",
+                        message,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        exception,
+                        null,
+                        category(message, null),
+                        restated ? null : whole);
         target.putIfAbsent(problem.key(), problem);
     }
 
     private static Location parseLocation(String line) {
         Matcher range = RANGE_LOCATION.matcher(line);
         if (range.matches()) {
-            return new Location(range.group(1), integer(range.group(2)), integer(range.group(3)),
-                    integer(range.group(4)), integer(range.group(5)), range.group(6));
+            return new Location(
+                    range.group(1),
+                    integer(range.group(2)),
+                    integer(range.group(3)),
+                    integer(range.group(4)),
+                    integer(range.group(5)),
+                    range.group(6));
         }
         for (Pattern pattern : List.of(MAVEN_LOCATION, COMPILER_LOCATION, KOTLIN_LOCATION)) {
             Matcher matcher = pattern.matcher(line);
             if (matcher.matches()) {
-                return new Location(matcher.group(1), integer(matcher.group(2)),
-                        integer(matcher.group(3)), null, null, matcher.group(4));
+                return new Location(
+                        matcher.group(1),
+                        integer(matcher.group(2)),
+                        integer(matcher.group(3)),
+                        null,
+                        null,
+                        matcher.group(4));
             }
         }
         return null;
@@ -262,35 +359,47 @@ public final class BuildProblemInspector {
 
     private static String severity(String raw, String message) {
         String value = (raw + " " + message).toLowerCase(Locale.ROOT);
-        return value.startsWith("w:") || value.startsWith("[warning]")
-                || value.contains(" warning:") ? "warning" : "error";
+        return value.startsWith("w:")
+                        || value.startsWith("[warning]")
+                        || value.contains(" warning:")
+                ? "warning"
+                : "error";
     }
 
     private static CodedMessage codedMessage(String message) {
         Matcher matcher = DIAGNOSTIC_CODE.matcher(message);
-        return matcher.matches() ? new CodedMessage(matcher.group(1), matcher.group(2).strip())
+        return matcher.matches()
+                ? new CodedMessage(matcher.group(1), matcher.group(2).strip())
                 : new CodedMessage(null, message);
     }
 
     private static String category(String message, String code) {
         String value = ((code == null ? "" : code) + " " + message).toLowerCase(Locale.ROOT);
-        if (value.contains("maven-surefire-plugin") || value.contains("maven-failsafe-plugin")
-                || value.contains("there are test failures") || value.contains("failed to discover tests")
-                || value.contains("there were failing tests") || value.contains("surefire-reports")
+        if (value.contains("maven-surefire-plugin")
+                || value.contains("maven-failsafe-plugin")
+                || value.contains("there are test failures")
+                || value.contains("failed to discover tests")
+                || value.contains("there were failing tests")
+                || value.contains("surefire-reports")
                 || value.contains("during test discovery")) return "test_failure";
         // The build stopped before the sources mattered: in V23 CQ-049 an offline dependency
         // resolution failure was reported as a code problem to fix.
-        if (value.contains("could not resolve dependencies") || value.contains("offline mode")
-                || value.contains("could not transfer artifact") || value.contains("unknownhostexception")
-                || value.contains("could not open file channel") || value.contains("operation not permitted")
+        if (value.contains("could not resolve dependencies")
+                || value.contains("offline mode")
+                || value.contains("could not transfer artifact")
+                || value.contains("unknownhostexception")
+                || value.contains("could not open file channel")
+                || value.contains("operation not permitted")
                 || value.contains("permission denied")) return "environment";
-        if (value.contains("cannot find symbol") || value.contains("unresolved reference")
+        if (value.contains("cannot find symbol")
+                || value.contains("unresolved reference")
                 || value.contains("cant.resolve")) return "symbol_not_found";
         if (value.contains("incompatible type") || value.contains("type mismatch")) {
             return "type_mismatch";
         }
         if (value.contains("duplicate")) return "duplicate_declaration";
-        if (value.contains("not public") || value.contains("private access")
+        if (value.contains("not public")
+                || value.contains("private access")
                 || value.contains("not accessible")) return "access_violation";
         if (value.contains("expected") || value.contains("illegal start")) return "syntax";
         return "build_failure";
@@ -315,10 +424,13 @@ public final class BuildProblemInspector {
 
     private static List<String> normalizePaths(List<String> paths) {
         if (paths == null || paths.isEmpty()) return List.of();
-        return paths.stream().filter(path -> path != null && !path.isBlank())
-                .map(String::strip).map(path -> path.replace('\\', '/'))
+        return paths.stream()
+                .filter(path -> path != null && !path.isBlank())
+                .map(String::strip)
+                .map(path -> path.replace('\\', '/'))
                 .map(path -> path.startsWith("./") ? path.substring(2) : path)
-                .distinct().toList();
+                .distinct()
+                .toList();
     }
 
     private static String module(String source) {
@@ -359,18 +471,35 @@ public final class BuildProblemInspector {
 
     private static String safeMessage(Throwable error) {
         return error.getMessage() == null || error.getMessage().isBlank()
-                ? error.getClass().getSimpleName() : error.getMessage();
+                ? error.getClass().getSimpleName()
+                : error.getMessage();
     }
 
     private record Problem(
-            String severity, String message, String source, Integer line, Integer column,
-            Integer endLine, Integer endColumn, String module, String exception, String code,
-            String category, String raw) {
+            String severity,
+            String message,
+            String source,
+            Integer line,
+            Integer column,
+            Integer endLine,
+            Integer endColumn,
+            String module,
+            String exception,
+            String code,
+            String category,
+            String raw) {
         String key() {
             return severity + ":" + source + ":" + line + ":" + column + ":" + message;
         }
     }
-    private record Location(String source, Integer line, Integer column,
-            Integer endLine, Integer endColumn, String message) {}
+
+    private record Location(
+            String source,
+            Integer line,
+            Integer column,
+            Integer endLine,
+            Integer endColumn,
+            String message) {}
+
     private record CodedMessage(String code, String message) {}
 }

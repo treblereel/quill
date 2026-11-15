@@ -28,13 +28,12 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         writeMinimalPom();
 
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.planChange(
-                                jdbi,
-                                tempDir,
-                                List.of("StripePaymentService"),
-                                "Add idempotent payment retries",
-                                10));
+                JDBI_READS.planChange(
+                        jdbi,
+                        tempDir,
+                        List.of("StripePaymentService"),
+                        "Add idempotent payment retries",
+                        10);
 
         assertEquals("Add idempotent payment retries", result.path("change").asText());
         assertEquals("partial", result.path("plan_status").asText());
@@ -73,9 +72,8 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                 VALUES (1, 'METHOD', 'work', 'work():void', '()V', 'void', '[]', 'public', '[]')"""));
 
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.planChange(
-                                jdbi, tempDir, List.of("OrderService#work()"), "Rename work", 10));
+                JDBI_READS.planChange(
+                        jdbi, tempDir, List.of("OrderService#work()"), "Rename work", 10);
 
         JsonNode primary = result.path("primary_changes").get(0);
         assertEquals("org.acme.OrderService", primary.path("class").asText(), result.toString());
@@ -85,9 +83,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
 
     @Test
     void planChangeRequiresDescription() throws Exception {
-        JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.planChange(jdbi, tempDir, List.of("OrderService"), "  ", 10));
+        JsonNode result = JDBI_READS.planChange(jdbi, tempDir, List.of("OrderService"), "  ", 10);
 
         assertEquals("A non-empty change description is required", result.path("message").asText());
     }
@@ -97,13 +93,8 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         writeMinimalPom();
         addOrderTests(0, 27);
         JsonNode plan =
-                JSON.readTree(
-                        JDBI_READS.planChange(
-                                jdbi,
-                                tempDir,
-                                List.of("OrderService"),
-                                "Change order processing",
-                                10));
+                JDBI_READS.planChange(
+                        jdbi, tempDir, List.of("OrderService"), "Change order processing", 10);
         JsonNode testPlan = plan.path("test_plan");
         assertEquals(27, testPlan.path("total").asInt());
         assertEquals(10, testPlan.path("showing").asInt());
@@ -118,13 +109,11 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         assertEquals("org.acme.OrderService", args.path("targets").get(0).asText());
 
         JsonNode second =
-                JSON.readTree(
-                        JDBI_READS.findImpactedTests(
-                                jdbi, List.of("org.acme.OrderService"), true, 3, 10, 10));
+                JDBI_READS.findImpactedTests(
+                        jdbi, List.of("org.acme.OrderService"), true, 3, 10, 10);
         JsonNode third =
-                JSON.readTree(
-                        JDBI_READS.findImpactedTests(
-                                jdbi, List.of("org.acme.OrderService"), true, 3, 10, 20));
+                JDBI_READS.findImpactedTests(
+                        jdbi, List.of("org.acme.OrderService"), true, 3, 10, 20);
         assertEquals(10, second.path("showing").asInt());
         assertEquals(7, third.path("showing").asInt());
         assertFalse(third.path("has_more").asBoolean());
@@ -135,19 +124,18 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         assertEquals(27, names.size());
 
         JsonNode session =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new ChangeSessionQueries()
-                                                .snapshot(
-                                                        readScope,
-                                                        tempDir,
-                                                        List.of("OrderService"),
-                                                        "Change order processing",
-                                                        10,
-                                                        "summary",
-                                                        "plan")));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ChangeSessionQueries()
+                                        .snapshot(
+                                                readScope,
+                                                tempDir,
+                                                List.of("OrderService"),
+                                                "Change order processing",
+                                                10,
+                                                "summary",
+                                                "plan"));
         assertEquals(next, session.path("plan").path("test_plan").path("next_page_request"));
     }
 
@@ -156,26 +144,16 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         writeMinimalPom();
         addOrderTests(0, 100);
         JsonNode exact =
-                JSON.readTree(
-                        JDBI_READS.planChange(
-                                jdbi,
-                                tempDir,
-                                List.of("OrderService"),
-                                "Change order processing",
-                                100));
+                JDBI_READS.planChange(
+                        jdbi, tempDir, List.of("OrderService"), "Change order processing", 100);
         assertEquals(100, exact.path("test_plan").path("showing").asInt());
         assertFalse(exact.path("test_plan").path("has_more").asBoolean());
         assertFalse(exact.path("test_plan").has("next_page_request"));
 
         addOrderTests(100, 1);
         JsonNode overflow =
-                JSON.readTree(
-                        JDBI_READS.planChange(
-                                jdbi,
-                                tempDir,
-                                List.of("OrderService"),
-                                "Change order processing",
-                                100));
+                JDBI_READS.planChange(
+                        jdbi, tempDir, List.of("OrderService"), "Change order processing", 100);
         assertEquals(101, overflow.path("test_plan").path("total").asInt());
         assertEquals(100, overflow.path("test_plan").path("showing").asInt());
         assertEquals(
@@ -186,9 +164,8 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                         .path("offset")
                         .asInt());
         JsonNode last =
-                JSON.readTree(
-                        JDBI_READS.findImpactedTests(
-                                jdbi, List.of("org.acme.OrderService"), true, 3, 100, 100));
+                JDBI_READS.findImpactedTests(
+                        jdbi, List.of("org.acme.OrderService"), true, 3, 100, 100);
         assertEquals(1, last.path("showing").asInt());
         assertFalse(last.path("has_more").asBoolean());
     }
@@ -213,8 +190,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                 }
                 """);
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10);
 
         assertEquals("blocked", result.path("verdict").asText());
         assertFalse(result.path("verified").asBoolean());
@@ -253,8 +229,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                  "failureMessages":["Failed to execute goal on project app: Could not resolve dependencies for project io.acme:app:jar:1\\ndependency: io.acme:core:jar:1 (compile)\\n\\tCannot access central in offline mode and the artifact io.acme:core:jar:1 has not been downloaded from it before."]}
                 """);
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10);
 
         assertEquals("blocked", result.path("verdict").asText());
         assertEquals(
@@ -283,8 +258,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                  "failureMessages":["Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project app: There are test failures."]}
                 """);
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10);
 
         assertEquals("blocked", result.path("verdict").asText());
         assertEquals(
@@ -324,8 +298,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                     SELECT t.id, s.id, 'CALLS', 1, '[7]' FROM classes t, classes s
                     WHERE t.class_name = 'org.acme.OrderServiceTest' AND s.class_name = 'org.acme.OrderService'""");
                 });
-        JsonNode result =
-                JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10);
 
         JsonNode row = result.path("test_evidence").path("tests").path(0);
         assertEquals("org.acme.OrderServiceTest", row.path("class").asText(), result.toString());
@@ -342,8 +315,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
     @Test
     void verifyChangeRequiresBuildEvidenceWhenNoBuildWasCaptured() throws Exception {
         writeMinimalPom();
-        JsonNode result =
-                JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10);
 
         assertEquals("needs_build", result.path("verdict").asText());
         assertEquals("unknown", result.path("diagnostics").path("build_status").asText());
@@ -378,7 +350,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
             Files.writeString(
                     source, "package org.acme; class OrderService { void changed() {} }\n");
 
-            JsonNode result = JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of(), 10));
+            JsonNode result = JDBI_READS.verifyChange(jdbi, tempDir, List.of(), 10);
 
             assertEquals("dirty_worktree", result.path("target_source").asText());
             assertEquals(1, result.path("inferred_target_count").asInt());
@@ -410,21 +382,17 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
             Files.writeString(
                     source, "package org.acme; class OrderService { void changed() {} }\n");
             JsonNode page =
-                    JSON.readTree(
-                            ReadQueryContext.<String>readWithGraph(
-                                    jdbi,
-                                    readScope ->
-                                            new WorktreeStatusQueries()
-                                                    .getFreshWorktreeStatus(
-                                                            readScope, tempDir, null, 10, 0)));
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            readScope ->
+                                    new WorktreeStatusQueries()
+                                            .getFreshWorktreeStatus(
+                                                    readScope, tempDir, null, 10, 0));
             assertEquals(10, page.path("showing").asInt());
             assertTrue(page.path("has_more").asBoolean());
-            JsonNode verified =
-                    JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of(), 10));
+            JsonNode verified = JDBI_READS.verifyChange(jdbi, tempDir, List.of(), 10);
             JsonNode session =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi, tempDir, List.of(), "Change method", 10));
+                    JDBI_READS.changeSession(jdbi, tempDir, List.of(), "Change method", 10);
             assertEquals(1, verified.path("inferred_target_count").asInt());
             assertFalse(verified.path("worktree").path("has_more").asBoolean());
             assertEquals(
@@ -433,29 +401,23 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
             assertEquals(verified.path("requested_targets"), session.path("requested_targets"));
             assertFalse(session.path("verification").path("worktree").path("has_more").asBoolean());
             ObjectNode context =
-                    (ObjectNode)
-                            JSON.readTree(
-                                    ReadQueryContext.<String>readWithGraph(
-                                            jdbi,
-                                            readScope ->
-                                                    new ContextQueries()
-                                                            .getContext(
-                                                                    readScope,
-                                                                    List.of("OrderService"),
-                                                                    false,
-                                                                    10)));
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            readScope ->
+                                    new ContextQueries()
+                                            .getContext(
+                                                    readScope, List.of("OrderService"), false, 10));
             JsonNode withContext =
-                    JSON.readTree(
-                            ReadQueryContext.<String>readWithGraph(
-                                    jdbi,
-                                    readScope ->
-                                            new ChangeVerificationQueries()
-                                                    .verifyChangeWithContext(
-                                                            readScope,
-                                                            tempDir,
-                                                            List.of("OrderService"),
-                                                            10,
-                                                            context)));
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            readScope ->
+                                    new ChangeVerificationQueries()
+                                            .verifyChangeWithContext(
+                                                    readScope,
+                                                    tempDir,
+                                                    List.of("OrderService"),
+                                                    10,
+                                                    context));
             assertFalse(withContext.path("worktree").path("has_more").asBoolean());
             for (int i = 0; i < 10; i++) {
                 Files.writeString(
@@ -463,9 +425,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                         "package org.acme; class Unknown%d {}".formatted(i));
             }
             JsonNode tooMany =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi, tempDir, List.of(), "Change methods", 10));
+                    JDBI_READS.changeSession(jdbi, tempDir, List.of(), "Change methods", 10);
             assertTrue(tooMany.path("target_inference_truncated").asBoolean());
             assertFalse(tooMany.path("verification_receipt").path("verified").asBoolean());
         }
@@ -485,16 +445,14 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                     .setSign(false)
                     .call();
             JsonNode planned =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi, tempDir, List.of("OrderService"), "Add a method", 10));
+                    JDBI_READS.changeSession(
+                            jdbi, tempDir, List.of("OrderService"), "Add a method", 10);
 
             Files.writeString(
                     source, "package org.acme; class OrderService { void changed() {} }\n");
             JsonNode changed =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi, tempDir, List.of("OrderService"), "Add a method", 10));
+                    JDBI_READS.changeSession(
+                            jdbi, tempDir, List.of("OrderService"), "Add a method", 10);
 
             assertEquals("planned", planned.path("phase").asText());
             assertEquals("ready", planned.path("phase_gate").path("status").asText());
@@ -531,9 +489,8 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                     """
                             .formatted(System.currentTimeMillis()));
             JsonNode blocked =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi, tempDir, List.of("OrderService"), "Add a method", 10));
+                    JDBI_READS.changeSession(
+                            jdbi, tempDir, List.of("OrderService"), "Add a method", 10);
             assertEquals("blocked", blocked.path("phase").asText());
             assertEquals(
                     "fix_diagnostics_and_rebuild",
@@ -561,32 +518,29 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         Path clone = Files.createTempDirectory("quill-clone");
         try {
             JsonNode external =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi,
-                                    tempDir,
-                                    List.of("OrderService"),
-                                    "Rename a method",
-                                    10,
-                                    clone.toString()));
+                    JDBI_READS.changeSession(
+                            jdbi,
+                            tempDir,
+                            List.of("OrderService"),
+                            "Rename a method",
+                            10,
+                            clone.toString());
             JsonNode missing =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi,
-                                    tempDir,
-                                    List.of("OrderService"),
-                                    "Rename a method",
-                                    10,
-                                    clone.resolve("absent").toString()));
+                    JDBI_READS.changeSession(
+                            jdbi,
+                            tempDir,
+                            List.of("OrderService"),
+                            "Rename a method",
+                            10,
+                            clone.resolve("absent").toString());
             JsonNode here =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi,
-                                    tempDir,
-                                    List.of("OrderService"),
-                                    "Rename a method",
-                                    10,
-                                    tempDir.toString()));
+                    JDBI_READS.changeSession(
+                            jdbi,
+                            tempDir,
+                            List.of("OrderService"),
+                            "Rename a method",
+                            10,
+                            tempDir.toString());
 
             assertEquals("external_checkout", external.path("phase").asText());
             assertEquals("not_applicable", external.path("phase_gate").path("status").asText());
@@ -624,9 +578,8 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
     void aPlannedChangeSessionStatesOnlyTheCompileCommandEvenInFullDetail() throws Exception {
         writeMinimalPom();
         JsonNode planned =
-                JSON.readTree(
-                        JDBI_READS.changeSession(
-                                jdbi, tempDir, List.of("OrderService"), "Rename a method", 10));
+                JDBI_READS.changeSession(
+                        jdbi, tempDir, List.of("OrderService"), "Rename a method", 10);
 
         assertEquals("planned", planned.path("phase").asText());
         assertFalse(
@@ -645,9 +598,8 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
     void aPlannedChangeSessionSaysHowToReportEditsInAnotherCheckout() throws Exception {
         writeMinimalPom();
         JsonNode planned =
-                JSON.readTree(
-                        JDBI_READS.changeSession(
-                                jdbi, tempDir, List.of("OrderService"), "Rename a method", 10));
+                JDBI_READS.changeSession(
+                        jdbi, tempDir, List.of("OrderService"), "Rename a method", 10);
 
         assertTrue(planned.path("directive").path("other_checkout").asText().contains("checkout"));
     }
@@ -657,17 +609,11 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         writeMinimalPom();
 
         JsonNode first =
-                JSON.readTree(
-                        JDBI_READS.changeSession(
-                                jdbi, tempDir, List.of("OrderService"), "Add retry support", 10));
+                JDBI_READS.changeSession(
+                        jdbi, tempDir, List.of("OrderService"), "Add retry support", 10);
         JsonNode second =
-                JSON.readTree(
-                        JDBI_READS.changeSession(
-                                jdbi,
-                                tempDir,
-                                List.of("org.acme.OrderService"),
-                                "Add retry support",
-                                10));
+                JDBI_READS.changeSession(
+                        jdbi, tempDir, List.of("org.acme.OrderService"), "Add retry support", 10);
 
         assertEquals(1, first.path("schema_version").asInt());
         assertEquals("stateless_snapshot", first.path("state_model").asText());
@@ -720,18 +666,17 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         writeMinimalPom();
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new ChangeSessionQueries()
-                                                .snapshot(
-                                                        readScope,
-                                                        tempDir,
-                                                        List.of("OrderService"),
-                                                        "Add retry support",
-                                                        10,
-                                                        "summary")));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ChangeSessionQueries()
+                                        .snapshot(
+                                                readScope,
+                                                tempDir,
+                                                List.of("OrderService"),
+                                                "Add retry support",
+                                                10,
+                                                "summary"));
 
         assertEquals("summary", result.path("detail").asText());
         assertFalse(result.path("plan").path("primary_changes").get(0).has("member_contracts"));
@@ -749,18 +694,17 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         assertEquals(
                 "OrderService", result.at("/full_evidence_request/arguments/targets/0").asText());
         JsonNode full =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new ChangeSessionQueries()
-                                                .snapshot(
-                                                        readScope,
-                                                        tempDir,
-                                                        List.of("OrderService"),
-                                                        "Add retry support",
-                                                        10,
-                                                        "full")));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ChangeSessionQueries()
+                                        .snapshot(
+                                                readScope,
+                                                tempDir,
+                                                List.of("OrderService"),
+                                                "Add retry support",
+                                                10,
+                                                "full"));
         assertEquals(full.path("phase"), result.path("phase"));
         assertEquals(full.path("phase_gate"), result.path("phase_gate"));
         assertEquals(full.path("directive"), result.path("directive"));
@@ -790,19 +734,18 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         writeMinimalPom();
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new ChangeSessionQueries()
-                                                .snapshot(
-                                                        readScope,
-                                                        tempDir,
-                                                        List.of("OrderService"),
-                                                        "Add retry support",
-                                                        10,
-                                                        "summary",
-                                                        "auto")));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new ChangeSessionQueries()
+                                        .snapshot(
+                                                readScope,
+                                                tempDir,
+                                                List.of("OrderService"),
+                                                "Add retry support",
+                                                10,
+                                                "summary",
+                                                "auto"));
 
         assertEquals("planned", result.path("phase").asText());
         assertEquals("plan", result.path("view").asText());
@@ -850,19 +793,18 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                 JsonNode baseline = null;
                 for (String view : List.of("auto", "plan", "verification", "all")) {
                     JsonNode result =
-                            JSON.readTree(
-                                    ReadQueryContext.<String>readWithGraph(
-                                            jdbi,
-                                            readScope ->
-                                                    new ChangeSessionQueries()
-                                                            .snapshot(
-                                                                    readScope,
-                                                                    tempDir,
-                                                                    List.of("OrderService"),
-                                                                    "Add retry support",
-                                                                    10,
-                                                                    "summary",
-                                                                    view)));
+                            ReadQueryContext.readWithGraph(
+                                    jdbi,
+                                    readScope ->
+                                            new ChangeSessionQueries()
+                                                    .snapshot(
+                                                            readScope,
+                                                            tempDir,
+                                                            List.of("OrderService"),
+                                                            "Add retry support",
+                                                            10,
+                                                            "summary",
+                                                            view));
                     if (baseline == null) baseline = result;
                     assertEquals(baseline.path("directive"), result.path("directive"));
                     assertEquals(baseline.path("phase_gate"), result.path("phase_gate"));
@@ -898,9 +840,7 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
                     source, "package org.acme; class OrderService { void changed() {} }\n");
 
             JsonNode result =
-                    JSON.readTree(
-                            JDBI_READS.changeSession(
-                                    jdbi, tempDir, List.of(), "Add retry support", 10));
+                    JDBI_READS.changeSession(jdbi, tempDir, List.of(), "Add retry support", 10);
 
             assertEquals("dirty_worktree", result.path("target_source").asText());
             assertEquals(
@@ -910,19 +850,18 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
             assertEquals("review_required", result.path("phase").asText());
 
             JsonNode auto =
-                    JSON.readTree(
-                            ReadQueryContext.<String>readWithGraph(
-                                    jdbi,
-                                    readScope ->
-                                            new ChangeSessionQueries()
-                                                    .snapshot(
-                                                            readScope,
-                                                            tempDir,
-                                                            List.of(),
-                                                            "Add retry support",
-                                                            10,
-                                                            "summary",
-                                                            "auto")));
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            readScope ->
+                                    new ChangeSessionQueries()
+                                            .snapshot(
+                                                    readScope,
+                                                    tempDir,
+                                                    List.of(),
+                                                    "Add retry support",
+                                                    10,
+                                                    "summary",
+                                                    "auto"));
             assertEquals("verification", auto.path("view").asText());
             assertFalse(auto.has("plan"));
             assertTrue(auto.has("verification"));
@@ -972,17 +911,18 @@ class QuillToolsChangeSessionTest extends QuillToolsTestBase {
         var targets = List.of("p.One", "p.Two", "p.Three", "p.Four", "p.Five", "p.Six");
         String snapshot =
                 ReadQueryContext.read(
-                        indexed,
-                        context ->
-                                new ChangeSessionQueries()
-                                        .snapshot(
-                                                context,
-                                                tempDir,
-                                                targets,
-                                                "Update persistence",
-                                                40,
-                                                "summary",
-                                                "verification"));
+                                indexed,
+                                context ->
+                                        new ChangeSessionQueries()
+                                                .snapshot(
+                                                        context,
+                                                        tempDir,
+                                                        targets,
+                                                        "Update persistence",
+                                                        40,
+                                                        "summary",
+                                                        "verification"))
+                        .toString();
         JsonNode result = JSON.readTree(snapshot);
         assertEquals(6, result.path("targets").size());
         assertTrue(result.has("phase_gate"));

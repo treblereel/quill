@@ -1,8 +1,8 @@
 package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupError;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupErrorNode;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -11,26 +11,28 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
-import org.treblereel.mcp.mcp.support.ClassTargetResolver;
-import org.treblereel.mcp.core.Json;
 
 /** Builds external-library dependency responses. */
 public final class ExternalDependencyQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    public String getExternalDeps(ReadQueryContext reader, String target, String library, int limit) {
+    public ObjectNode getExternalDeps(
+            ReadQueryContext reader, String target, String library, int limit) {
         ClassRecord targetClass = null;
         if (target != null) {
             var lookup = ClassTargetResolver.resolve(reader, target);
-            if (lookup.error() != null) return classLookupError(reader, lookup, target);
+            if (lookup.error() != null) return classLookupErrorNode(reader, lookup, target);
             targetClass = lookup.cls();
         }
         if (!reader.usages.hasExternalDeps()) {
-            return errorResponse("No external dependency data. Re-run 'quill init' to index external dependencies.");
+            return errorNode(
+                    "No external dependency data. Re-run 'quill init' to index external dependencies.");
         }
 
         ObjectNode root = JSON.createObjectNode();
@@ -74,7 +76,6 @@ public final class ExternalDependencyQueries {
             appendMeta(root, reader, 0);
         }
 
-        return root.toString();
+        return root;
     }
-
 }

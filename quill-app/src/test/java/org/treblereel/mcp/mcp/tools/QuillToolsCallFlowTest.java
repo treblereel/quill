@@ -48,29 +48,18 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        JDBI_READS.getCallHierarchy(
-                                jdbi, "OrderService", "createOrder", "both", 10, 0));
+                JDBI_READS.getCallHierarchy(jdbi, "OrderService", "createOrder", "both", 10, 0);
         JsonNode invalid =
-                JSON.readTree(
-                        JDBI_READS.getCallHierarchy(jdbi, "OrderService", null, "sideways", 10, 0));
+                JDBI_READS.getCallHierarchy(jdbi, "OrderService", null, "sideways", 10, 0);
         JsonNode transitive =
-                JSON.readTree(
-                        JDBI_READS.getCallHierarchy(
-                                jdbi, "OrderService", "createOrder", "outbound", true, 2, 10, 0));
+                JDBI_READS.getCallHierarchy(
+                        jdbi, "OrderService", "createOrder", "outbound", true, 2, 10, 0);
         JsonNode kotlinResult =
-                JSON.readTree(
-                        JDBI_READS.getCallHierarchy(
-                                jdbi, "OrderService", "createKotlinOrder", "both", 10, 0));
+                JDBI_READS.getCallHierarchy(
+                        jdbi, "OrderService", "createKotlinOrder", "both", 10, 0);
         JsonNode byId =
-                JSON.readTree(
-                        JDBI_READS.getCallHierarchy(
-                                jdbi,
-                                kotlinResult.path("symbol_id").asText(),
-                                null,
-                                "both",
-                                10,
-                                0));
+                JDBI_READS.getCallHierarchy(
+                        jdbi, kotlinResult.path("symbol_id").asText(), null, "both", 10, 0);
 
         assertEquals(2, result.path("total").asInt());
         assertTrue(result.path("declared_method_found").asBoolean());
@@ -158,74 +147,70 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode ambiguous =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getCallHierarchy(
-                                                readScope,
-                                                "OrderService",
-                                                "process",
-                                                null,
-                                                "inbound",
-                                                false,
-                                                1,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getCallHierarchy(
+                                        readScope,
+                                        "OrderService",
+                                        "process",
+                                        null,
+                                        "inbound",
+                                        false,
+                                        1,
+                                        10,
+                                        0));
         assertTrue(ambiguous.path("message").asText().startsWith("Ambiguous method"));
         assertEquals(2, ambiguous.path("candidates").size());
         String candidateId = ambiguous.path("candidates").get(0).path("symbol_id").asText();
         assertTrue(candidateId.startsWith("quill:symbol:v3:"));
         JsonNode byId =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getCallHierarchy(
-                                                readScope,
-                                                candidateId,
-                                                null,
-                                                null,
-                                                "inbound",
-                                                false,
-                                                1,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getCallHierarchy(
+                                        readScope,
+                                        candidateId,
+                                        null,
+                                        null,
+                                        "inbound",
+                                        false,
+                                        1,
+                                        10,
+                                        0));
         assertFalse(byId.has("error"));
         assertEquals(candidateId, byId.path("symbol_id").asText());
 
         JsonNode exact =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getCallHierarchy(
-                                                readScope,
-                                                "OrderService",
-                                                "process",
-                                                "(I)V",
-                                                "inbound",
-                                                false,
-                                                1,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getCallHierarchy(
+                                        readScope,
+                                        "OrderService",
+                                        "process",
+                                        "(I)V",
+                                        "inbound",
+                                        false,
+                                        1,
+                                        10,
+                                        0));
         assertEquals("(I)V", exact.path("descriptor").asText());
         assertEquals("process(int):void", exact.path("signature").asText());
         JsonNode parameters =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getCallHierarchy(
-                                                readScope,
-                                                "OrderService",
-                                                "process",
-                                                "( int )",
-                                                "inbound",
-                                                false,
-                                                1,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getCallHierarchy(
+                                        readScope,
+                                        "OrderService",
+                                        "process",
+                                        "( int )",
+                                        "inbound",
+                                        false,
+                                        1,
+                                        10,
+                                        0));
         assertEquals(exact.path("symbol_id"), parameters.path("symbol_id"));
         assertEquals(exact.path("calls"), parameters.path("calls"));
         assertEquals(1, exact.path("total").asInt());
@@ -245,20 +230,19 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                         "process(String)",
                         "(String)")) {
             JsonNode source =
-                    JSON.readTree(
-                            ReadQueryContext.<String>readWithGraph(
-                                    jdbi,
-                                    context ->
-                                            queries.getCallHierarchy(
-                                                    context,
-                                                    "OrderService",
-                                                    "process",
-                                                    selector,
-                                                    "inbound",
-                                                    false,
-                                                    1,
-                                                    10,
-                                                    0)));
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            context ->
+                                    queries.getCallHierarchy(
+                                            context,
+                                            "OrderService",
+                                            "process",
+                                            selector,
+                                            "inbound",
+                                            false,
+                                            1,
+                                            10,
+                                            0));
             assertEquals("(Ljava/lang/String;)V", source.path("descriptor").asText(), selector);
             assertEquals(
                     List.of(37),
@@ -271,20 +255,19 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
         }
 
         JsonNode missing =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getCallHierarchy(
-                                                readScope,
-                                                "OrderService",
-                                                "process",
-                                                "(J)V",
-                                                "inbound",
-                                                false,
-                                                1,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getCallHierarchy(
+                                        readScope,
+                                        "OrderService",
+                                        "process",
+                                        "(J)V",
+                                        "inbound",
+                                        false,
+                                        1,
+                                        10,
+                                        0));
         assertEquals("Method not found", missing.path("message").asText());
         assertEquals(2, missing.path("candidates").size());
     }
@@ -303,22 +286,21 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                        (1, 'execute', '()V', 4, 'audit', '()V', 'virtual', 1, '[11]')"""));
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .getCallHierarchy(
-                                                        readScope,
-                                                        "OrderService",
-                                                        null,
-                                                        null,
-                                                        "outbound",
-                                                        false,
-                                                        1,
-                                                        "cross_class",
-                                                        1,
-                                                        0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .getCallHierarchy(
+                                                readScope,
+                                                "OrderService",
+                                                null,
+                                                null,
+                                                "outbound",
+                                                false,
+                                                1,
+                                                "cross_class",
+                                                1,
+                                                0));
 
         assertEquals("cross_class", result.path("scope").asText());
         assertEquals(1, result.path("total").asInt());
@@ -370,13 +352,11 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .traceStateLifecycle(
-                                                        readScope, "OrderService", 20)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .traceStateLifecycle(readScope, "OrderService", 20));
 
         assertTrue(
                 result.path("inferred_roles")
@@ -423,50 +403,40 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope, "OrderService", "run", null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope, "OrderService", "run", null));
 
         assertEquals(2, result.path("event_count").asInt());
         JsonNode noArguments =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope, "OrderService", "run", "()")));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope, "OrderService", "run", "()"));
         assertEquals(result.path("bytecode_sequence"), noArguments.path("bytecode_sequence"));
         JsonNode hashTarget =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope,
-                                                        "OrderService#run()",
-                                                        null,
-                                                        null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope, "OrderService#run()", null, null));
         assertEquals(
                 result.path("bytecode_sequence"),
                 hashTarget.path("bytecode_sequence"),
                 hashTarget.toString());
         JsonNode hashName =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope,
-                                                        "OrderService#run",
-                                                        null,
-                                                        null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope, "OrderService#run", null, null));
         assertEquals(
                 result.path("bytecode_sequence"),
                 hashName.path("bytecode_sequence"),
@@ -481,42 +451,36 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                 result.path("persist_before_dispatch").path("runtime_order_status").asText());
         assertTrue(result.path("control_flow").path("straight_line").asBoolean());
         JsonNode byId =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope,
-                                                        result.path("symbol_id").asText(),
-                                                        null,
-                                                        null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope,
+                                                result.path("symbol_id").asText(),
+                                                null,
+                                                null));
         assertEquals(result.path("symbol_id").asText(), byId.path("symbol_id").asText());
 
         JsonNode custom =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope,
-                                                        "OrderService",
-                                                        "run",
-                                                        null,
-                                                        Set.of("persistplan"),
-                                                        Set.of("dispatchbatch"))));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope,
+                                                "OrderService",
+                                                "run",
+                                                null,
+                                                Set.of("persistplan"),
+                                                Set.of("dispatchbatch")));
         JsonNode kotlin =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope,
-                                                        "OrderService",
-                                                        "executeOrders",
-                                                        null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope, "OrderService", "executeOrders", null));
         assertEquals(
                 "proven",
                 custom.path("ordering_analysis").path("instruction_order_status").asText());
@@ -565,16 +529,12 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope,
-                                                        "OrderService",
-                                                        "branchingRun",
-                                                        null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope, "OrderService", "branchingRun", null));
 
         assertEquals(
                 "proven_on_all_cfg_paths",
@@ -621,23 +581,21 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode bypass =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.analyzeExecutionOrder(
-                                                readScope, "OrderService", "bypassRun", null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.analyzeExecutionOrder(
+                                        readScope, "OrderService", "bypassRun", null));
         assertEquals(
                 "likely", bypass.path("ordering_analysis").path("runtime_order_status").asText());
         assertFalse(bypass.path("control_flow").path("dominance_proven").asBoolean());
 
         JsonNode guarded =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.analyzeExecutionOrder(
-                                                readScope, "OrderService", "guardedRun", null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.analyzeExecutionOrder(
+                                        readScope, "OrderService", "guardedRun", null));
         assertEquals(
                 "proven_on_all_cfg_paths",
                 guarded.path("ordering_analysis").path("runtime_order_status").asText());
@@ -654,12 +612,11 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                     '["4|33|java.util.concurrent.Executor|execute|(Ljava/lang/Runnable;)V|scheduling"]'
                 WHERE from_class_id = 1 AND from_method = 'guardedRun'"""));
         JsonNode async =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.analyzeExecutionOrder(
-                                                readScope, "OrderService", "guardedRun", null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.analyzeExecutionOrder(
+                                        readScope, "OrderService", "guardedRun", null));
         assertEquals(
                 "invocation_order_proven_completion_unknown",
                 async.path("ordering_analysis").path("runtime_order_status").asText());
@@ -707,16 +664,12 @@ class QuillToolsCallFlowTest extends QuillToolsTestBase {
                 });
 
         JsonNode result =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        new QuillToolQueries()
-                                                .analyzeExecutionOrder(
-                                                        readScope,
-                                                        "OrderService",
-                                                        "loopRun",
-                                                        null)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                new QuillToolQueries()
+                                        .analyzeExecutionOrder(
+                                                readScope, "OrderService", "loopRun", null));
 
         assertEquals(
                 "proven_on_all_cfg_paths",

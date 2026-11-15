@@ -4,8 +4,8 @@ import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendError;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendRetryWith;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupError;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.classLookupErrorNode;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -18,85 +18,108 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.model.ClassMemberRecord;
-import org.treblereel.mcp.model.ClassRecord;
-import org.treblereel.mcp.model.KotlinDeclarationRecord;
-import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.mcp.semantic.KotlinMemberNames;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
-import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.model.ClassMemberRecord;
+import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 
 /** Finds declared method overrides in indexed descendants. */
 public final class MethodOverrideQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
 
-    public String findMethodOverrides(ReadQueryContext reader, String target, String method,
-            String signature, boolean transitive, int limit, int offset) {
+    public ObjectNode findMethodOverrides(
+            ReadQueryContext reader,
+            String target,
+            String method,
+            String signature,
+            boolean transitive,
+            int limit,
+            int offset) {
         try {
             SymbolContract.Reference reference = SymbolContract.parse(target).orElse(null);
             if (reference != null) {
                 if (!"METHOD".equals(reference.kind())) {
-                    return errorResponse("INVALID_SYMBOL_KIND",
-                            "symbol_id must identify a method");
+                    return errorNode("INVALID_SYMBOL_KIND", "symbol_id must identify a method");
                 }
                 method = reference.jvmName();
                 signature = reference.descriptor();
             }
         } catch (SymbolContract.ParseException error) {
-            return errorResponse(error.errorCode(), error.getMessage());
+            return errorNode(error.errorCode(), error.getMessage());
         }
         if (method == null || method.isBlank()) {
-            return errorResponse("MISSING_METHOD", "Method name or symbol_id must be provided");
+            return errorNode("MISSING_METHOD", "Method name or symbol_id must be provided");
         }
         ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, target);
-        if (lookup.error() != null) return classLookupError(reader, lookup, target);
+        if (lookup.error() != null) return classLookupErrorNode(reader, lookup, target);
         ClassRecord base = lookup.cls();
         String methodName = method.trim();
-        String requestedSignature = signature == null || signature.isBlank()
-                ? null : signature.trim();
+        String requestedSignature =
+                signature == null || signature.isBlank() ? null : signature.trim();
         List<KotlinDeclarationRecord> kotlinDeclarations =
                 reader.symbols.findKotlinDeclarations(base.id());
-        List<ClassMemberRecord> namedDeclarations = reader.symbols.findClassMembers(base.id()).stream()
-                .filter(member -> "METHOD".equals(member.kind()))
-                .filter(member -> KotlinMemberNames.matches(
-                        methodName, member, kotlinDeclarations))
-                .toList();
-        List<ClassMemberRecord> baseDeclarations = namedDeclarations.stream()
-                .filter(member -> JvmDescriptors.matchesSignature(member, requestedSignature))
-                .toList();
+        List<ClassMemberRecord> namedDeclarations =
+                reader.symbols.findClassMembers(base.id()).stream()
+                        .filter(member -> "METHOD".equals(member.kind()))
+                        .filter(
+                                member ->
+                                        KotlinMemberNames.matches(
+                                                methodName, member, kotlinDeclarations))
+                        .toList();
+        List<ClassMemberRecord> baseDeclarations =
+                namedDeclarations.stream()
+                        .filter(
+                                member ->
+                                        JvmDescriptors.matchesSignature(member, requestedSignature))
+                        .toList();
         if (requestedSignature != null && baseDeclarations.size() > 1) {
             ObjectNode error = JSON.createObjectNode();
-            appendError(error, "AMBIGUOUS_METHOD", "Multiple declarations match; provide a JVM descriptor");
-            appendRetryWith(error, "signature", "Use one candidate's full signature or JVM descriptor");
-            error.set("candidates", JSON.valueToTree(baseDeclarations.stream()
-                    .map(ClassMemberRecord::signature).toList()));
-            return error.toString();
+            appendError(
+                    error,
+                    "AMBIGUOUS_METHOD",
+                    "Multiple declarations match; provide a JVM descriptor");
+            appendRetryWith(
+                    error, "signature", "Use one candidate's full signature or JVM descriptor");
+            error.set(
+                    "candidates",
+                    JSON.valueToTree(
+                            baseDeclarations.stream().map(ClassMemberRecord::signature).toList()));
+            return error;
         }
         if (baseDeclarations.isEmpty()) {
             ObjectNode error = JSON.createObjectNode();
-            appendError(error, "METHOD_NOT_FOUND", requestedSignature == null
-                    ? "Method not found" : "Method signature not found");
+            appendError(
+                    error,
+                    "METHOD_NOT_FOUND",
+                    requestedSignature == null ? "Method not found" : "Method signature not found");
             error.put("class", base.className());
             error.put("method", methodName);
-            error.set("candidates", JSON.valueToTree(namedDeclarations.stream()
-                    .map(ClassMemberRecord::signature).toList()));
-            return error.toString();
+            error.set(
+                    "candidates",
+                    JSON.valueToTree(
+                            namedDeclarations.stream().map(ClassMemberRecord::signature).toList()));
+            return error;
         }
 
         List<ClassRecord> classes = reader.symbols.findAllClasses();
         Map<String, DescendantPath> paths = descendantPaths(classes, base.className(), transitive);
-        List<ClassRecord> descendants = classes.stream()
-                .filter(candidate -> paths.containsKey(candidate.className()))
-                .toList();
-        Map<Integer, List<ClassMemberRecord>> members = reader.symbols.findClassMembers(descendants.stream().map(ClassRecord::id).toList());
+        List<ClassRecord> descendants =
+                classes.stream()
+                        .filter(candidate -> paths.containsKey(candidate.className()))
+                        .toList();
+        Map<Integer, List<ClassMemberRecord>> members =
+                reader.symbols.findClassMembers(descendants.stream().map(ClassRecord::id).toList());
         List<OverrideMatch> matches = new ArrayList<>();
         for (ClassRecord descendant : descendants) {
-            for (ClassMemberRecord candidate : members.getOrDefault(
-                    descendant.id(), List.of())) {
-                if (!"METHOD".equals(candidate.kind()) || hasModifier(candidate, "static")
+            for (ClassMemberRecord candidate : members.getOrDefault(descendant.id(), List.of())) {
+                if (!"METHOD".equals(candidate.kind())
+                        || hasModifier(candidate, "static")
                         || hasModifier(candidate, "private")) continue;
                 for (ClassMemberRecord declaration : baseDeclarations) {
                     if (!declaration.name().equals(candidate.name())
@@ -104,15 +127,19 @@ public final class MethodOverrideQueries {
                             || !declaration.parameterTypes().equals(candidate.parameterTypes())) {
                         continue;
                     }
-                    matches.add(new OverrideMatch(descendant, candidate, declaration,
-                            paths.get(descendant.className())));
+                    matches.add(
+                            new OverrideMatch(
+                                    descendant,
+                                    candidate,
+                                    declaration,
+                                    paths.get(descendant.className())));
                 }
             }
         }
-        matches.sort(Comparator
-                .comparingInt((OverrideMatch match) -> match.path().distance())
-                .thenComparing(match -> match.owner().className())
-                .thenComparing(match -> match.member().signature()));
+        matches.sort(
+                Comparator.comparingInt((OverrideMatch match) -> match.path().distance())
+                        .thenComparing(match -> match.owner().className())
+                        .thenComparing(match -> match.member().signature()));
         int from = Math.min(offset, matches.size());
         int to = (int) Math.min((long) from + limit, matches.size());
         List<OverrideMatch> page = matches.subList(from, to);
@@ -120,16 +147,26 @@ public final class MethodOverrideQueries {
         ObjectNode root = JSON.createObjectNode();
         root.put("target", base.className());
         root.put("method", methodName);
-        KotlinDeclarationRecord kotlinDeclaration = baseDeclarations.stream()
-                .map(member -> KotlinMemberNames.declaration(member, kotlinDeclarations)
-                        .orElse(null))
-                .filter(java.util.Objects::nonNull)
-                .findFirst().orElse(null);
+        KotlinDeclarationRecord kotlinDeclaration =
+                baseDeclarations.stream()
+                        .map(
+                                member ->
+                                        KotlinMemberNames.declaration(member, kotlinDeclarations)
+                                                .orElse(null))
+                        .filter(java.util.Objects::nonNull)
+                        .findFirst()
+                        .orElse(null);
         if (kotlinDeclaration != null) {
             root.put("language", "kotlin");
             root.put("kotlin_name", kotlinDeclaration.name());
-            root.set("jvm_names", JSON.valueToTree(baseDeclarations.stream()
-                    .map(ClassMemberRecord::name).distinct().sorted().toList()));
+            root.set(
+                    "jvm_names",
+                    JSON.valueToTree(
+                            baseDeclarations.stream()
+                                    .map(ClassMemberRecord::name)
+                                    .distinct()
+                                    .sorted()
+                                    .toList()));
         }
         if (requestedSignature == null) root.putNull("signature");
         else root.put("signature", requestedSignature);
@@ -149,7 +186,8 @@ public final class MethodOverrideQueries {
         }
         ArrayNode limitations = root.putArray("limitations");
         limitations.add("Override matching uses erased parameter types from indexed bytecode");
-        limitations.add("Compiler bridge methods are excluded; some generic specializations may require source analysis");
+        limitations.add(
+                "Compiler bridge methods are excluded; some generic specializations may require source analysis");
 
         ArrayNode overrides = root.putArray("overrides");
         int naiveTokens = base.sourceTokens();
@@ -157,7 +195,10 @@ public final class MethodOverrideQueries {
         countedClasses.add(base.id());
         for (OverrideMatch match : page) {
             ObjectNode node = overrides.addObject();
-            SymbolContract.appendMember(node, match.owner(), match.member(),
+            SymbolContract.appendMember(
+                    node,
+                    match.owner(),
+                    match.member(),
                     reader.symbols.findKotlinDeclarations(match.owner().id()));
             node.put("class", match.owner().className());
             node.put("signature", match.member().signature());
@@ -168,7 +209,11 @@ public final class MethodOverrideQueries {
             node.put("distance", match.path().distance());
             node.put("direct", match.path().distance() == 1);
             node.set("hierarchy_path", JSON.valueToTree(match.path().classes()));
-            node.put("source", (match.owner().sourceLine() > 0 ? match.owner().sourceFile() + ":" + match.owner().sourceLine() : match.owner().sourceFile()));
+            node.put(
+                    "source",
+                    (match.owner().sourceLine() > 0
+                            ? match.owner().sourceFile() + ":" + match.owner().sourceLine()
+                            : match.owner().sourceFile()));
             node.put("origin", match.owner().origin());
             if (match.owner().module() == null) node.putNull("module");
             else node.put("module", match.owner().module());
@@ -178,7 +223,7 @@ public final class MethodOverrideQueries {
         }
         appendPage(root, page.size(), matches.size(), limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
     private static Map<String, DescendantPath> descendantPaths(
@@ -193,8 +238,8 @@ public final class MethodOverrideQueries {
                 children.computeIfAbsent(implemented, ignored -> new ArrayList<>()).add(candidate);
             }
         }
-        children.values().forEach(values -> values.sort(
-                Comparator.comparing(ClassRecord::className)));
+        children.values()
+                .forEach(values -> values.sort(Comparator.comparing(ClassRecord::className)));
 
         Map<String, DescendantPath> paths = new LinkedHashMap<>();
         paths.put(target, new DescendantPath(0, List.of(target)));
@@ -208,8 +253,9 @@ public final class MethodOverrideQueries {
                 if (paths.containsKey(candidate.className())) continue;
                 List<String> path = new ArrayList<>(parent.classes());
                 path.add(candidate.className());
-                paths.put(candidate.className(), new DescendantPath(
-                        parent.distance() + 1, List.copyOf(path)));
+                paths.put(
+                        candidate.className(),
+                        new DescendantPath(parent.distance() + 1, List.copyOf(path)));
                 pending.addLast(candidate.className());
             }
         }
@@ -232,7 +278,8 @@ public final class MethodOverrideQueries {
     }
 
     private static boolean hasVisibility(ClassMemberRecord member) {
-        return hasModifier(member, "public") || hasModifier(member, "protected")
+        return hasModifier(member, "public")
+                || hasModifier(member, "protected")
                 || hasModifier(member, "private");
     }
 

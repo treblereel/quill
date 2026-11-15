@@ -1,7 +1,5 @@
 package org.treblereel.mcp.mcp.project;
 
-import org.treblereel.mcp.db.ReadQueryContext;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,6 +11,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.db.ReadQueryContext;
 
 class WorktreeStatusQueriesTest {
 
@@ -25,20 +24,35 @@ class WorktreeStatusQueriesTest {
         Files.writeString(temp.resolve("pom.xml"), "<project/>");
         try (Git git = Git.init().setDirectory(temp.toFile()).setInitialBranch("main").call()) {
             git.add().addFilepattern("pom.xml").call();
-            var commit = git.commit().setMessage("initial")
-                    .setAuthor("Test", "test@example.com").setSign(false).call();
-            Jdbi jdbi = QuillDatabase.create(
-                    Files.createDirectories(temp.resolve(".quill")).resolve("index.db"));
-            jdbi.useHandle(handle -> {
-                handle.createUpdate("INSERT INTO metadata(key, value) VALUES ('last_commit', :v)")
-                        .bind("v", commit.getName()).execute();
-                handle.createUpdate("INSERT INTO metadata(key, value) VALUES ('project_root', :v)")
-                        .bind("v", temp.toString()).execute();
-            });
+            var commit =
+                    git.commit()
+                            .setMessage("initial")
+                            .setAuthor("Test", "test@example.com")
+                            .setSign(false)
+                            .call();
+            Jdbi jdbi =
+                    QuillDatabase.create(
+                            Files.createDirectories(temp.resolve(".quill")).resolve("index.db"));
+            jdbi.useHandle(
+                    handle -> {
+                        handle.createUpdate(
+                                        "INSERT INTO metadata(key, value) VALUES ('last_commit', :v)")
+                                .bind("v", commit.getName())
+                                .execute();
+                        handle.createUpdate(
+                                        "INSERT INTO metadata(key, value) VALUES ('project_root', :v)")
+                                .bind("v", temp.toString())
+                                .execute();
+                    });
             Files.writeString(temp.resolve("src.txt"), "dirty");
 
-            var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new WorktreeStatusQueries()
-                    .getWorktreeStatus(readScope, temp, "untracked", 10, 0)));
+            var result =
+                    ReadQueryContext.readWithGraph(
+                            jdbi,
+                            readScope ->
+                                    new WorktreeStatusQueries()
+                                            .getWorktreeStatus(
+                                                    readScope, temp, "untracked", 10, 0));
 
             assertEquals("main", result.path("branch").asText());
             assertEquals(commit.getName(), result.path("indexed_commit").asText());

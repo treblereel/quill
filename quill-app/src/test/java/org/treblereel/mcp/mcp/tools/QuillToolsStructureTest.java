@@ -66,10 +66,8 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                     FROM classes WHERE class_name = 'org.acme.MainApp'""");
                 });
 
-        JsonNode defaults =
-                JSON.readTree(JDBI_READS.findUnusedClasses(jdbi, null, false, false, 20, 0));
-        JsonNode expanded =
-                JSON.readTree(JDBI_READS.findUnusedClasses(jdbi, null, true, true, 20, 0));
+        JsonNode defaults = JDBI_READS.findUnusedClasses(jdbi, null, false, false, 20, 0);
+        JsonNode expanded = JDBI_READS.findUnusedClasses(jdbi, null, true, true, 20, 0);
 
         assertEquals("candidates_not_proven_dead_code", defaults.path("classification").asText());
         assertEquals(2, defaults.path("total").asInt());
@@ -131,8 +129,7 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                             '(Ljava/lang/String;)V', 'special', 2, '[18,21]')""");
                 });
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.findUnusedMethods(jdbi, null, false, false, 20, 0));
+        JsonNode result = JDBI_READS.findUnusedMethods(jdbi, null, false, false, 20, 0);
 
         assertEquals(
                 "private_method_candidates_not_proven_dead_code",
@@ -223,10 +220,8 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                     FROM classes WHERE class_name = 'org.acme.PlainState'""");
                 });
 
-        JsonNode defaults =
-                JSON.readTree(JDBI_READS.findUnusedFields(jdbi, null, false, false, false, 20, 0));
-        JsonNode expanded =
-                JSON.readTree(JDBI_READS.findUnusedFields(jdbi, null, false, false, true, 20, 0));
+        JsonNode defaults = JDBI_READS.findUnusedFields(jdbi, null, false, false, false, 20, 0);
+        JsonNode expanded = JDBI_READS.findUnusedFields(jdbi, null, false, false, true, 20, 0);
 
         assertEquals(
                 "private_field_candidates_not_proven_dead_code",
@@ -326,12 +321,9 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                             "service_registrations_detail");
                 });
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.findEntryPoints(jdbi, null, null, false, false, 20, 0));
+        JsonNode result = JDBI_READS.findEntryPoints(jdbi, null, null, false, false, 20, 0);
         JsonNode processors =
-                JSON.readTree(
-                        JDBI_READS.findEntryPoints(
-                                jdbi, "annotation_processor", null, false, false, 20, 0));
+                JDBI_READS.findEntryPoints(jdbi, "annotation_processor", null, false, false, 20, 0);
 
         assertEquals(8, result.path("total").asInt());
         assertEquals(1, result.path("counts_by_kind").path("main").asInt());
@@ -380,13 +372,10 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                         0, 10, 'generated', 'current', 'common', 'main')
                 """));
 
-        JsonNode direct = JSON.readTree(JDBI_READS.getModuleGraph(jdbi, null, "both", 5, 20, 0));
-        JsonNode outbound =
-                JSON.readTree(JDBI_READS.getModuleGraph(jdbi, "app", "outbound", 2, 20, 0));
-        JsonNode inbound =
-                JSON.readTree(JDBI_READS.getModuleGraph(jdbi, "common", "inbound", 2, 20, 0));
-        JsonNode missing =
-                JSON.readTree(JDBI_READS.getModuleGraph(jdbi, "missing", "both", 2, 20, 0));
+        JsonNode direct = JDBI_READS.getModuleGraph(jdbi, null, "both", 5, 20, 0);
+        JsonNode outbound = JDBI_READS.getModuleGraph(jdbi, "app", "outbound", 2, 20, 0);
+        JsonNode inbound = JDBI_READS.getModuleGraph(jdbi, "common", "inbound", 2, 20, 0);
+        JsonNode missing = JDBI_READS.getModuleGraph(jdbi, "missing", "both", 2, 20, 0);
 
         assertEquals(2, direct.path("total").asInt());
         assertEquals(2, direct.path("direct_relations").asInt());
@@ -430,13 +419,11 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode graph =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getPackageGraph(
-                                                readScope, null, "both", null, false, false, 1,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getPackageGraph(
+                                        readScope, null, "both", null, false, false, 1, 0));
         assertEquals(2, graph.path("package_count").asInt());
         assertEquals(2, graph.path("total").asInt());
         assertEquals(1, graph.path("showing").asInt());
@@ -444,13 +431,11 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
         assertTrue(graph.path("relations").get(0).path("occurrence_count").asInt() >= 1);
 
         JsonNode inbound =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getPackageGraph(
-                                                readScope, "audit", "inbound", null, false, false,
-                                                10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getPackageGraph(
+                                        readScope, "audit", "inbound", null, false, false, 10, 0));
         assertEquals("org.audit", inbound.path("package").asText());
         assertEquals(1, inbound.path("total").asInt());
         assertEquals("org.acme", inbound.path("relations").get(0).path("from").asText());
@@ -464,19 +449,18 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                         .asInt());
 
         JsonNode outbound =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getPackageGraph(
-                                                readScope,
-                                                "org.audit",
-                                                "outbound",
-                                                null,
-                                                false,
-                                                false,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getPackageGraph(
+                                        readScope,
+                                        "org.audit",
+                                        "outbound",
+                                        null,
+                                        false,
+                                        false,
+                                        10,
+                                        0));
         assertEquals(1, outbound.path("total").asInt());
         assertEquals(
                 2,
@@ -487,13 +471,11 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                         .asInt());
 
         JsonNode missing =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.getPackageGraph(
-                                                readScope, "missing", "both", null, false, false,
-                                                10, 0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.getPackageGraph(
+                                        readScope, "missing", "both", null, false, false, 10, 0));
         assertEquals("Package not found: missing", missing.path("error").asText());
         assertTrue(missing.path("_meta").isObject());
     }
@@ -520,20 +502,19 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
 
         QuillToolQueries queries = new QuillToolQueries();
         JsonNode packages =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findArchitectureViolations(
-                                                readScope,
-                                                "package",
-                                                "org.acme..",
-                                                List.of("org.persistence.."),
-                                                List.of("CALLS"),
-                                                false,
-                                                false,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findArchitectureViolations(
+                                        readScope,
+                                        "package",
+                                        "org.acme..",
+                                        List.of("org.persistence.."),
+                                        List.of("CALLS"),
+                                        false,
+                                        false,
+                                        10,
+                                        0));
         assertFalse(packages.path("compliant").asBoolean());
         assertEquals(1, packages.path("total").asInt());
         assertEquals(3, packages.path("occurrence_count").asInt());
@@ -555,58 +536,55 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
         assertTrue(packages.path("_meta").isObject());
 
         JsonNode modules =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findArchitectureViolations(
-                                                readScope,
-                                                "module",
-                                                "web",
-                                                List.of("persistence"),
-                                                List.of(),
-                                                false,
-                                                false,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findArchitectureViolations(
+                                        readScope,
+                                        "module",
+                                        "web",
+                                        List.of("persistence"),
+                                        List.of(),
+                                        false,
+                                        false,
+                                        10,
+                                        0));
         assertEquals(1, modules.path("total").asInt());
         assertEquals("web", modules.path("violations").get(0).path("from_boundary").asText());
 
         JsonNode missingSource =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findArchitectureViolations(
-                                                readScope,
-                                                "package",
-                                                "org.missing..",
-                                                List.of("org.persistence.."),
-                                                List.of(),
-                                                false,
-                                                false,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findArchitectureViolations(
+                                        readScope,
+                                        "package",
+                                        "org.missing..",
+                                        List.of("org.persistence.."),
+                                        List.of(),
+                                        false,
+                                        false,
+                                        10,
+                                        0));
         assertEquals(
                 "Source boundary pattern matched no indexed classes",
                 missingSource.path("error").asText());
         assertTrue(missingSource.path("available_boundaries").isArray());
 
         JsonNode compliant =
-                JSON.readTree(
-                        ReadQueryContext.<String>readWithGraph(
-                                jdbi,
-                                readScope ->
-                                        queries.findArchitectureViolations(
-                                                readScope,
-                                                "package",
-                                                "org.acme..",
-                                                List.of("org.absent.."),
-                                                List.of(),
-                                                false,
-                                                false,
-                                                10,
-                                                0)));
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                queries.findArchitectureViolations(
+                                        readScope,
+                                        "package",
+                                        "org.acme..",
+                                        List.of("org.absent.."),
+                                        List.of(),
+                                        false,
+                                        false,
+                                        10,
+                                        0));
         assertTrue(compliant.path("compliant").asBoolean());
         assertEquals(0, compliant.path("matched_forbidden_classes").asInt());
         assertEquals(0, compliant.path("total").asInt());
@@ -617,38 +595,36 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
         QuillToolQueries queries = new QuillToolQueries();
         assertEquals(
                 "Invalid scope: expected package or module",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findArchitectureViolations(
-                                                        readScope,
-                                                        "class",
-                                                        "org.acme",
-                                                        List.of("org.persistence"),
-                                                        List.of(),
-                                                        false,
-                                                        false,
-                                                        10,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findArchitectureViolations(
+                                                readScope,
+                                                "class",
+                                                "org.acme",
+                                                List.of("org.persistence"),
+                                                List.of(),
+                                                false,
+                                                false,
+                                                10,
+                                                0))
                         .path("message")
                         .asText());
         assertEquals(
                 "At least one forbidden pattern is required",
-                JSON.readTree(
-                                ReadQueryContext.<String>readWithGraph(
-                                        jdbi,
-                                        readScope ->
-                                                queries.findArchitectureViolations(
-                                                        readScope,
-                                                        "package",
-                                                        "org.acme",
-                                                        List.of(),
-                                                        List.of(),
-                                                        false,
-                                                        false,
-                                                        10,
-                                                        0)))
+                ReadQueryContext.readWithGraph(
+                                jdbi,
+                                readScope ->
+                                        queries.findArchitectureViolations(
+                                                readScope,
+                                                "package",
+                                                "org.acme",
+                                                List.of(),
+                                                List.of(),
+                                                false,
+                                                false,
+                                                10,
+                                                0))
                         .path("message")
                         .asText());
     }
@@ -680,8 +656,7 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                     """);
                 });
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.findCycles(jdbi, "class", null, false, false, 20, 0));
+        JsonNode result = JDBI_READS.findCycles(jdbi, "class", null, false, false, 20, 0);
 
         assertEquals("class", result.path("scope").asText());
         assertEquals(1, result.path("total").asInt());
@@ -700,16 +675,12 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                         .valueStream()
                         .anyMatch(edge -> edge.path("kinds").toString().contains("CDI_INJECT")));
         JsonNode through =
-                JSON.readTree(
-                        JDBI_READS.findCycles(
-                                jdbi, "org.acme.AuditService", null, false, false, 20, 0));
+                JDBI_READS.findCycles(jdbi, "org.acme.AuditService", null, false, false, 20, 0);
         assertEquals(
                 "org.acme.AuditService", through.path("class_filter").asText(), through.toString());
         assertEquals(result.path("cycles"), through.path("cycles"));
         JsonNode outside =
-                JSON.readTree(
-                        JDBI_READS.findCycles(
-                                jdbi, "org.acme.Container", null, false, false, 20, 0));
+                JDBI_READS.findCycles(jdbi, "org.acme.Container", null, false, false, 20, 0);
         assertEquals(0, outside.path("total").asInt(), outside.toString());
         assertFalse(outside.path("class_in_cycle").asBoolean());
     }
@@ -737,8 +708,7 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                     """);
                 });
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.findCycles(jdbi, "class", null, false, true, 20, 0));
+        JsonNode result = JDBI_READS.findCycles(jdbi, "class", null, false, true, 20, 0);
 
         assertFalse(result.has("error_code"), result.toString());
         assertTrue(
@@ -767,8 +737,7 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                         new ModuleClasspathRecord("service", "app", 1, "project_dependency"),
                         new ModuleClasspathRecord("common", "common", 0, "self")));
 
-        JsonNode result =
-                JSON.readTree(JDBI_READS.findCycles(jdbi, "module", null, false, false, 20, 0));
+        JsonNode result = JDBI_READS.findCycles(jdbi, "module", null, false, false, 20, 0);
 
         assertEquals(1, result.path("total").asInt());
         assertEquals(2, result.path("cycles").get(0).path("member_count").asInt());
@@ -782,41 +751,36 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
     @Test
     void graphToolsAcceptTheDirectionSpellingsAgentsSend() throws Exception {
         assertEquals(
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1))
+                JDBI_READS
+                        .getDependencies(jdbi, "OrderService", "outbound", 1)
                         .path("dependencies"),
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "OrderService", "outgoing", 1))
+                JDBI_READS
+                        .getDependencies(jdbi, "OrderService", "outgoing", 1)
                         .path("dependencies"));
         assertEquals(
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "AuditService", "inbound", 1))
-                        .path("dependents"),
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "AuditService", "incoming", 1))
-                        .path("dependents"));
+                JDBI_READS.getDependencies(jdbi, "AuditService", "inbound", 1).path("dependents"),
+                JDBI_READS.getDependencies(jdbi, "AuditService", "incoming", 1).path("dependents"));
         assertFalse(
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "OrderService", "outgoing", 1))
-                        .has("error_code"));
+                JDBI_READS.getDependencies(jdbi, "OrderService", "outgoing", 1).has("error_code"));
         assertFalse(
-                JSON.readTree(JDBI_READS.getDependencies(jdbi, "AuditService", "incoming", 1))
-                        .has("error_code"));
+                JDBI_READS.getDependencies(jdbi, "AuditService", "incoming", 1).has("error_code"));
         assertEquals(
                 "descendants",
-                JSON.readTree(
-                                JDBI_READS.getTypeHierarchy(
-                                        jdbi, "PaymentService", "subtypes", 5, 10, 0))
+                JDBI_READS
+                        .getTypeHierarchy(jdbi, "PaymentService", "subtypes", 5, 10, 0)
                         .path("direction")
                         .asText());
         assertEquals(
                 "ancestors",
-                JSON.readTree(
-                                JDBI_READS.getTypeHierarchy(
-                                        jdbi, "PaymentService", "supertypes", 5, 10, 0))
+                JDBI_READS
+                        .getTypeHierarchy(jdbi, "PaymentService", "supertypes", 5, 10, 0)
                         .path("direction")
                         .asText());
     }
 
     @Test
     void findCyclesRejectsUnknownScope() throws Exception {
-        JsonNode result =
-                JSON.readTree(JDBI_READS.findCycles(jdbi, "package", null, false, false, 20, 0));
+        JsonNode result = JDBI_READS.findCycles(jdbi, "package", null, false, false, 20, 0);
         assertEquals("Invalid scope: expected class or module", result.path("message").asText());
     }
 
@@ -938,7 +902,7 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                     """);
                 });
 
-        JsonNode result = JSON.readTree(JDBI_READS.compareIndex(jdbi, tempDir, null, 20));
+        JsonNode result = JDBI_READS.compareIndex(jdbi, tempDir, null, 20);
 
         assertEquals("baseline", result.path("baseline").path("index_id").asText());
         assertTrue(result.path("api_compatibility").isObject());
@@ -974,7 +938,7 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
                         handle.execute(
                                 "INSERT INTO metadata(key, value) VALUES ('index_id', 'current')"));
 
-        JsonNode result = JSON.readTree(JDBI_READS.compareIndex(jdbi, tempDir, "missing", 20));
+        JsonNode result = JDBI_READS.compareIndex(jdbi, tempDir, "missing", 20);
 
         assertEquals("Baseline index not found: missing", result.path("error").asText());
         assertEquals("baseline", result.path("available_baselines").get(0).asText());

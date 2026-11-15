@@ -6,17 +6,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Comparator;
 import java.util.function.ToIntFunction;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.db.GitRepository;
-import org.treblereel.mcp.db.UsageRepository;
-import org.treblereel.mcp.model.*;
-import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.GitRepository;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.mcp.support.BeanTerms;
+import org.treblereel.mcp.model.*;
 
 /** Builds the project-wide overview response. */
 public final class ProjectOverviewQueries {
@@ -29,11 +29,11 @@ public final class ProjectOverviewQueries {
         this.git = git;
     }
 
-    public String getOverview(ReadQueryContext reader) {
+    public ObjectNode getOverview(ReadQueryContext reader) {
         return getOverview(reader, true);
     }
 
-    public String getOverview(ReadQueryContext reader, boolean details) {
+    public ObjectNode getOverview(ReadQueryContext reader, boolean details) {
         GitRepository gitRepository = reader.git;
         Map<String, String> meta = reader.index.getMetadata();
         ObjectNode root = JSON.createObjectNode();
@@ -57,13 +57,17 @@ public final class ProjectOverviewQueries {
         if (meta.containsKey("dependency_index_detail")) {
             project.put("dependency_index_detail", meta.get("dependency_index_detail"));
         }
-        project.put("service_descriptors",
+        project.put(
+                "service_descriptors",
                 Integer.parseInt(meta.getOrDefault("service_descriptors", "0")));
-        project.put("service_registrations",
+        project.put(
+                "service_registrations",
                 Integer.parseInt(meta.getOrDefault("service_registrations", "0")));
-        project.put("configuration_definitions",
+        project.put(
+                "configuration_definitions",
                 Integer.parseInt(meta.getOrDefault("configuration_definitions", "0")));
-        project.put("configuration_usages",
+        project.put(
+                "configuration_usages",
                 Integer.parseInt(meta.getOrDefault("configuration_usages", "0")));
 
         List<String> auxiliary = auxiliaryBuildProjects(reader);
@@ -73,39 +77,71 @@ public final class ProjectOverviewQueries {
             project.set("auxiliary_build_projects", JSON.valueToTree(auxiliary));
         }
 
-        root.set("suggested_tools", JSON.valueToTree(suggestedTools(beanCount,
-                Integer.parseInt(meta.getOrDefault("configuration_usages", "0")),
-                reader.symbols.countAnnotatedClasses("jakarta.ws.rs.Path", true)
-                        + reader.symbols.countAnnotatedClasses(
-                                "org.springframework.web.bind.annotation.RestController", true))));
+        root.set(
+                "suggested_tools",
+                JSON.valueToTree(
+                        suggestedTools(
+                                beanCount,
+                                Integer.parseInt(meta.getOrDefault("configuration_usages", "0")),
+                                reader.symbols.countAnnotatedClasses("jakarta.ws.rs.Path", true)
+                                        + reader.symbols.countAnnotatedClasses(
+                                                "org.springframework.web.bind.annotation.RestController",
+                                                true))));
 
-        root.set("beans_by_scope", countsInOwnTerms(reader.beans.countBeansByScope(), BeanTerms::scope));
-        root.set("beans_by_kind", countsInOwnTerms(reader.beans.countBeansByKind(), BeanTerms::kind));
+        root.set(
+                "beans_by_scope",
+                countsInOwnTerms(reader.beans.countBeansByScope(), BeanTerms::scope));
+        root.set(
+                "beans_by_kind",
+                countsInOwnTerms(reader.beans.countBeansByKind(), BeanTerms::kind));
 
         root.put("architecture_hubs_ranked_by", "combined");
         ArrayNode hubs = root.putArray("architecture_hubs");
         List<UsageRepository.ArchitectureHub> hubMetrics = reader.usages.findArchitectureHubs();
-        Map<Integer, ClassRecord> hubClasses = reader.symbols.findClassesByIds(hubMetrics.stream().map(UsageRepository.ArchitectureHub::classId).toList());
+        Map<Integer, ClassRecord> hubClasses =
+                reader.symbols.findClassesByIds(
+                        hubMetrics.stream().map(UsageRepository.ArchitectureHub::classId).toList());
         if (!details) root.set("architecture_hub_columns", JSON.valueToTree(HUB_COLUMNS));
-        topHubs(hubMetrics, UsageRepository.ArchitectureHub::totalDependents).forEach(hub ->
-                Optional.ofNullable(hubClasses.get(hub.classId()))
-                        .ifPresent(cls -> {
-                            if (details) appendHub(hubs, hub, cls);
-                            else appendHubRow(hubs, hub, cls);
-                        }));
+        topHubs(hubMetrics, UsageRepository.ArchitectureHub::totalDependents)
+                .forEach(
+                        hub ->
+                                Optional.ofNullable(hubClasses.get(hub.classId()))
+                                        .ifPresent(
+                                                cls -> {
+                                                    if (details) appendHub(hubs, hub, cls);
+                                                    else appendHubRow(hubs, hub, cls);
+                                                }));
 
         if (details) {
             ObjectNode rankings = root.putObject("architecture_hub_rankings");
-            writeHubRanking(rankings, "source", hubMetrics,
-                    UsageRepository.ArchitectureHub::sourceDependents, hubClasses);
-            writeHubRanking(rankings, "generated", hubMetrics,
-                    UsageRepository.ArchitectureHub::generatedDependents, hubClasses);
-            writeHubRanking(rankings, "production", hubMetrics,
-                    UsageRepository.ArchitectureHub::productionDependents, hubClasses);
-            writeHubRanking(rankings, "test", hubMetrics,
-                    UsageRepository.ArchitectureHub::testDependents, hubClasses);
-            rankings.put("scope_note", "production/test are classified by source_set; "
-                    + "source/generated are independent origin dimensions");
+            writeHubRanking(
+                    rankings,
+                    "source",
+                    hubMetrics,
+                    UsageRepository.ArchitectureHub::sourceDependents,
+                    hubClasses);
+            writeHubRanking(
+                    rankings,
+                    "generated",
+                    hubMetrics,
+                    UsageRepository.ArchitectureHub::generatedDependents,
+                    hubClasses);
+            writeHubRanking(
+                    rankings,
+                    "production",
+                    hubMetrics,
+                    UsageRepository.ArchitectureHub::productionDependents,
+                    hubClasses);
+            writeHubRanking(
+                    rankings,
+                    "test",
+                    hubMetrics,
+                    UsageRepository.ArchitectureHub::testDependents,
+                    hubClasses);
+            rankings.put(
+                    "scope_note",
+                    "production/test are classified by source_set; "
+                            + "source/generated are independent origin dimensions");
         }
 
         ObjectNode problems = root.putObject("problems");
@@ -121,12 +157,16 @@ public final class ProjectOverviewQueries {
         problemSample.addAll(contextRequired.stream().limit(10).toList());
         problemSample.addAll(unknown.stream().limit(10).toList());
         problemSample.addAll(unsupported.stream().limit(10).toList());
-        Map<Integer, BeanRecord> problemBeans = reader.beans.findBeansByIds(problemSample.stream().map(InjectionPointRecord::beanId).toList());
-        Map<Integer, ClassRecord> problemClasses = reader.symbols.findClassesByIds(problemBeans.values().stream().map(BeanRecord::classId).toList());
+        Map<Integer, BeanRecord> problemBeans =
+                reader.beans.findBeansByIds(
+                        problemSample.stream().map(InjectionPointRecord::beanId).toList());
+        Map<Integer, ClassRecord> problemClasses =
+                reader.symbols.findClassesByIds(
+                        problemBeans.values().stream().map(BeanRecord::classId).toList());
         problems.put("unsatisfied_count", unsatisfied.size());
         if (details && !unsatisfied.isEmpty()) {
-            List<InjectionPointRecord> unsatLimited = unsatisfied.size() > 10
-                    ? unsatisfied.subList(0, 10) : unsatisfied;
+            List<InjectionPointRecord> unsatLimited =
+                    unsatisfied.size() > 10 ? unsatisfied.subList(0, 10) : unsatisfied;
             ArrayNode unsatArr = problems.putArray("unsatisfied_injection_points_sample");
             for (InjectionPointRecord ip : unsatLimited) {
                 ObjectNode node = unsatArr.addObject();
@@ -141,8 +181,8 @@ public final class ProjectOverviewQueries {
         }
         problems.put("ambiguous_count", ambiguous.size());
         if (details && !ambiguous.isEmpty()) {
-            List<InjectionPointRecord> ambLimited = ambiguous.size() > 10
-                    ? ambiguous.subList(0, 10) : ambiguous;
+            List<InjectionPointRecord> ambLimited =
+                    ambiguous.size() > 10 ? ambiguous.subList(0, 10) : ambiguous;
             ArrayNode ambArr = problems.putArray("ambiguous_injection_points_sample");
             for (InjectionPointRecord ip : ambLimited) {
                 ObjectNode node = ambArr.addObject();
@@ -156,10 +196,20 @@ public final class ProjectOverviewQueries {
             }
         }
         writeResolutionGroup(problems, "unknown", unknown, problemBeans, problemClasses, details);
-        writeResolutionGroup(problems, "context_required", contextRequired,
-                problemBeans, problemClasses, details);
-        writeResolutionGroup(problems, "unsupported_mechanism", unsupported,
-                problemBeans, problemClasses, details);
+        writeResolutionGroup(
+                problems,
+                "context_required",
+                contextRequired,
+                problemBeans,
+                problemClasses,
+                details);
+        writeResolutionGroup(
+                problems,
+                "unsupported_mechanism",
+                unsupported,
+                problemBeans,
+                problemClasses,
+                details);
 
         List<CdiProblem> cdiProblems = reader.beans.findCdiProblems();
         if (!cdiProblems.isEmpty()) {
@@ -201,7 +251,7 @@ public final class ProjectOverviewQueries {
         }
 
         appendMeta(root, reader, totalTokens);
-        return root.toString();
+        return root;
     }
 
     /** Immutable per index generation; bounded because a server may serve many generations. */
@@ -211,37 +261,50 @@ public final class ProjectOverviewQueries {
     private static List<String> auxiliaryBuildProjects(ReadQueryContext reader) {
         String indexId = reader.index.getMetadata().get("index_id");
         if (indexId == null) {
-            return auxiliaryBuildProjects(reader.index.findIndexedModules(), reader.index.findBuildDescriptors());
+            return auxiliaryBuildProjects(
+                    reader.index.findIndexedModules(), reader.index.findBuildDescriptors());
         }
         if (AUXILIARY_BY_INDEX.size() > 16) AUXILIARY_BY_INDEX.clear();
-        return AUXILIARY_BY_INDEX.computeIfAbsent(indexId, ignored -> auxiliaryBuildProjects(
-                reader.index.findIndexedModules(), reader.index.findBuildDescriptors()));
+        return AUXILIARY_BY_INDEX.computeIfAbsent(
+                indexId,
+                ignored ->
+                        auxiliaryBuildProjects(
+                                reader.index.findIndexedModules(),
+                                reader.index.findBuildDescriptors()));
     }
 
     /**
-     * Tools that fit this project, so an agent can call them by name instead of spending rounds
-     * on catalog search (in router mode Codex issued 74 search_tools calls for 29 executions).
+     * Tools that fit this project, so an agent can call them by name instead of spending rounds on
+     * catalog search (in router mode Codex issued 74 search_tools calls for 29 executions).
      */
     static List<String> suggestedTools(int beans, int configurationUsages, int endpointClasses) {
-        List<String> tools = new ArrayList<>(List.of(
-                "search_classes", "get_symbol_details", "find_symbol_usages", "get_call_hierarchy",
-                "find_impacted_tests", "change_session"));
+        List<String> tools =
+                new ArrayList<>(
+                        List.of(
+                                "search_classes",
+                                "get_symbol_details",
+                                "find_symbol_usages",
+                                "get_call_hierarchy",
+                                "find_impacted_tests",
+                                "change_session"));
         if (beans > 0) tools.addAll(List.of("list_beans", "list_injection_points"));
         if (configurationUsages > 0) tools.add("find_configuration_references");
         if (endpointClasses > 0) tools.add("find_framework_endpoints");
         return List.copyOf(tools);
     }
 
-    static List<String> auxiliaryBuildProjects(java.util.Collection<String> indexedModules,
-            List<String> buildDescriptors) {
+    static List<String> auxiliaryBuildProjects(
+            java.util.Collection<String> indexedModules, List<String> buildDescriptors) {
         java.util.Set<String> modules = new java.util.HashSet<>(indexedModules);
         java.util.TreeSet<String> candidates = new java.util.TreeSet<>();
         for (String descriptor : buildDescriptors) {
             int slash = descriptor.lastIndexOf('/');
             if (slash < 0) continue; // the root build itself
             String directory = descriptor.substring(0, slash);
-            if (modules.contains(directory) || directory.contains("/src/")
-                    || directory.startsWith("src/") || directory.contains("/target/")
+            if (modules.contains(directory)
+                    || directory.contains("/src/")
+                    || directory.startsWith("src/")
+                    || directory.contains("/target/")
                     || directory.startsWith("target/")) continue;
             // An aggregator whose children are indexed modules belongs to the indexed build.
             if (modules.stream().anyMatch(module -> module.startsWith(directory + "/"))) continue;
@@ -250,7 +313,8 @@ public final class ProjectOverviewQueries {
         // Report each separate build once, by its top directory (Gradle subprojects included).
         List<String> result = new ArrayList<>();
         for (String directory : candidates) {
-            if (result.stream().noneMatch(top -> directory.startsWith(top + "/"))) result.add(directory);
+            if (result.stream().noneMatch(top -> directory.startsWith(top + "/")))
+                result.add(directory);
             if (result.size() >= 20) break;
         }
         return List.copyOf(result);
@@ -273,14 +337,21 @@ public final class ProjectOverviewQueries {
         capabilities.put("workspace_symbol_ids_require_project", true);
         capabilities.put("machine_readable_errors", true);
         capabilities.put("error_contract_version", 1);
-        capabilities.set("symbol_id_consumers", JSON.valueToTree(List.of(
-                "find_symbol_usages", "get_call_hierarchy",
-                "analyze_execution_order", "find_method_overrides")));
+        capabilities.set(
+                "symbol_id_consumers",
+                JSON.valueToTree(
+                        List.of(
+                                "find_symbol_usages", "get_call_hierarchy",
+                                "analyze_execution_order", "find_method_overrides")));
     }
 
-    private static void writeResolutionGroup(ObjectNode problems, String name,
-            List<InjectionPointRecord> points, Map<Integer, BeanRecord> beans,
-            Map<Integer, ClassRecord> classes, boolean details) {
+    private static void writeResolutionGroup(
+            ObjectNode problems,
+            String name,
+            List<InjectionPointRecord> points,
+            Map<Integer, BeanRecord> beans,
+            Map<Integer, ClassRecord> classes,
+            boolean details) {
         problems.put(name + "_count", points.size());
         if (!details || points.isEmpty()) return;
         ArrayNode sample = problems.putArray(name + "_injection_points_sample");
@@ -301,13 +372,17 @@ public final class ProjectOverviewQueries {
             ToIntFunction<UsageRepository.ArchitectureHub> metric) {
         return hubs.stream()
                 .filter(hub -> metric.applyAsInt(hub) > 0)
-                .sorted(Comparator.comparingInt(metric).reversed()
-                        .thenComparingInt(UsageRepository.ArchitectureHub::classId))
+                .sorted(
+                        Comparator.comparingInt(metric)
+                                .reversed()
+                                .thenComparingInt(UsageRepository.ArchitectureHub::classId))
                 .limit(5)
                 .toList();
     }
 
-    private static void writeHubRanking(ObjectNode rankings, String name,
+    private static void writeHubRanking(
+            ObjectNode rankings,
+            String name,
             List<UsageRepository.ArchitectureHub> metrics,
             ToIntFunction<UsageRepository.ArchitectureHub> rankingMetric,
             Map<Integer, ClassRecord> classes) {
@@ -319,26 +394,40 @@ public final class ProjectOverviewQueries {
     }
 
     /** Column order of the compact hub rows returned by the default overview. */
-    static final List<String> HUB_COLUMNS = List.of("class", "total_dependents",
-            "source_dependents", "generated_dependents", "production_dependents",
-            "test_dependents", "is_bean", "module", "source_set");
+    static final List<String> HUB_COLUMNS =
+            List.of(
+                    "class",
+                    "total_dependents",
+                    "source_dependents",
+                    "generated_dependents",
+                    "production_dependents",
+                    "test_dependents",
+                    "is_bean",
+                    "module",
+                    "source_set");
 
     /**
-     * The default overview starts every task, so its hubs are rows in HUB_COLUMNS order rather
-     * than objects repeating nine keys each; details=true keeps the object form.
+     * The default overview starts every task, so its hubs are rows in HUB_COLUMNS order rather than
+     * objects repeating nine keys each; details=true keeps the object form.
      */
-    private static void appendHubRow(ArrayNode result, UsageRepository.ArchitectureHub metrics,
-            ClassRecord cls) {
+    private static void appendHubRow(
+            ArrayNode result, UsageRepository.ArchitectureHub metrics, ClassRecord cls) {
         ArrayNode row = result.addArray();
-        row.add(cls.className()).add(metrics.totalDependents()).add(metrics.sourceDependents())
-                .add(metrics.generatedDependents()).add(metrics.productionDependents())
-                .add(metrics.testDependents()).add(cls.isBean());
-        if (cls.module() == null) row.addNull(); else row.add(cls.module());
-        if (cls.sourceSet() == null) row.addNull(); else row.add(cls.sourceSet());
+        row.add(cls.className())
+                .add(metrics.totalDependents())
+                .add(metrics.sourceDependents())
+                .add(metrics.generatedDependents())
+                .add(metrics.productionDependents())
+                .add(metrics.testDependents())
+                .add(cls.isBean());
+        if (cls.module() == null) row.addNull();
+        else row.add(cls.module());
+        if (cls.sourceSet() == null) row.addNull();
+        else row.add(cls.sourceSet());
     }
 
-    private static void appendHub(ArrayNode result, UsageRepository.ArchitectureHub metrics,
-            ClassRecord cls) {
+    private static void appendHub(
+            ArrayNode result, UsageRepository.ArchitectureHub metrics, ClassRecord cls) {
         // The ranking is named once by the enclosing list (architecture_hubs_ranked_by or the
         // architecture_hub_rankings key), not repeated on every hub.
         ObjectNode hub = result.addObject();
@@ -361,14 +450,22 @@ public final class ProjectOverviewQueries {
         node.set("limitations", JSON.valueToTree(injectionPoint.limitations()));
     }
 
-
-    /** Spring and CDI counts under each framework's own names (Spring singleton, not @Singleton), largest first. */
-    private static ObjectNode countsInOwnTerms(List<org.treblereel.mcp.db.BeanRepository.FrameworkCount> rows,
+    /**
+     * Spring and CDI counts under each framework's own names (Spring singleton, not @Singleton),
+     * largest first.
+     */
+    private static ObjectNode countsInOwnTerms(
+            List<org.treblereel.mcp.db.BeanRepository.FrameworkCount> rows,
             java.util.function.BinaryOperator<String> terms) {
         Map<String, Integer> merged = new java.util.LinkedHashMap<>();
-        for (var row : rows) merged.merge(String.valueOf(terms.apply(row.framework(), row.value())), row.count(), Integer::sum);
+        for (var row : rows)
+            merged.merge(
+                    String.valueOf(terms.apply(row.framework(), row.value())),
+                    row.count(),
+                    Integer::sum);
         ObjectNode node = JSON.createObjectNode();
-        merged.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+        merged.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
                 .forEach(entry -> node.put(entry.getKey(), entry.getValue()));
         return node;
     }

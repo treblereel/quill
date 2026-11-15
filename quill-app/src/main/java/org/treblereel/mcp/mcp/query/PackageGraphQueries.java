@@ -2,7 +2,7 @@ package org.treblereel.mcp.mcp.query;
 
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
 import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
-import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorResponse;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -16,11 +16,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.mcp.support.ArgumentAliases;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
-import org.treblereel.mcp.mcp.support.ArgumentAliases;
-import org.treblereel.mcp.core.Json;
 
 /** Aggregates indexed class dependencies into a compact package graph. */
 public final class PackageGraphQueries {
@@ -28,25 +28,37 @@ public final class PackageGraphQueries {
     private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
 
-    public String getPackageGraph(ReadQueryContext reader, String requestedPackage, String direction,
-            String module, boolean includeGenerated, boolean includeTests,
-            int limit, int offset) {
-        String normalizedDirection = direction == null
-                ? "both" : ArgumentAliases.graphDirection(direction);
+    public ObjectNode getPackageGraph(
+            ReadQueryContext reader,
+            String requestedPackage,
+            String direction,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            int limit,
+            int offset) {
+        String normalizedDirection =
+                direction == null ? "both" : ArgumentAliases.graphDirection(direction);
         if (!DIRECTIONS.contains(normalizedDirection)) {
-            return errorResponse("Invalid direction: expected inbound, outbound, or both");
+            return errorNode("Invalid direction: expected inbound, outbound, or both");
         }
-        List<ClassRecord> classes = reader.symbols.findAllClasses().stream()
-                .filter(cls -> module == null || module.isBlank() || module.equals(cls.module()))
-                .filter(cls -> includeGenerated || !"generated".equals(cls.origin()))
-                .filter(cls -> includeTests || !cls.inTestSourceSet())
-                .toList();
+        List<ClassRecord> classes =
+                reader.symbols.findAllClasses().stream()
+                        .filter(
+                                cls ->
+                                        module == null
+                                                || module.isBlank()
+                                                || module.equals(cls.module()))
+                        .filter(cls -> includeGenerated || !"generated".equals(cls.origin()))
+                        .filter(cls -> includeTests || !cls.inTestSourceSet())
+                        .toList();
         Map<Integer, ClassRecord> classesById = new HashMap<>();
         Map<String, MutablePackage> summaries = new TreeMap<>();
         for (ClassRecord cls : classes) {
             classesById.put(cls.id(), cls);
-            MutablePackage summary = summaries.computeIfAbsent(
-                    packageName(cls.className()), ignored -> new MutablePackage());
+            MutablePackage summary =
+                    summaries.computeIfAbsent(
+                            packageName(cls.className()), ignored -> new MutablePackage());
             summary.classes++;
             summary.sourceTokens += cls.sourceTokens();
             if (cls.module() != null) summary.modules.add(cls.module());
@@ -58,13 +70,16 @@ public final class PackageGraphQueries {
         if (requestedPackage != null && !requestedPackage.isBlank() && selected == null) {
             ObjectNode error = JSON.createObjectNode();
             error.put("error", "Package not found: " + requestedPackage);
-            error.set("candidates", JSON.valueToTree(packageCandidates(
-                    requestedPackage.strip(), summaries.keySet())));
+            error.set(
+                    "candidates",
+                    JSON.valueToTree(
+                            packageCandidates(requestedPackage.strip(), summaries.keySet())));
             appendMeta(error, reader, 0);
-            return error.toString();
+            return error;
         }
 
-        List<DependencyRecord> dependencies = reader.usages.findCurrentDependencyGraph(module, includeGenerated, includeTests);
+        List<DependencyRecord> dependencies =
+                reader.usages.findCurrentDependencyGraph(module, includeGenerated, includeTests);
         Map<PackagePair, MutableEdge> aggregated = new LinkedHashMap<>();
         for (DependencyRecord dependency : dependencies) {
             ClassRecord fromClass = classesById.get(dependency.fromClassId());
@@ -73,25 +88,39 @@ public final class PackageGraphQueries {
             String from = packageName(fromClass.className());
             String to = packageName(toClass.className());
             if (from.equals(to)) continue;
-            MutableEdge edge = aggregated.computeIfAbsent(
-                    new PackagePair(from, to), ignored -> new MutableEdge());
+            MutableEdge edge =
+                    aggregated.computeIfAbsent(
+                            new PackagePair(from, to), ignored -> new MutableEdge());
             edge.rows++;
             edge.occurrences += dependency.occurrenceCount();
-            edge.classPairs.add(((long) dependency.fromClassId() << 32)
-                    ^ (dependency.toClassId() & 0xffffffffL));
+            edge.classPairs.add(
+                    ((long) dependency.fromClassId() << 32)
+                            ^ (dependency.toClassId() & 0xffffffffL));
             edge.kinds.merge(dependency.kind(), dependency.occurrenceCount(), Integer::sum);
         }
 
-        List<PackageEdge> relations = aggregated.entrySet().stream()
-                .map(entry -> new PackageEdge(entry.getKey().from(), entry.getKey().to(),
-                        entry.getValue().rows, entry.getValue().occurrences,
-                        entry.getValue().classPairs.size(),
-                        java.util.Collections.unmodifiableMap(
-                                new TreeMap<>(entry.getValue().kinds))))
-                .filter(edge -> selected == null || matches(edge, selected, normalizedDirection))
-                .sorted(Comparator.comparingInt(PackageEdge::occurrences).reversed()
-                        .thenComparing(PackageEdge::from).thenComparing(PackageEdge::to))
-                .toList();
+        List<PackageEdge> relations =
+                aggregated.entrySet().stream()
+                        .map(
+                                entry ->
+                                        new PackageEdge(
+                                                entry.getKey().from(),
+                                                entry.getKey().to(),
+                                                entry.getValue().rows,
+                                                entry.getValue().occurrences,
+                                                entry.getValue().classPairs.size(),
+                                                java.util.Collections.unmodifiableMap(
+                                                        new TreeMap<>(entry.getValue().kinds))))
+                        .filter(
+                                edge ->
+                                        selected == null
+                                                || matches(edge, selected, normalizedDirection))
+                        .sorted(
+                                Comparator.comparingInt(PackageEdge::occurrences)
+                                        .reversed()
+                                        .thenComparing(PackageEdge::from)
+                                        .thenComparing(PackageEdge::to))
+                        .toList();
         int from = Math.min(offset, relations.size());
         int to = Math.min(relations.size(), from + limit);
         List<PackageEdge> page = relations.subList(from, to);
@@ -114,8 +143,11 @@ public final class PackageGraphQueries {
             ObjectNode edge = edges.addObject();
             edge.put("from", relation.from());
             edge.put("to", relation.to());
-            edge.put("direction_from_selected", selected == null ? "graph"
-                    : relation.from().equals(selected) ? "outbound" : "inbound");
+            edge.put(
+                    "direction_from_selected",
+                    selected == null
+                            ? "graph"
+                            : relation.from().equals(selected) ? "outbound" : "inbound");
             edge.put("class_pair_count", relation.classPairs());
             edge.put("dependency_row_count", relation.rows());
             edge.put("occurrence_count", relation.occurrences());
@@ -125,10 +157,11 @@ public final class PackageGraphQueries {
 
         Set<String> visiblePackages = new TreeSet<>();
         if (selected != null) visiblePackages.add(selected);
-        page.forEach(edge -> {
-            visiblePackages.add(edge.from());
-            visiblePackages.add(edge.to());
-        });
+        page.forEach(
+                edge -> {
+                    visiblePackages.add(edge.from());
+                    visiblePackages.add(edge.to());
+                });
         ArrayNode nodes = root.putArray("nodes");
         int naiveTokens = 0;
         for (String name : visiblePackages) {
@@ -138,18 +171,18 @@ public final class PackageGraphQueries {
             node.put("classes", summary == null ? 0 : summary.classes);
             node.put("generated_classes", summary == null ? 0 : summary.generated);
             node.put("test_classes", summary == null ? 0 : summary.tests);
-            node.set("modules", JSON.valueToTree(
-                    summary == null ? Set.of() : summary.modules));
+            node.set("modules", JSON.valueToTree(summary == null ? Set.of() : summary.modules));
             node.put("source_tokens", summary == null ? 0 : summary.sourceTokens);
             if (summary != null) naiveTokens += summary.sourceTokens;
         }
         root.putArray("limitations")
                 .add("The graph reflects static dependencies in compiled application bytecode")
-                .add("Reflection, runtime-generated links, and dependencies only present in uncompiled source are absent")
+                .add(
+                        "Reflection, runtime-generated links, and dependencies only present in uncompiled source are absent")
                 .add("Nested classes are attributed to the package of their binary owner name");
         appendPage(root, page.size(), relations.size(), limit, offset);
         appendMeta(root, reader, naiveTokens);
-        return root.toString();
+        return root;
     }
 
     private static boolean matches(PackageEdge edge, String selected, String direction) {
@@ -170,9 +203,11 @@ public final class PackageGraphQueries {
 
     private static List<String> packageCandidates(String requested, Set<String> available) {
         String suffix = "." + requested;
-        return available.stream().filter(value -> value.equalsIgnoreCase(requested)
-                        || value.endsWith(suffix))
-                .sorted().limit(20).toList();
+        return available.stream()
+                .filter(value -> value.equalsIgnoreCase(requested) || value.endsWith(suffix))
+                .sorted()
+                .limit(20)
+                .toList();
     }
 
     private static String packageName(String className) {
@@ -184,8 +219,13 @@ public final class PackageGraphQueries {
 
     private record PackagePair(String from, String to) {}
 
-    private record PackageEdge(String from, String to, int rows, int occurrences,
-                               int classPairs, Map<String, Integer> kinds) {}
+    private record PackageEdge(
+            String from,
+            String to,
+            int rows,
+            int occurrences,
+            int classPairs,
+            Map<String, Integer> kinds) {}
 
     private static final class MutableEdge {
         private int rows;

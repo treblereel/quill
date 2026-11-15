@@ -2,24 +2,23 @@ package org.treblereel.mcp.mcp.tools;
 
 import static org.treblereel.mcp.mcp.tools.WorkspaceResponses.*;
 
-import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
-import org.treblereel.mcp.mcp.change.ChangeRiskQueries;
-import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
-import org.treblereel.mcp.mcp.project.ProjectRegistry;
-import org.treblereel.mcp.mcp.change.TestImpactQueries;
-import org.treblereel.mcp.mcp.query.UsageToolQueries;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.diagnostics.QuillLog;
+import org.treblereel.mcp.mcp.change.ChangeRiskQueries;
+import org.treblereel.mcp.mcp.change.TestImpactQueries;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.mcp.query.UsageToolQueries;
+import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
+import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 
 /** Provider change risk extended with downstream repository reachability. */
 final class WorkspaceRiskQueries {
@@ -34,23 +33,24 @@ final class WorkspaceRiskQueries {
         this.providerLookup = providers;
     }
 
-    String assessRisk(String target, String providerRepository, int maxDepth) {
+    ObjectNode assessRisk(String target, String providerRepository, int maxDepth) {
         WorkspaceProjectScope scope = registry.workspaceScope();
         if (scope == null) return workspaceRequired();
         if (providerRepository != null && !providerRepository.isBlank()) {
             ProjectRegistry.Resolution availability = registry.resolve(providerRepository);
             if (availability.projects().isEmpty() && !availability.issues().isEmpty()) {
-                return ProjectAvailabilityResponses.error(availability.issues());
+                return ProjectAvailabilityResponses.errorNode(availability.issues());
             }
         }
-        List<ProviderClass> providers = providerLookup.findProviderClasses(target, providerRepository);
+        List<ProviderClass> providers =
+                providerLookup.findProviderClasses(target, providerRepository);
         if (providers.isEmpty()) return error("Workspace class not found: " + target);
         if (providers.size() > 1) {
             ObjectNode root = JSON.createObjectNode();
             root.put("error", "ambiguous_workspace_class");
             ArrayNode values = root.putArray("candidates");
             providers.forEach(provider -> values.add(providerJson(provider)));
-            return root.toString();
+            return root;
         }
         ProviderClass provider = providers.getFirst();
         ProjectRegistry.Resolution providerResolution = registry.resolve(provider.repository());
@@ -59,22 +59,30 @@ final class WorkspaceRiskQueries {
         }
         com.fasterxml.jackson.databind.JsonNode localRisk;
         try {
-            localRisk = JSON.readTree(providerResolution.projects().getFirst().<String>read(context -> new ChangeRiskQueries().getRisk(context, provider.className())));
+            localRisk =
+                    providerResolution
+                            .projects()
+                            .getFirst()
+                            .<ObjectNode>read(
+                                    context ->
+                                            new ChangeRiskQueries()
+                                                    .getRisk(context, provider.className()));
         } catch (Exception invalid) {
             return error("Could not calculate provider risk: " + invalid.getMessage());
         }
 
-        WorkspaceDependencyGraph.Result graph =
-                WorkspaceDependencyGraph.discover(scope.manifest());
-        Map<String, Integer> depths = downstreamDepths(
-                graph.edges(), provider.repository(), maxDepth);
+        WorkspaceDependencyGraph.Result graph = WorkspaceDependencyGraph.discover(scope.manifest());
+        Map<String, Integer> depths =
+                downstreamDepths(graph.edges(), provider.repository(), maxDepth);
         List<DownstreamRisk> downstream = new ArrayList<>();
         int drifted = 0;
         for (var entry : depths.entrySet()) {
-            WorkspaceDependencyGraph.Edge evidence = graph.edges().stream()
-                    .filter(edge -> edge.consumerRepository().equals(entry.getKey()))
-                    .filter(WorkspaceDependencyGraph.Edge::crossRepository)
-                    .findFirst().orElse(null);
+            WorkspaceDependencyGraph.Edge evidence =
+                    graph.edges().stream()
+                            .filter(edge -> edge.consumerRepository().equals(entry.getKey()))
+                            .filter(WorkspaceDependencyGraph.Edge::crossRepository)
+                            .findFirst()
+                            .orElse(null);
             if (evidence == null) continue;
             if ("binary_behind_checkout".equals(evidence.status())) drifted++;
             int usageGroups = 0;
@@ -82,33 +90,59 @@ final class WorkspaceRiskQueries {
             if (entry.getValue() == 1) {
                 ProjectRegistry.Resolution consumer = registry.resolve(entry.getKey());
                 if (!consumer.projects().isEmpty()) {
-                    try (ReadQueryContext reader = ReadQueryContext.open(consumer.projects().getFirst().jdbi())) {
-                    try {
-                        var usage = JSON.readTree(new UsageToolQueries().findUsages(
-                                reader, provider.className(), null, null, 1, 0));
-                        usageGroups = usage.path("usage_group_count").asInt();
-                        var tests = JSON.readTree(new TestImpactQueries().findImpactedTests(
-                                reader, List.of(provider.className()), true, 3, 1, 0));
-                        impactedTests = tests.path("total").asInt();
-                    } catch (Exception ignored) {
-                        QuillLog.swallowed(ignored);
-                        // The dependency edge remains valid even when detailed evidence is absent.
+                    try (ReadQueryContext reader =
+                            ReadQueryContext.open(consumer.projects().getFirst().jdbi())) {
+                        try {
+                            var usage =
+                                    new UsageToolQueries()
+                                            .findUsages(
+                                                    reader, provider.className(), null, null, 1, 0);
+                            usageGroups = usage.path("usage_group_count").asInt();
+                            var tests =
+                                    new TestImpactQueries()
+                                            .findImpactedTests(
+                                                    reader,
+                                                    List.of(provider.className()),
+                                                    true,
+                                                    3,
+                                                    1,
+                                                    0);
+                            impactedTests = tests.path("total").asInt();
+                        } catch (Exception ignored) {
+                            QuillLog.swallowed(ignored);
+                            // The dependency edge remains valid even when detailed evidence is
+                            // absent.
+                        }
                     }
                 }
-}
             }
-            downstream.add(new DownstreamRisk(entry.getKey(), entry.getValue(),
-                    evidence.coordinate(), evidence.status(), usageGroups, impactedTests,
-                    entry.getValue() == 1 ? "high" : "medium"));
+            downstream.add(
+                    new DownstreamRisk(
+                            entry.getKey(),
+                            entry.getValue(),
+                            evidence.coordinate(),
+                            evidence.status(),
+                            usageGroups,
+                            impactedTests,
+                            entry.getValue() == 1 ? "high" : "medium"));
         }
-        downstream.sort(java.util.Comparator.comparingInt(DownstreamRisk::depth)
-                .thenComparing(DownstreamRisk::repository));
+        downstream.sort(
+                java.util.Comparator.comparingInt(DownstreamRisk::depth)
+                        .thenComparing(DownstreamRisk::repository));
 
         double localScore = localRisk.path("risk_score").asDouble();
         long direct = depths.values().stream().filter(depth -> depth == 1).count();
         long transitive = depths.size() - direct;
-        double workspaceScore = Math.min(10.0, Math.round((localScore + direct * 0.5
-                + transitive * 0.2 + drifted * 0.5) * 10.0) / 10.0);
+        double workspaceScore =
+                Math.min(
+                        10.0,
+                        Math.round(
+                                        (localScore
+                                                        + direct * 0.5
+                                                        + transitive * 0.2
+                                                        + drifted * 0.5)
+                                                * 10.0)
+                                / 10.0);
         ObjectNode root = JSON.createObjectNode();
         root.put("target", provider.className());
         root.put("provider_repository", provider.repository());
@@ -130,7 +164,7 @@ final class WorkspaceRiskQueries {
         scoring.put("direct_consumer_weight", 0.5);
         scoring.put("transitive_consumer_weight", 0.2);
         scoring.put("version_drift_weight", 0.5);
-        return root.toString();
+        return root;
     }
 
     private static Map<String, Integer> downstreamDepths(
@@ -144,8 +178,7 @@ final class WorkspaceRiskQueries {
             int depth = depths.get(current);
             if (depth >= maxDepth) continue;
             for (WorkspaceDependencyGraph.Edge edge : edges) {
-                if (!edge.crossRepository()
-                        || !edge.providerRepository().equals(current)) continue;
+                if (!edge.crossRepository() || !edge.providerRepository().equals(current)) continue;
                 int candidateDepth = depth + 1;
                 Integer previous = depths.get(edge.consumerRepository());
                 if (previous == null || candidateDepth < previous) {
@@ -177,6 +210,12 @@ final class WorkspaceRiskQueries {
         return node;
     }
 
-    private record DownstreamRisk(String repository, int depth, String coordinate,
-            String versionStatus, int usageGroups, int impactedTests, String confidence) {}
+    private record DownstreamRisk(
+            String repository,
+            int depth,
+            String coordinate,
+            String versionStatus,
+            int usageGroups,
+            int impactedTests,
+            String confidence) {}
 }

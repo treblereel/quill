@@ -1073,4 +1073,9 @@ public final class SymbolRepository {
         return handle.createQuery("SELECT annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1 AND annotation_name = :annotation")
                 .bind("id", classId).bind("annotation", annotationName).mapTo(String.class).list();
     }
+
+    /** The jvm_api evidence JSON of a class. */
+    public Optional<String> findJvmApiEvidence(int classId) {
+        return handle.createQuery("SELECT evidence FROM jvm_api WHERE class_id=:id").bind("id", classId).mapTo(String.class).findOne();
+    }
 }

@@ -393,4 +393,32 @@ public final class ReferenceRepository {
     private static KeyDeclaration keyDeclaration(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new KeyDeclaration(rs.getString("key"), rs.getString("kind"), rs.getString("file"), nullableInt(rs, "line"), rs.getString("evidence"));
     }
+
+    /** An own field a method reads, with the configuration key and annotation injecting it, if any. */
+    public record FieldConfigurationRead(String className, String member, String annotation, String key, String fieldDescriptor) {}
+
+    /** Up to 17 own fields a method reads, each with the configuration usages injecting it. */
+    public List<FieldConfigurationRead> findFieldConfigurationReads(int classId, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT DISTINCT c.class_name,a.field_name AS member,u.annotation,u.key,a.field_descriptor
+                FROM field_accesses a JOIN classes c ON c.id=a.to_class_id
+                LEFT JOIN configuration_usages u ON u.class_id=a.to_class_id AND u.member=a.field_name AND u.parameter_index IS NULL AND u.annotation NOT LIKE '%#%'
+                WHERE a.from_class_id=:id AND a.from_method=:name AND a.from_descriptor=:descriptor
+                  AND a.access_kind IN ('read_instance','read_static') AND a.from_class_id=a.to_class_id
+                ORDER BY c.class_name,a.field_name,u.annotation,u.key LIMIT 17
+                """)
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor)
+                .map((rs, ctx) -> new FieldConfigurationRead(rs.getString("class_name"), rs.getString("member"),
+                        rs.getString("annotation"), rs.getString("key"), rs.getString("field_descriptor"))).list();
+    }
+
+    /** Up to nine property, YAML or test-profile declarations of {@code key}, plain or profiled. */
+    public List<KeyDeclaration> findRelatedDeclarations(String key) {
+        return handle.createQuery("""
+                SELECT key,kind,file,line,evidence FROM configuration_definitions
+                WHERE kind IN ('property','yaml_property','quarkus_test_profile') AND
+                  (key=:key OR (substr(key,1,1)='%' AND substr(key,instr(key,'.')+1)=:key))
+                ORDER BY key,file,line LIMIT 9
+                """).bind("key", key).map((rs, ctx) -> keyDeclaration(rs)).list();
+    }
 }

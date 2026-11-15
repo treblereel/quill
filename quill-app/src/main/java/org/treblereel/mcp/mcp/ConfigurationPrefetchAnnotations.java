@@ -20,17 +20,10 @@ final class ConfigurationPrefetchAnnotations {
             if(!sites.add(owner+"#"+method+descriptor))continue;
             if(++visited>8){truncated=true;break;}
             var cls=db.symbols.findClassByName(owner);if(cls.isEmpty())continue;
-            var rows=db.jdbi().withHandle(h->h.createQuery("""
-                SELECT DISTINCT c.class_name,a.field_name AS member,u.annotation,u.key,a.field_descriptor
-                FROM field_accesses a JOIN classes c ON c.id=a.to_class_id
-                LEFT JOIN configuration_usages u ON u.class_id=a.to_class_id AND u.member=a.field_name AND u.parameter_index IS NULL AND u.annotation NOT LIKE '%#%'
-                WHERE a.from_class_id=:id AND a.from_method=:name AND a.from_descriptor=:descriptor
-                  AND a.access_kind IN ('read_instance','read_static') AND a.from_class_id=a.to_class_id
-                ORDER BY c.class_name,a.field_name,u.annotation,u.key LIMIT 17
-                """).bind("id",cls.get().id()).bind("name",method).bind("descriptor",descriptor).mapToMap().list());
+            var rows=db.references.findFieldConfigurationReads(cls.get().id(),method,descriptor);
             if(rows.size()>16)truncated=true;
             for(var row:rows.stream().limit(16).toList()){
-                String target=(String)row.get("class_name"),field=(String)row.get("member"),annotation=(String)row.get("annotation"),key=(String)row.get("key"),type=(String)row.get("field_descriptor");
+                String target=row.className(),field=row.member(),annotation=row.annotation(),key=row.key(),type=row.fieldDescriptor();
                 if(!seen.add(target+"#"+field+type+"#"+annotation+"#"+key))continue;
                 if(seen.size()>16){truncated=true;break;}
                 var declaration=db.symbols.findClassByName(target);if(declaration.isEmpty())continue;
@@ -44,7 +37,7 @@ final class ConfigurationPrefetchAnnotations {
                 var annotations=(ObjectNode)node.get("annotations");
                 int id=declaration.get().id();
                 if(!api.containsKey(id)){
-                    String raw=db.jdbi().withHandle(h->h.createQuery("SELECT evidence FROM jvm_api WHERE class_id=:id").bind("id",id).mapTo(String.class).findOne().orElse("{}"));
+                    String raw=db.symbols.findJvmApiEvidence(id).orElse("{}");
                     api.put(id,JSON.readTree(raw));
                 }
                 var capture=fieldValues(api.get(id),field,type);
@@ -77,18 +70,13 @@ final class ConfigurationPrefetchAnnotations {
         context.put("truncated",truncated);if(truncated)context.put("status","partial");
         var values=evidence.putArray("related_configuration_declarations");var wrapper=JSON.createObjectNode();wrapper.set("references",values);var source=new ConfigurationSourceEvidence(db);
         for(String key:related.stream().limit(4).toList()){
-            var rows=db.jdbi().withHandle(h->h.createQuery("""
-                SELECT key,kind,file,line,evidence FROM configuration_definitions
-                WHERE kind IN ('property','yaml_property','quarkus_test_profile') AND
-                  (key=:key OR (substr(key,1,1)='%' AND substr(key,instr(key,'.')+1)=:key))
-                ORDER BY key,file,line LIMIT 9
-                """).bind("key",key).mapToMap().list());
+            var rows=db.references.findRelatedDeclarations(key);
             if(rows.size()>8)context.put("status","partial").put("truncated",true);
             for(var row:rows.stream().limit(8).toList()){
-                var value=values.addObject().put("key",(String)row.get("key")).put("file",(String)row.get("file")).put("line",((Number)row.get("line")).intValue());
-                String kind=(String)row.get("kind");value.put("kind",kind);
+                var value=values.addObject().put("key",row.key()).put("file",row.file()).put("line",row.line().intValue());
+                String kind=row.kind();value.put("kind",kind);
                 if(kind.equals("quarkus_test_profile"))value.put("activation","unknown").put("configuration_scope","test declaration, not a production default");
-                source.append(value,value.path("key").asText(),value.path("file").asText(),value.path("line").asInt(),(String)row.get("kind"),(String)row.get("evidence"));
+                source.append(value,value.path("key").asText(),value.path("file").asText(),value.path("line").asInt(),row.kind(),row.evidence());
             }
         }
         if(related.size()>4)context.put("status","partial").put("truncated",true);

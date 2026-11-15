@@ -1147,4 +1147,10 @@ public final class SymbolRepository {
                 .bind("owner", owner)
                 .map((rs, ctx) -> new MemberDetails(rs.getString("name"), rs.getString("annotation_details"))).list();
     }
+
+    /** Up to 33 modules holding current source classes, by name (one more than callers show, to detect truncation). */
+    public List<String> findSourceModules() {
+        return handle.createQuery("SELECT DISTINCT module FROM classes WHERE lifecycle='current' AND origin='source' AND module IS NOT NULL ORDER BY module LIMIT 33")
+                .mapTo(String.class).list();
+    }
 }

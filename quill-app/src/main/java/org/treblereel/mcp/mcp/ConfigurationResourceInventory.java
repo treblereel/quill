@@ -21,7 +21,7 @@ final class ConfigurationResourceInventory {
         var files=result.putArray("files");var missing=result.putArray("unavailable");
         try {
             Path root=Path.of(db.index.getMetadata().get("project_root")).toRealPath();
-            var modules=db.jdbi().withHandle(h->h.createQuery("SELECT DISTINCT module FROM classes WHERE lifecycle='current' AND origin='source' AND module IS NOT NULL ORDER BY module LIMIT 33").mapTo(String.class).list());
+            var modules=db.symbols.findSourceModules();
             if(modules.isEmpty())modules=List.of(".");
             if(modules.size()>32)result.put("status","partial").put("truncated",true);
             Set<String> found=new TreeSet<>();Map<Path,BasicFileAttributes> directories=new LinkedHashMap<>();int[] visited={0};

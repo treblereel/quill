@@ -73,14 +73,11 @@ final class ContextQueries {
             ClassRecord record = byName.get(entry.getKey());
             if (record == null) continue;
             ObjectNode dependent = entry.getValue();
-            var facts = reader.jdbi().withHandle(h -> h.createQuery("""
-                    SELECT (SELECT scope FROM beans WHERE class_id = :from AND member_name IS NULL LIMIT 1) AS scope,
-                           (SELECT GROUP_CONCAT(from_method, ',') FROM method_calls WHERE from_class_id = :from AND to_class_id = :to) AS used_in""")
-                    .bind("from", record.id()).bind("to", cls.id()).mapToMap().one());
-            if (facts.get("scope") != null) dependent.put("bean_scope", String.valueOf(facts.get("scope")));
-            if (facts.get("used_in") != null) {
+            var facts = reader.usages.findDependentUse(record.id(), cls.id());
+            if (facts.scope() != null) dependent.put("bean_scope", facts.scope());
+            if (facts.usedIn() != null) {
                 java.util.TreeSet<String> methods = new java.util.TreeSet<>();
-                for (String method : String.valueOf(facts.get("used_in")).split(",")) {
+                for (String method : facts.usedIn().split(",")) {
                     var lambda = LAMBDA_METHOD.matcher(method);
                     methods.add(lambda.matches() ? lambda.group(1) : method);
                 }

@@ -847,4 +847,16 @@ public final class UsageRepository {
                         + "UNION ALL SELECT evidence_lines FROM field_accesses WHERE from_class_id=:id AND from_method=:name AND from_descriptor=:descriptor")
                 .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapTo(String.class).list();
     }
+
+    /** How a dependent class relates to its dependency: its class bean scope and the methods calling into it. */
+    public record DependentUse(String scope, String usedIn) {}
+
+    /** The class bean scope of {@code fromClassId} and its methods (comma-joined) that call {@code toClassId}. */
+    public DependentUse findDependentUse(int fromClassId, int toClassId) {
+        return handle.createQuery("""
+                SELECT (SELECT scope FROM beans WHERE class_id = :from AND member_name IS NULL LIMIT 1) AS scope,
+                       (SELECT GROUP_CONCAT(from_method, ',') FROM method_calls WHERE from_class_id = :from AND to_class_id = :to) AS used_in""")
+                .bind("from", fromClassId).bind("to", toClassId)
+                .map((rs, ctx) -> new DependentUse(rs.getString("scope"), rs.getString("used_in"))).one();
+    }
 }

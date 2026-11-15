@@ -1390,4 +1390,84 @@ class ClassPrefetchRelationsTest {
         assertFalse(bean.has("arc_removal"), bean.toString());
         assertFalse(bean.has("discovery"), bean.toString());
     }
+
+    /**
+     * Apollo v1-v3 AQ-044: asked how to keep a component's bean name, Claude never named
+     * the @PreAuthorize SpEL calls that use it.
+     */
+    @Test
+    void aSpringBeanStatesTheAnnotationExpressionsCallingItByName() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("spel.db"));
+        IndexWriter.writeIncremental(
+                db,
+                new IndexFixture()
+                        .classes(
+                                List.of(
+                                        new ClassRecord(
+                                                0,
+                                                "x.Validator",
+                                                "CLASS",
+                                                "java.lang.Object",
+                                                List.of(),
+                                                "Validator.java",
+                                                1,
+                                                true,
+                                                10),
+                                        new ClassRecord(
+                                                0,
+                                                "x.Controller",
+                                                "CLASS",
+                                                "java.lang.Object",
+                                                List.of(),
+                                                "Controller.java",
+                                                1,
+                                                true,
+                                                10)))
+                        .beans(
+                                List.of(
+                                        new BeanRecord(
+                                                0,
+                                                1,
+                                                "CLASS",
+                                                "@Singleton",
+                                                List.of("@Qualifier(\"validator\")"),
+                                                List.of(),
+                                                false,
+                                                false,
+                                                null,
+                                                List.of(),
+                                                null,
+                                                null,
+                                                List.of("x.Validator"),
+                                                BeanRecord.SPRING)))
+                        .dependencies(List.of())
+                        .metadata(Map.of("index_id", "spel"))
+                        .snapshot());
+        db.useHandle(
+                handle -> {
+                    String insert =
+                            "INSERT INTO class_members(class_id,kind,name,signature,descriptor,type_name,parameter_types,modifiers,annotations,annotation_details) "
+                                    + "VALUES (2,'METHOD',?,?,'()V','void','[]','public','[\"org.springframework.security.access.prepost.PreAuthorize\"]',?)";
+                    handle.execute(
+                            insert,
+                            "create",
+                            "create():void",
+                            "[{\"annotationName\":\"org.springframework.security.access.prepost.PreAuthorize\",\"values\":{\"value\":\"@validator.canRelease(#app)\"}}]");
+                    handle.execute(
+                            insert,
+                            "merge",
+                            "merge():void",
+                            "[{\"annotationName\":\"org.springframework.security.access.prepost.PreAuthorize\",\"values\":{\"value\":\"@validator.canRead(#app) and @validator.canRelease(#app)\"}}]");
+                });
+
+        ObjectNode validator = relations(db, "x.Validator");
+
+        String references = validator.path("bean_name_expressions").toString();
+        assertTrue(
+                references.contains(
+                        "bean name validator: 2 annotation expressions (@PreAuthorize)"),
+                validator.toString());
+        assertTrue(references.contains("canRelease x2"), references);
+        assertTrue(references.contains("x.Controller#create"), references);
+    }
 }

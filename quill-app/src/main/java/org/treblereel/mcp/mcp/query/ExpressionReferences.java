@@ -10,20 +10,22 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.treblereel.mcp.db.ReadQueryContext;
-import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.diagnostics.QuillLog;
+import org.treblereel.mcp.model.ClassRecord;
 
 /**
  * Calls to a Spring bean's method written in annotation expressions, such as
- * {@code @PreAuthorize("@unifiedPermissionValidator.hasReleaseNamespacePermission(#appId)")}. They never appear
- * in bytecode, so a caller list without them reads as "called only from Java" (Apollo AQ-041). The expressions
- * are already indexed as annotation values; this matches {@code @beanName.method(} against the bean's names.
+ * {@code @PreAuthorize("@unifiedPermissionValidator.hasReleaseNamespacePermission(#appId)")}. They
+ * never appear in bytecode, so a caller list without them reads as "called only from Java" (Apollo
+ * AQ-041). The expressions are already indexed as annotation values; this matches
+ * {@code @beanName.method(} against the bean's names.
  */
-final class ExpressionReferences {
+public final class ExpressionReferences {
     private static final ObjectMapper JSON = Json.MAPPER;
-    private static final Pattern BEAN_NAME = Pattern.compile("^@(?:Qualifier|Named)\\(\"(.+)\"\\)$");
+    private static final Pattern BEAN_NAME =
+            Pattern.compile("^@(?:Qualifier|Named)\\(\"(.+)\"\\)$");
     static final int LIMIT = 50;
 
     private ExpressionReferences() {}
@@ -47,8 +49,8 @@ final class ExpressionReferences {
     }
 
     /**
-     * Annotation expressions calling {@code method} on one of the bean's names, or null when {@code cls} is not
-     * a Spring bean (no expression can name it, so the list would only add noise).
+     * Annotation expressions calling {@code method} on one of the bean's names, or null when {@code
+     * cls} is not a Spring bean (no expression can name it, so the list would only add noise).
      */
     static ObjectNode find(ReadQueryContext db, ClassRecord cls, String method) {
         Set<String> names = beanNames(db, cls);
@@ -56,16 +58,26 @@ final class ExpressionReferences {
         List<ObjectNode> found = new ArrayList<>();
         int total = 0;
         for (String name : names) {
-            Pattern call = Pattern.compile("@" + Pattern.quote(name) + "\\s*\\.\\s*" + Pattern.quote(method) + "\\s*\\(");
+            Pattern call =
+                    Pattern.compile(
+                            "@"
+                                    + Pattern.quote(name)
+                                    + "\\s*\\.\\s*"
+                                    + Pattern.quote(method)
+                                    + "\\s*\\(");
             String like = "%@" + name + "%" + method + "%";
             for (var row : db.symbols.findAnnotationValuesLike(like)) {
-                for (String[] expression : expressions(row.member() == null, String.valueOf(row.details()), call)) {
+                for (String[] expression :
+                        expressions(row.member() == null, String.valueOf(row.details()), call)) {
                     total++;
                     if (found.size() >= LIMIT) continue;
-                    ObjectNode node = JSON.createObjectNode().put("class", String.valueOf(row.className()));
+                    ObjectNode node =
+                            JSON.createObjectNode().put("class", String.valueOf(row.className()));
                     if (row.member() != null) node.put("method", row.member());
                     else node.put("on", "class");
-                    node.put("annotation", expression[0]).put("expression", expression[1]).put("bean_name", name);
+                    node.put("annotation", expression[0])
+                            .put("expression", expression[1])
+                            .put("bean_name", name);
                     if (row.sourceFile() != null) node.put("source", row.sourceFile());
                     if (row.module() != null) node.put("module", row.module());
                     if (row.sourceSet() != null) node.put("source_set", row.sourceSet());
@@ -73,14 +85,74 @@ final class ExpressionReferences {
                 }
             }
         }
-        ObjectNode result = JSON.createObjectNode()
-                .put("scope", "Spring bean method calls in indexed annotation values (SpEL such as @PreAuthorize, "
-                        + "@Cacheable conditions, @Value) matched by bean name; not in bytecode, so absent from usages/calls")
-                .put("total", total).put("showing", found.size()).put("has_more", total > found.size());
+        ObjectNode result =
+                JSON.createObjectNode()
+                        .put(
+                                "scope",
+                                "Spring bean method calls in indexed annotation values (SpEL such as @PreAuthorize, "
+                                        + "@Cacheable conditions, @Value) matched by bean name; not in bytecode, so absent from usages/calls")
+                        .put("total", total)
+                        .put("showing", found.size())
+                        .put("has_more", total > found.size());
         result.set("bean_names", JSON.valueToTree(names));
         ArrayNode references = result.putArray("references");
         found.forEach(references::add);
         return result;
+    }
+
+    /**
+     * For a Spring bean, one line per bean name: how many annotation expressions call it, which
+     * annotations, how often each method is called and where. Null when nothing calls it. Apollo
+     * AQ-044: asked how to keep a component's bean name, Claude never named the
+     * {@code @PreAuthorize} expressions that depend on it.
+     */
+    public static ArrayNode forClass(ReadQueryContext db, ClassRecord cls) {
+        Set<String> names = beanNames(db, cls);
+        if (names.isEmpty()) return null;
+        ArrayNode lines = JSON.createArrayNode();
+        for (String name : names) {
+            Pattern call =
+                    Pattern.compile(
+                            "@" + Pattern.quote(name) + "\\s*\\.\\s*([A-Za-z_$][\\w$]*)\\s*\\(");
+            java.util.Map<String, Integer> methods = new java.util.LinkedHashMap<>();
+            Set<String> annotations = new java.util.TreeSet<>();
+            List<String> sites = new ArrayList<>();
+            int expressionsFound = 0;
+            for (var row : db.symbols.findAnnotationValuesLike("%@" + name + "%")) {
+                for (String[] expression :
+                        expressions(row.member() == null, String.valueOf(row.details()), call)) {
+                    expressionsFound++;
+                    annotations.add(
+                            "@" + expression[0].substring(expression[0].lastIndexOf('.') + 1));
+                    Matcher calls = call.matcher(expression[1]);
+                    while (calls.find()) methods.merge(calls.group(1), 1, Integer::sum);
+                    String site =
+                            row.className() + (row.member() == null ? "" : "#" + row.member());
+                    if (!sites.contains(site)) sites.add(site);
+                }
+            }
+            if (expressionsFound == 0) continue;
+            List<String> counts = new ArrayList<>();
+            methods.entrySet().stream()
+                    .sorted((a, b) -> b.getValue() - a.getValue())
+                    .limit(5)
+                    .forEach(e -> counts.add(e.getKey() + " x" + e.getValue()));
+            if (methods.size() > 5) counts.add("+" + (methods.size() - 5) + " more methods");
+            lines.add(
+                    "bean name "
+                            + name
+                            + ": "
+                            + expressionsFound
+                            + " annotation expressions ("
+                            + String.join(", ", annotations)
+                            + "); methods "
+                            + String.join(", ", counts)
+                            + "; e.g. "
+                            + String.join(", ", sites.subList(0, Math.min(3, sites.size())))
+                            + (sites.size() > 3 ? " (+" + (sites.size() - 3) + " more sites)" : "")
+                            + "; renaming the bean breaks them, and they are not in bytecode usages");
+        }
+        return lines.isEmpty() ? null : lines;
     }
 
     /** [annotation, expression] pairs whose value matches {@code call}. */
@@ -94,13 +166,20 @@ final class ExpressionReferences {
             return result;
         }
         JsonNode annotations = parse(details);
-        for (JsonNode annotation : annotations) collect(annotation.path("annotationName").asText(), annotation.path("values"), call, result);
+        for (JsonNode annotation : annotations)
+            collect(
+                    annotation.path("annotationName").asText(),
+                    annotation.path("values"),
+                    call,
+                    result);
         return result;
     }
 
-    private static void collect(String annotation, JsonNode values, Pattern call, List<String[]> result) {
+    private static void collect(
+            String annotation, JsonNode values, Pattern call, List<String[]> result) {
         if (values.isTextual()) {
-            if (call.matcher(values.asText()).find()) result.add(new String[] {annotation, values.asText()});
+            if (call.matcher(values.asText()).find())
+                result.add(new String[] {annotation, values.asText()});
             return;
         }
         for (JsonNode value : values) collect(annotation, value, call, result);

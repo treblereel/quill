@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import org.treblereel.mcp.core.Json;
 
 /**
  * An affected test inside a change_session answer is stated by what ranks it: class, score,
@@ -14,7 +15,7 @@ import java.util.List;
  */
 final class AffectedTestRows {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> LISTS = List.of("/plan/test_plan/tests", "/verification/test_evidence/tests",
             "/directive/primary_action/evidence_snapshot/tests");
 

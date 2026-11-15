@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.Properties;
+import org.treblereel.mcp.core.Json;
 
 /** Captured build settings plus an explicit per-module analysis override. Never executes a build. */
 final class KotlinCompilerSettings {
@@ -57,7 +58,7 @@ final class KotlinCompilerSettings {
                 if (properties.containsKey("sourceSelection")) {
                     String selection = properties.getProperty("sourceSelection");
                     if (selection.length() > 4_000_000) throw new IOException("Source selection limit");
-                    request.set("source_selection", new com.fasterxml.jackson.databind.ObjectMapper().readTree(selection));
+                    request.set("source_selection", Json.MAPPER.readTree(selection));
                 }
                 request.put("captured_analysis_inputs", true);
             }

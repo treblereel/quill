@@ -16,11 +16,12 @@ import org.treblereel.mcp.db.GitRepository;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.*;
 import org.treblereel.mcp.mcp.support.BeanTerms;
+import org.treblereel.mcp.core.Json;
 
 /** Builds the project-wide overview response. */
 public final class ProjectOverviewQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_PROBLEM_DETAILS = 50;
     private final GitToolQueries git;
 

@@ -31,11 +31,12 @@ import org.treblereel.mcp.mcp.semantic.KotlinSourceLocations;
 import org.treblereel.mcp.mcp.semantic.KotlinUsageNormalizer;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.project.UsageCoverage;
+import org.treblereel.mcp.core.Json;
 
 /** Finds exact bytecode usages of a selected method, constructor, or field declaration. */
 public final class SymbolUsageQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> KINDS = Set.of("METHOD", "CONSTRUCTOR", "FIELD", "PROPERTY");
     private static final Set<String> ACCESS_MODES = Set.of("ALL", "READ", "WRITE");
 

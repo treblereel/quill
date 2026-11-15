@@ -14,11 +14,12 @@ import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.mcp.tools.QuillTools;
 import org.treblereel.mcp.mcp.tools.Tool;
 import org.treblereel.mcp.mcp.tools.ToolArg;
+import org.treblereel.mcp.core.Json;
 
 /** Compact MCP entry point that discovers and invokes the full catalog on demand. */
 final class RouterTools {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final QuillTools tools;
 
     RouterTools(QuillTools tools) {

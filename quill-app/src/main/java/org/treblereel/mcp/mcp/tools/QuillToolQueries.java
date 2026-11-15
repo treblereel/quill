@@ -43,6 +43,7 @@ import org.treblereel.mcp.mcp.query.UnusedFieldQueries;
 import org.treblereel.mcp.mcp.query.UnusedMethodQueries;
 import org.treblereel.mcp.mcp.query.UsageToolQueries;
 import org.treblereel.mcp.mcp.project.VerificationPlanQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Routes tool calls to focused query components. */
 public final class QuillToolQueries {
@@ -294,7 +295,7 @@ public final class QuillToolQueries {
 
     String getBuildStatus(ReadQueryContext reader, Path projectRoot, String module) {
         try {
-            var json = new com.fasterxml.jackson.databind.ObjectMapper();
+            var json = Json.MAPPER;
             var result = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(BuildStatusInspector.inspect(projectRoot, reader, module == null ? null : List.of(module)));
             if (module != null && result.path("compiled_outputs").path("count").asInt() == 0
                     && result.path("java_compiler_settings").isEmpty())

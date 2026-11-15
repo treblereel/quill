@@ -20,11 +20,12 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.mcp.support.ArgumentAliases;
+import org.treblereel.mcp.core.Json;
 
 /** Aggregates indexed class dependencies into a compact package graph. */
 public final class PackageGraphQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
 
     public String getPackageGraph(ReadQueryContext reader, String requestedPackage, String direction,

@@ -20,11 +20,12 @@ import org.treblereel.mcp.db.UsageRepository.FieldUsage;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
+import org.treblereel.mcp.core.Json;
 
 /** Finds private fields with no indexed reads, conservatively excluding runtime-managed fields. */
 public final class UnusedFieldQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String findUnusedFields(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, boolean includeWriteOnly, int limit, int offset) {

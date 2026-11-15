@@ -9,10 +9,11 @@ import java.util.*;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.model.MetaEnvelope;
+import org.treblereel.mcp.core.Json;
 
 /** Neighbouring source lines, not inferred method/branch ranges or runtime behaviour. */
 public final class ConfigurationReadSnippets {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     public static void append(ReadQueryContext db,ObjectNode result,Map<String,SortedSet<Integer>> requested) {
         if(requested.isEmpty())return;
         var context=result.putObject("field_read_source").put("status","partial")

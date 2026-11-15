@@ -13,11 +13,12 @@ import java.util.List;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.core.Json;
 
 /** Compares existing classes as candidate hosts for a proposed responsibility. */
 public final class DesignImpactQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final ChangeRiskQueries risks = new ChangeRiskQueries();
     private final TestImpactQueries tests = new TestImpactQueries();
 

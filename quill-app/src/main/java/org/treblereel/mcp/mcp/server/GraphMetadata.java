@@ -7,10 +7,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.treblereel.mcp.core.Json;
 
 /** Lossless, response-local graph metadata sharing at the MCP boundary. */
 final class GraphMetadata {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> FIELDS = List.of("caller", "callee", "dispatch", "source_evidence");
 
     static String compact(String text) {

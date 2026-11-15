@@ -9,6 +9,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import org.treblereel.mcp.core.Json;
 
 /** Owns the Quill entry in a Claude-compatible project-local .mcp.json. */
 public final class McpJsonInstaller {
@@ -22,7 +23,7 @@ public final class McpJsonInstaller {
         UNSUPPORTED
     }
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     /** Named explicitly so Claude's catalog can change without changing the server default. */
     static final String CLAUDE_PROFILE = "claude";
 

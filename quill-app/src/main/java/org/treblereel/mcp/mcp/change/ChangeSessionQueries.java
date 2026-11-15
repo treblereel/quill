@@ -20,11 +20,12 @@ import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.mcp.project.WorktreeStatusQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Builds a compact, stateless snapshot of the change workflow. */
 public final class ChangeSessionQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     static final String EXTERNAL = "external_checkout";
     /** In V23 CQ-049 Codex edited a disposable clone 3 of 3 times and asked again 2-4 times, each answer still planned. */
     static final String OTHER_CHECKOUT = "Editing another checkout, such as a disposable clone? Quill cannot observe it;"

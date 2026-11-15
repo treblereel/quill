@@ -6,10 +6,11 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.Json;
 
 /** Interprets an observed producer contract; missing manifests do not disable legacy bytecode analysis. */
 public final class BuildIntegrationCapabilities {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> KNOWN = Set.of("build_events", "runtime_classpath", "kotlin_compiler_settings", "java_compiler_settings");
     private BuildIntegrationCapabilities() {}
 

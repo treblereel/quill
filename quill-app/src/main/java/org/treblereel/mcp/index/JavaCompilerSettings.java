@@ -7,10 +7,11 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.Json;
 
 /** Reads captured Java build evidence. It never starts Maven, Gradle or a compiler. */
 public final class JavaCompilerSettings {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> FIELDS = List.of("buildTool", "sourceSet", "execution", "evidence", "compilerId",
             "compilerSettingsProtocol", "quarkusRest", "quarkusArc", "producerVersion", "compilerPluginVersion", "source", "target", "release", "enablePreview", "fork", "proc", "parameters",
             "encoding", "useModulePath", "modulePathEvidence", "processorPathEvidence", "jdkSelection", "jdkHome",

@@ -19,11 +19,12 @@ import org.treblereel.mcp.mcp.query.MethodContextQueries;
 import org.treblereel.mcp.mcp.query.StructureToolQueries;
 import org.treblereel.mcp.mcp.query.SymbolToolQueries;
 import org.treblereel.mcp.mcp.query.UsageToolQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Composes the most useful evidence for understanding or changing a small set of classes. */
 public final class ContextQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> SYMBOL_FIELDS = List.of(
             "symbol_id", "language", "source_name", "jvm_name", "jvm_descriptor",
             "class", "kind", "superclass", "interfaces", "source", "origin", "lifecycle",

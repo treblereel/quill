@@ -13,11 +13,12 @@ import java.util.Set;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.SymbolRepository.AnnotatedSymbolResult;
+import org.treblereel.mcp.core.Json;
 
 /** Finds annotated type and member declarations from the compiled index. */
 public final class AnnotatedSymbolQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> KINDS =
             Set.of("ALL", "TYPE", "METHOD", "FIELD", "CONSTRUCTOR", "PARAMETER");
 

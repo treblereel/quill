@@ -8,10 +8,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jdbi.v3.core.Handle;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.core.Json;
 
 /** Read-only symbol queries; the caller owns the handle and transaction. */
 public final class SymbolRepository {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final Handle handle;
     private List<ClassRecord> allClasses;
 

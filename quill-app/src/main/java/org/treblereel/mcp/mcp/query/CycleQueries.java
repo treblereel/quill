@@ -25,11 +25,12 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.core.Json;
 
 /** Finds strongly connected components in indexed class and module dependency graphs. */
 public final class CycleQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> SCOPES = Set.of("class", "module");
     private static final int DETAIL_LIMIT = 100;
 

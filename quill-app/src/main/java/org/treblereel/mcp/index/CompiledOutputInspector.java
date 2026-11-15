@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCodeExpectation;
+import org.treblereel.mcp.core.Json;
 
 /** Classifies whether main compiled outputs are absent, stale, or current. */
 public final class CompiledOutputInspector {
@@ -160,7 +161,7 @@ public final class CompiledOutputInspector {
 
     private static com.fasterxml.jackson.databind.JsonNode compilation(Path module, String sourceSet, List<Path> expectedOutputs,
             Map<Path, com.fasterxml.jackson.databind.node.ObjectNode> observed) {
-        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var json = Json.MAPPER;
         var captures = new java.util.LinkedHashMap<String, com.fasterxml.jackson.databind.JsonNode>();
         com.fasterxml.jackson.databind.JsonNode invalid = null;
         for (String directory : Files.isRegularFile(module.resolve("pom.xml")) ? List.of("target") : List.of("build")) for (String language : List.of("java", "kotlin")) {

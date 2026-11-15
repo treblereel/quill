@@ -20,11 +20,12 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.db.IndexRepository.ComparisonSnapshot;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.core.Json;
 
 /** Compares the active immutable index with an earlier local generation. */
 public final class IndexComparisonQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String compareIndex(ReadQueryContext current, Path projectRoot, String requestedBaseline, int detailLimit) {
         Map<String, String> currentMeta = current.index.getMetadata();

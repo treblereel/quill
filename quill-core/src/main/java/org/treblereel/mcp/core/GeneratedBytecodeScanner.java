@@ -29,7 +29,7 @@ import org.objectweb.asm.Type;
 public final class GeneratedBytecodeScanner {
 
     public static final String METADATA_KEY = "quarkus_generated_classes";
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final String JAR = "generated-bytecode.jar";
     private static final int REFERENCE_LIMIT = 8;
 

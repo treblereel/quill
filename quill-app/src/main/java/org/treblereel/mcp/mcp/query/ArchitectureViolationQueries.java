@@ -20,11 +20,12 @@ import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
+import org.treblereel.mcp.core.Json;
 
 /** Evaluates explicit package or module dependency boundaries against indexed bytecode. */
 public final class ArchitectureViolationQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> SCOPES = Set.of("package", "module");
 
     public String findArchitectureViolations(ReadQueryContext reader, String scope, String from,

@@ -14,10 +14,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.treblereel.mcp.core.Json;
 
 /** Explicitly executes the project-local stdio launcher; never invokes an AI client. */
 final class McpConnectivityProbe {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_LINE = 4 * 1024 * 1024;
 
     private McpConnectivityProbe() {}

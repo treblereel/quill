@@ -17,11 +17,12 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.GradleProjectDiscovery;
 import org.treblereel.mcp.core.MavenProjectDiscovery;
 import org.treblereel.mcp.index.MavenCompileScope;
+import org.treblereel.mcp.core.Json;
 
 /** Produces safe, non-executing focused and fallback build command plans. */
 public final class VerificationPlanQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public ObjectNode plan(org.treblereel.mcp.db.ReadQueryContext reader, Path root, JsonNode contexts, JsonNode tests) {
         return reader.snapshot() == null ? plan(root, contexts, tests)

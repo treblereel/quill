@@ -14,10 +14,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
+import org.treblereel.mcp.core.Json;
 
 /** One serialized, bounded compiler process per Quill session. No analysis results are cached. */
 public final class KotlinWorkerClient implements AutoCloseable {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_FRAME = 1024 * 1024;
     private static final KotlinWorkerClient SHARED = new KotlinWorkerClient(
             new RuntimeProvider(KotlinRuntime::workerCommand, KotlinRuntime::workerIdentity), Duration.ofSeconds(30));

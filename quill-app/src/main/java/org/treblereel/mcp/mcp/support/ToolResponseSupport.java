@@ -12,10 +12,11 @@ import org.treblereel.mcp.index.ProjectIndexStore;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.model.MetaEnvelope;
+import org.treblereel.mcp.core.Json;
 
 public final class ToolResponseSupport {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int SCOPE_PAGE = 50;
 
     private ToolResponseSupport() {}

@@ -27,11 +27,12 @@ import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.mcp.semantic.KotlinMemberNames;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
+import org.treblereel.mcp.core.Json;
 
 /** Reconstructs the emitted bytecode order of calls inside one indexed method. */
 public final class ExecutionOrderQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> PERSISTENCE = Set.of(
             "persist", "save", "store", "repository", "persistence", "entitymanager", "dao");
     private static final Set<String> DISPATCH = Set.of(

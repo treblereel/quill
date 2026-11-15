@@ -6,10 +6,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.util.List;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 /** Presentation of captured build evidence; freshness decisions retain the complete observation. */
 final class BuildStatusQueries {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private BuildStatusQueries() {}
 

@@ -10,6 +10,7 @@ import java.util.Set;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.config.ConfigurationSourceEvidence;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Expands an indexed {@code @ConfigMapping} interface into the keys SmallRye Config derives
@@ -20,7 +21,7 @@ import org.treblereel.mcp.mcp.config.ConfigurationSourceEvidence;
  */
 final class ConfigMappingKeys {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int LIMIT = 60;
     private static final int DEPTH = 4;
     private static final String MAIN = "; main ";

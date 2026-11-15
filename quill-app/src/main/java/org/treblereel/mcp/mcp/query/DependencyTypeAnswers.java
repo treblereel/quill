@@ -12,6 +12,7 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 /**
  * What the application index holds about a dependency class it references: its injection points
@@ -21,7 +22,7 @@ import org.treblereel.mcp.mcp.support.ToolResponseSupport;
  */
 final class DependencyTypeAnswers {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Map<String, Set<String>> REFERENCE_KINDS = Map.of(
             "inheritance", Set.of("EXTENDS", "IMPLEMENTS"),
             "annotation", Set.of("ANNOTATION"),

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Removes what class graphs restate: a source file at the conventional path of its top-level class
@@ -14,7 +15,7 @@ import java.util.List;
  */
 final class GraphCompaction {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> ROOTS = List.of("src/main/java/", "src/test/java/", "src/main/kotlin/", "src/test/kotlin/");
 
     private GraphCompaction() {

@@ -12,11 +12,12 @@ import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.IndexRepository.FileRow;
+import org.treblereel.mcp.core.Json;
 
 /** Compact file navigation over the indexed, worktree-aware file inventory. */
 final class FileNavigationQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     String listProjectTree(ReadQueryContext reader, String path, int depth, boolean includeDeleted,
             int limit, int offset) {

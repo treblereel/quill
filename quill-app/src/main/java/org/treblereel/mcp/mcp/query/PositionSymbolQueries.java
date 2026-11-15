@@ -22,11 +22,12 @@ import org.treblereel.mcp.mcp.semantic.KotlinSemanticQueries;
 import org.treblereel.mcp.mcp.semantic.KotlinUsageNormalizer;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 /** Resolves the identifier under a live source position against indexed declarations. */
 public final class PositionSymbolQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String getSymbolAtPosition(ReadQueryContext reader, Path root, String sourcePath, int line, int column) {
         String normalized = sourcePath.strip().replace('\\', '/');

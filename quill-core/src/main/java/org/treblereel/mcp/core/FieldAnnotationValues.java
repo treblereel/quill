@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 
 /** Explicit classfile literals only; annotation declaration defaults are not inferred. */
 final class FieldAnnotationValues {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     private static final Pattern SENSITIVE=Pattern.compile("(?i)(^|[._$-])(password|passwd|secret|token|credentials?|private[._-]?key|api[._-]?key|access[._-]?key|pin)([._$-]|$)");
     private record AnnotationLiteral(String desc,Map<String,Object> values){}
     private record EnumLiteral(String desc,String value){}

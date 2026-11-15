@@ -11,13 +11,14 @@ import java.time.Instant;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.index.CompiledOutputInspector;
 import org.treblereel.mcp.core.SourceFileHashes;
+import org.treblereel.mcp.core.Json;
 
 /** Qualifies completeness inside the indexed snapshot; never proves global non-use. */
 public final class UsageCoverage {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private UsageCoverage() {}
     private static final com.fasterxml.jackson.databind.node.ArrayNode NOT_COVERED =
-            new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode()
+            Json.MAPPER.createArrayNode()
                     .add("repository_usage_completeness").add("external_consumers").add("reflection")
                     .add("source_only_references").add("runtime_dispatch_exhaustiveness")
                     .add("bytecode_source_identity");

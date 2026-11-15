@@ -13,10 +13,11 @@ import org.treblereel.mcp.mcp.config.ConfigurationReferenceQueries;
 import org.treblereel.mcp.mcp.query.FrameworkEndpointQueries;
 import org.treblereel.mcp.mcp.query.MethodContextQueries;
 import org.treblereel.mcp.mcp.query.StructureToolQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Resolve literal HTTP operations, then reuse bounded method, DI and configuration queries. */
 public final class EndpointPrefetch {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     private static final Pattern ROUTE=Pattern.compile("(?i)\\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\s+(/[^\\s`\"<>]*)");
     static boolean hasRoute(String prompt){return ROUTE.matcher(prompt).find();}
     public static ObjectNode collect(ReadQueryContext db,Path root,String prompt) throws Exception {

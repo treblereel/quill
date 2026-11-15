@@ -24,13 +24,14 @@ import org.jboss.jandex.MethodInfo;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.NameSimilarity;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Lazy, bounded lookup of declarations in resolved dependency JARs. */
 public final class ExternalSymbolQueries {
     private static final int MEMBER_CANDIDATES = 10;
 
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_PROJECT_CACHES = 8;
     private static final ConcurrentHashMap<Path, Catalog> CATALOGS = new ConcurrentHashMap<>();
 

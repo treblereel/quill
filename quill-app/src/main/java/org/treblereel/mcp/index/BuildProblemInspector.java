@@ -15,11 +15,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.treblereel.mcp.core.Json;
 
 /** Reads and normalizes diagnostics captured by the Maven or Gradle build integration. */
 public final class BuildProblemInspector {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Pattern MAVEN_LOCATION = Pattern.compile(
             "^(?:\\[(?:ERROR|WARNING)]\\s*)?(.+?\\.(?:java|kt|groovy)):\\[(\\d+),(\\d+)]\\s*(.*)$");
     private static final Pattern RANGE_LOCATION = Pattern.compile(

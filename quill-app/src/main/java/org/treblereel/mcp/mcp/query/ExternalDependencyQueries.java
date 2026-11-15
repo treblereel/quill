@@ -15,11 +15,12 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.core.Json;
 
 /** Builds external-library dependency responses. */
 public final class ExternalDependencyQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String getExternalDeps(ReadQueryContext reader, String target, String library, int limit) {
         ClassRecord targetClass = null;

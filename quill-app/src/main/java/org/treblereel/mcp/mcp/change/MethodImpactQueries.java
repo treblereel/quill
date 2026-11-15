@@ -8,10 +8,11 @@ import org.treblereel.mcp.mcp.query.CallHierarchyQueries;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.query.MethodOverrideQueries;
 import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Direct selected-member references, without embedding the same graph in several test views. */
 public final class MethodImpactQueries {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     private static final int RESULT_USE_LIMIT=8;
     public ObjectNode get(ReadQueryContext db,String target,String selector,int limit) throws Exception {
         int parameters=selector.indexOf('(');

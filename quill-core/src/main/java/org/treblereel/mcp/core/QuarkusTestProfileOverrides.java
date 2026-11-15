@@ -1,6 +1,5 @@
 package org.treblereel.mcp.core;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.*;
 import org.objectweb.asm.*;
@@ -44,7 +43,7 @@ public final class QuarkusTestProfileOverrides {
             }
         }
         List<ConfigurationScanner.Definition> result = new ArrayList<>();
-        var json = new ObjectMapper();
+        var json = Json.MAPPER;
         for (var item : owners.entrySet()) {
             Node node = nodes.get(item.getKey()); ClassRecord cls = classes.get(item.getKey());
             if (cls == null || cls.sourceFile() == null || cls.module() == null || cls.sourceSet() == null) continue;

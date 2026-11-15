@@ -7,11 +7,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.core.Json;
 
 /** JSON fragments and error shapes shared by the workspace tool responses. */
 final class WorkspaceResponses {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     static void appendDiagnostics(ObjectNode root, List<String> diagnostics) {
         int limit = Math.min(10, diagnostics.size());

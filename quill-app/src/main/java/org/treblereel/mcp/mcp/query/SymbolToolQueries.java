@@ -25,11 +25,12 @@ import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.semantic.KotlinProperties;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 /** Builds a compact, evidence-backed card for one indexed class. */
 public final class SymbolToolQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> MEMBER_KINDS = Set.of("FIELD", "CONSTRUCTOR", "METHOD");
 
     public String getSymbolDetails(ReadQueryContext reader, String target, boolean includeMembers,

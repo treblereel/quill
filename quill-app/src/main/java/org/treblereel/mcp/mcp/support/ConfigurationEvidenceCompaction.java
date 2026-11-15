@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Removes what a configuration answer restates once its evidence is gathered: file hashes, row ids,
@@ -18,7 +19,7 @@ import java.util.Map;
  */
 public final class ConfigurationEvidenceCompaction {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> HASHES = List.of("sha256", "source_sha256", "binary_sha256");
     private static final List<String> PAGING = List.of("showing", "total", "limit", "offset", "has_more", "truncated",
             "definition_count", "usage_count", "source_definition_limit", "source_file_limit");

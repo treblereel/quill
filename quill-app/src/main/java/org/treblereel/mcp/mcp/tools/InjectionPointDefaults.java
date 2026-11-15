@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Writes what every injection point of a bean repeats once: the static-analysis limitations, the
@@ -18,7 +19,7 @@ import java.util.stream.Collectors;
  */
 final class InjectionPointDefaults {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private InjectionPointDefaults() {
     }

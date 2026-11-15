@@ -17,7 +17,7 @@ import org.treblereel.mcp.workspace.*;
 
 /** Owns event-driven preparation; only completed observations are exposed to requests. */
 final class ProjectPreparation implements AutoCloseable {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final ProjectRegistry registry;
     private final ProjectScope scope;
     private final KotlinDirectoryWatcher.Factory watcherFactory;

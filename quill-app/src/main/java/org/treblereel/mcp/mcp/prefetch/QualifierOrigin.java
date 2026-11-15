@@ -9,6 +9,7 @@ import java.util.Set;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.query.ExternalSymbolQueries;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Which qualifiers of an injection point and of its candidate beans are written in source and
@@ -17,7 +18,7 @@ import org.treblereel.mcp.mcp.query.ExternalSymbolQueries;
  */
 final class QualifierOrigin {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_CANDIDATES = 4;
 
     private QualifierOrigin() {

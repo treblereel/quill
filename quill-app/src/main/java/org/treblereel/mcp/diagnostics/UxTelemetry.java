@@ -13,11 +13,12 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.treblereel.mcp.core.Json;
 
 /** Local, content-free measurements of MCP tool usage for UX evaluation. */
 public final class UxTelemetry {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Object WRITE_LOCK = new Object();
     private static final long MAX_LOG_BYTES = 5L * 1024 * 1024;
     private static volatile Path logFile;

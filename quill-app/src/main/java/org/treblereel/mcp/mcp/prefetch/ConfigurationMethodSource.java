@@ -8,10 +8,11 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.mcp.query.MethodContextQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Atomic upgrade of neighbouring read windows to whole methods, ranged by javac or by the file's syntax. */
 final class ConfigurationMethodSource {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     static void append(ReadQueryContext db,ObjectNode evidence) {
         if(!evidence.has("field_read_source"))return;
         ObjectNode complete=JSON.createObjectNode().put("status","ready")

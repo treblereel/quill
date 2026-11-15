@@ -18,11 +18,12 @@ import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.core.Json;
 
 /** Correlates bytecode evidence that describes the lifecycle of a state-carrying type. */
 public final class StateLifecycleQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> PERSISTENCE = Set.of(
             "persist", "save", "store", "repository", "persistence", "entitymanager", "session", "dao");
     private static final Set<String> DISPATCH = Set.of(

@@ -21,11 +21,12 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.UsageRepository.MethodCallView;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.core.Json;
 
 /** Presents indexed Spring MVC and JAX-RS routes with direct call evidence. */
 public final class FrameworkEndpointQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> FRAMEWORKS = Set.of("spring", "jax-rs");
     private static final int CALL_DETAIL_LIMIT = 20;
 

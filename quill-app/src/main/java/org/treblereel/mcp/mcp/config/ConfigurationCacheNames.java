@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Quarkus caches a consumer class names with @CacheName or @CacheResult/@CacheInvalidate*, linked to their
@@ -15,7 +16,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
  */
 final class ConfigurationCacheNames {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Map<String, String> ANNOTATIONS = Map.of(
             "io.quarkus.cache.CacheName", "value",
             "io.quarkus.cache.CacheResult", "cacheName",

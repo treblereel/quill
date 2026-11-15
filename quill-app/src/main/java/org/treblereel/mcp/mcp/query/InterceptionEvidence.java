@@ -13,6 +13,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Orders the decorators and interceptors that apply to a bean. Agents misread CDI ordering
@@ -21,7 +22,7 @@ import org.treblereel.mcp.model.ClassRecord;
  */
 final class InterceptionEvidence {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> INTERCEPTOR_BINDING = Set.of(
             "jakarta.interceptor.InterceptorBinding", "javax.interceptor.InterceptorBinding");
     private static final Comparator<BeanRecord> BY_PRIORITY = Comparator.comparing(

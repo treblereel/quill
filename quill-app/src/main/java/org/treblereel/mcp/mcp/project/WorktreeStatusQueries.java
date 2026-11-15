@@ -15,11 +15,12 @@ import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.WorktreeInspector;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.model.MetaEnvelope;
+import org.treblereel.mcp.core.Json;
 
 /** Live Git worktree state paired with the commit represented by the index. */
 public final class WorktreeStatusQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String getWorktreeStatus(
             ReadQueryContext reader, Path root, String status, int limit, int offset) {

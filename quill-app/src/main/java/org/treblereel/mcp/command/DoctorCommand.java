@@ -26,13 +26,14 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
+import org.treblereel.mcp.core.Json;
 
 /** Static project checks by default; explicit MCP probing may refresh derived index state. */
 @Command(name = "doctor", mixinStandardHelpOptions = true,
         description = "Diagnose project integration, compiled outputs, and index freshness")
 public class DoctorCommand implements Callable<Integer> {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;

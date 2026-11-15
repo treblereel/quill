@@ -20,11 +20,12 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.DeclaredDependencyDiscovery;
 import org.treblereel.mcp.core.ProjectCoordinatesDiscovery;
 import org.treblereel.mcp.diagnostics.DebugTrace;
+import org.treblereel.mcp.core.Json;
 
 /** Reads the dependency artifacts captured by Quill's Maven or Gradle classpath discovery. */
 public final class ProjectDependencyQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_PROJECT_CACHES = 8;
     private static final ConcurrentHashMap<Path, CachedMetadata> METADATA =
             new ConcurrentHashMap<>();

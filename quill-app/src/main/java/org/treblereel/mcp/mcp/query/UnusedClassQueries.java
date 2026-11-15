@@ -17,11 +17,12 @@ import java.util.Set;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.UnusedClassCandidate;
+import org.treblereel.mcp.core.Json;
 
 /** Conservatively identifies classes with no indexed inbound evidence. */
 public final class UnusedClassQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String findUnusedClasses(ReadQueryContext reader, String module, boolean includeGenerated,
             boolean includeTests, int limit, int offset) {

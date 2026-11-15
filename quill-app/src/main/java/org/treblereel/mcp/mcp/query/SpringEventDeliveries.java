@@ -9,6 +9,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.MemberAnnotationRecord;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Who receives the Spring application events a method publishes. A call graph stops at
@@ -17,7 +18,7 @@ import org.treblereel.mcp.model.MemberAnnotationRecord;
  * method builds and the {@code @EventListener}/{@code ApplicationListener} methods are all indexed already.
  */
 final class SpringEventDeliveries {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> PUBLISHERS = Set.of("org.springframework.context.ApplicationEventPublisher",
             "org.springframework.context.ApplicationContext", "org.springframework.context.ConfigurableApplicationContext",
             "org.springframework.context.support.AbstractApplicationContext");

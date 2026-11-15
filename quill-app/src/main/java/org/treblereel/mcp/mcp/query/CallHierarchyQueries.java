@@ -35,11 +35,12 @@ import org.treblereel.mcp.mcp.semantic.KotlinUsageNormalizer;
 import org.treblereel.mcp.mcp.support.NameSimilarity;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.project.UsageCoverage;
+import org.treblereel.mcp.core.Json;
 
 /** Returns direct or bounded-transitive caller/callee edges captured from application bytecode. */
 public final class CallHierarchyQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
     private static final Set<String> SCOPES = Set.of("all", "cross_class", "cross_package");
     private static final int TRAVERSAL_EDGE_CAP = 5_000;

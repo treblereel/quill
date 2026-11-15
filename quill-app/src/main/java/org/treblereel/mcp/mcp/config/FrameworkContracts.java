@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Documented framework behaviour for the annotations a selected method carries, with the
@@ -22,7 +23,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
  */
 public final class FrameworkContracts {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final String BASIS = "documented Quarkus/CDI behaviour, not read from dependency bytecode; "
             + "deployed configuration values are unknown";
     private static final Pattern EXPRESSION = Pattern.compile("\\$\\{([^:}]+)(?::([^}]*))?}");

@@ -19,11 +19,12 @@ import org.treblereel.mcp.db.GitRepository;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.model.*;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.core.Json;
 
 /** Resolves class and file targets and calculates change-risk signals. */
 public final class ChangeRiskQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String getRisk(ReadQueryContext reader, String target) {
         var lookup = ClassTargetResolver.resolve(reader, target);

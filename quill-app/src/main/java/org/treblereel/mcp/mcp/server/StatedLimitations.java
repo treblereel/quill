@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Each caveat text reaches a client once per server: later answers leave out the caveats this
@@ -16,7 +17,7 @@ import java.util.WeakHashMap;
  */
 final class StatedLimitations {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Map<Object, StatedLimitations> SERVERS = new WeakHashMap<>();
     private static final int MAX_TEXTS = 512;
     private final Set<String> stated = new HashSet<>();

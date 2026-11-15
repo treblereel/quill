@@ -10,13 +10,14 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.MetaEnvelope;
 import org.treblereel.mcp.mcp.semantic.JavaSemanticQueries;
 import org.treblereel.mcp.mcp.semantic.JavaSyntaxRanges;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Compiler declaration ranges, or without captured compiler settings the declaration found in the file's
  * syntax and placed by the method's bytecode lines. Never guesses a source window from line numbers alone.
  */
 public final class MethodContextQueries {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     public JsonNode get(ReadQueryContext db, ClassRecord cls, String selector) {
         ObjectNode result=JSON.createObjectNode().put("source_complete",false);
         try {

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Removes response fields that clients pay for on every call and do not use. In the recorded V15
@@ -16,7 +17,7 @@ import java.util.Set;
  */
 public final class ResponseCompaction {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     /** These tools report freshness or hand out identifiers, so those fields are their answer. */
     private static final Set<String> UNCHANGED = Set.of("change_session", "plan_change", "verify_change",
             "get_build_status", "get_worktree_status", "get_overview", "search_symbols",

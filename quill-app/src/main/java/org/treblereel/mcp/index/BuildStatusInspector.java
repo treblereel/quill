@@ -15,11 +15,12 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.model.MetaEnvelope;
+import org.treblereel.mcp.core.Json;
 
 /** Produces a read-only, agent-oriented view of build and compiled-snapshot freshness. */
 public final class BuildStatusInspector {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private BuildStatusInspector() {}
 

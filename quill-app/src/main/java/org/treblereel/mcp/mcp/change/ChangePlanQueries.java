@@ -13,11 +13,12 @@ import java.util.Set;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.project.VerificationPlanQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Turns context evidence into an ordered, explicitly scoped change plan. */
 public final class ChangePlanQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final ContextQueries contextQueries = new ContextQueries();
 
     public String planChange(ReadQueryContext reader, Path projectRoot, List<String> targets,

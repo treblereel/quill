@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Classes Quarkus ArC generates at build time for application beans (X_ClientProxy, X_Bean,
@@ -14,7 +15,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
  */
 final class ArcGeneratedClasses {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Pattern MEMBER = Pattern.compile("(.+?)_(Observer|ProducerMethod|ProducerField)_(.+?)_[0-9a-f]{6,}(_Bean|_ClientProxy)?");
     private static final Pattern CLASS = Pattern.compile("(.+?)_(ClientProxy|Bean|Subclass|InterceptionSubclass)");
     private static final Map<String, String> ROLES = Map.of(

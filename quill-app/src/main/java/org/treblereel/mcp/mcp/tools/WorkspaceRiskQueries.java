@@ -18,11 +18,12 @@ import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.change.TestImpactQueries;
 import org.treblereel.mcp.mcp.query.UsageToolQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Provider change risk extended with downstream repository reachability. */
 final class WorkspaceRiskQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final ProjectRegistry registry;
     private final WorkspaceProviders providerLookup;

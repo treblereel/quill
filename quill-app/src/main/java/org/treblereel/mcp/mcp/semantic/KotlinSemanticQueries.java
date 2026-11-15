@@ -12,10 +12,11 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.mcp.project.KotlinWarmupCoordinator;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.core.Json;
 
 /** K2 analysis in a bounded JVM child process; runtime preparation belongs to init. */
 public final class KotlinSemanticQueries {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static KotlinWarmupCoordinator warmup;
     static {
         org.treblereel.mcp.diagnostics.ShutdownHooks.add(KotlinSemanticQueries::closeWarmup, "quill-k2-watch-shutdown");

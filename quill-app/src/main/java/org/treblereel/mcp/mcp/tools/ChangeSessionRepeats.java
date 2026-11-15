@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 
 /**
  * A repeated change_session for the same targets states only what changed since this server
@@ -18,7 +19,7 @@ import java.util.Set;
  */
 public final class ChangeSessionRepeats {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_KEYS = 16;
     /** Below this a pointer saves too little to be worth reading. */
     private static final int MIN_ELIDED_BYTES = 120;

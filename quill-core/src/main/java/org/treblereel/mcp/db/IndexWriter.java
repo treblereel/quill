@@ -11,10 +11,11 @@ import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.model.*;
+import org.treblereel.mcp.core.Json;
 
 public final class IndexWriter {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private IndexWriter() {}
 
     public record WriteTimings(

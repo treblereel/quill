@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Where a method hands work to another thread (Mutiny runSubscriptionOn/emitOn, Reactor
@@ -26,7 +27,7 @@ import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
  */
 final class ThreadHops {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int DEPTH = 3;
     private static final int LIMIT = 12;
 

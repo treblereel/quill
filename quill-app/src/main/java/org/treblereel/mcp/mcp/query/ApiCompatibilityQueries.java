@@ -8,10 +8,11 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.KotlinDeclarationTypes;
 import org.treblereel.mcp.model.KotlinValueParameter;
+import org.treblereel.mcp.core.Json;
 
 /** Conservative declaration deltas, not a complete JVM linkage or source-compatibility proof. */
 final class ApiCompatibilityQueries {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private record OwnerKey(String name, String module, String sourceSet) implements Comparable<OwnerKey> {
         public int compareTo(OwnerKey other) { return Comparator.comparing(OwnerKey::name).thenComparing(OwnerKey::module)
                 .thenComparing(OwnerKey::sourceSet).compare(this, other); }

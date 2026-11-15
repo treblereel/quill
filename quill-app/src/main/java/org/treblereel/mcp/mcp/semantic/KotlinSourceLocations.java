@@ -6,9 +6,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.core.Json;
 
 public final class KotlinSourceLocations {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     public static void append(ReadQueryContext db, ObjectNode node, int owner, List<Integer> lines) {
         var debug = db.symbols.findKotlinSourceDebug(owner);
         if (debug.isEmpty()) return;

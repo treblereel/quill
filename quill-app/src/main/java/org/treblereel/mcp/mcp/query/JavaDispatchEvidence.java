@@ -11,10 +11,11 @@ import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 /** Bounded hierarchy candidates. Receiver values and runtime execution are never inferred. */
 final class JavaDispatchEvidence {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int OWNER_CAP = 5000, CALL_CAP = 5000, TARGET_LIMIT = 20;
     private final ReadQueryContext db;
     private org.treblereel.mcp.analysis.JvmTypeGraph graph;

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Locale;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.BuiltinQualifier;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Presents a bean in its own container's vocabulary. The index stores Spring beans in the CDI-normalized
@@ -12,7 +13,7 @@ import org.treblereel.mcp.model.BuiltinQualifier;
  */
 public final class BeanTerms {
     public static final String SPRING_BEAN_METHOD = "BEAN_METHOD";
-    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = Json.MAPPER;
 
     private BeanTerms() {}
 

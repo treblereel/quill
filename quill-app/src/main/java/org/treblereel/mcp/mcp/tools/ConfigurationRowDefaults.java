@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Writes the values configuration rows of one kind repeat once: wildcard queries return dozens of
@@ -16,7 +17,7 @@ import java.util.Map;
  */
 final class ConfigurationRowDefaults {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> ROW_FIELDS = List.of("entry_type", "module", "sourceSet",
             "configuration_scope", "activation", "status", "profile_count", "resolution_strategy",
             "confidence", "resolved", "annotation", "definition_files", "location_status", "resolution_status");

@@ -22,11 +22,12 @@ import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.project.WorktreeStatusQueries;
+import org.treblereel.mcp.core.Json;
 
 /** MCP-facing facade that routes requests and delegates query construction. */
 public final class QuillTools {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     /**
      * First pages stay small: agents follow has_more/offset when they need everything, and a
      * large default page is resent with every later model request of the session.

@@ -19,11 +19,12 @@ import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.core.Json;
 
 /** Builds paged ancestor and descendant paths for an indexed type. */
 public final class TypeHierarchyQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String getTypeHierarchy(ReadQueryContext reader, String target, String direction,
             int maxDepth, int limit, int offset) {

@@ -15,6 +15,7 @@ import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
+import org.treblereel.mcp.core.Json;
 
 /**
  * The configuration phase, default and declaring extension of framework keys, read from the
@@ -23,7 +24,7 @@ import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
  */
 final class QuarkusConfigPhases {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final String MODEL = "META-INF/quarkus-config-doc/quarkus-config-model.json";
     private static final Map<String, Map<String, String>> CACHE = new ConcurrentHashMap<>();
 

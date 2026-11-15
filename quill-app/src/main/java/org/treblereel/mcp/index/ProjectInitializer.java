@@ -62,11 +62,12 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.MethodCallRecord;
+import org.treblereel.mcp.core.Json;
 
 public class ProjectInitializer {
     private static final int MAX_GIT_COMMITS = 5_000;
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public enum FailureReason {
         LOCK_FAILED,

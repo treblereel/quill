@@ -10,10 +10,11 @@ import java.util.*;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.SourceFileHashes;
+import org.treblereel.mcp.core.Json;
 
 /** Current resource inventory and bounded properties-key coverage; no process environment reads. */
 public final class ConfigurationResourceInventory {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     public static ObjectNode collect(ReadQueryContext db){
         var result=JSON.createObjectNode().put("status","ready")
             .put("scope","Current properties/YAML/env paths in standard main/test roots of indexed modules; custom/external/runtime unproven")

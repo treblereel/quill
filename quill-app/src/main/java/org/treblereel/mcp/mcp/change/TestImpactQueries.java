@@ -29,11 +29,12 @@ import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.mcp.semantic.KotlinMemberNames;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Ranks tests that are statically or historically coupled to changed classes. */
 public final class TestImpactQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_EXPANDED_CLASSES = 5_000;
 
     private String methodImpact(ReadQueryContext reader, String target, String method,

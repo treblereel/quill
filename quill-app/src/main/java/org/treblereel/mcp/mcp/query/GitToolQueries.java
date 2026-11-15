@@ -24,11 +24,12 @@ import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.GitRepository;
 import org.treblereel.mcp.model.*;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
+import org.treblereel.mcp.core.Json;
 
 /** Builds Git history, hotspot, and co-change tool responses. */
 public final class GitToolQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_RECENT_CHANGE_FILES = 200;
     private static final int MAX_ENTITY_MATCHES = 20;
 

@@ -17,6 +17,7 @@ import org.treblereel.mcp.db.ReferenceRepository.ConfigurationReference;
 import org.treblereel.mcp.db.ReferenceRepository.Resolution;
 import org.treblereel.mcp.db.ReferenceRepository.ResolutionKey;
 import org.treblereel.mcp.mcp.support.ArgumentAliases;
+import org.treblereel.mcp.core.Json;
 
 /** Searches normalized configuration definitions and their consumers. */
 public final class ConfigurationReferenceQueries {
@@ -26,7 +27,7 @@ public final class ConfigurationReferenceQueries {
             + ".env in the working directory 295, config/application.properties in the working directory 260, "
             + "application.properties on the classpath 250, META-INF/microprofile-config.properties 100; a source may set its own config_ordinal";
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> KINDS = Set.of("all", "property", "prefix", "persistence");
 
     public String find(org.treblereel.mcp.db.ReadQueryContext reader, String key, String className, String kind,

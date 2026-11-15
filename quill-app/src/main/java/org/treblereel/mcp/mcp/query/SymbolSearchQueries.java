@@ -15,11 +15,12 @@ import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.SymbolRepository.SymbolSearchResult;
 import org.treblereel.mcp.mcp.semantic.KotlinProperties;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
+import org.treblereel.mcp.core.Json;
 
 /** Searches indexed type and member declarations without reading source files. */
 public final class SymbolSearchQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> KINDS = Set.of(
             "CLASS", "INTERFACE", "ANNOTATION", "ENUM", "RECORD",
             "FIELD", "CONSTRUCTOR", "METHOD", "PROPERTY");

@@ -13,10 +13,11 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.mcp.project.KotlinWarmupCoordinator;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.core.Json;
 
 /** Compiler-confirmed Java navigation from successful build capture; never executes a build. */
 public final class JavaSemanticQueries {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final JavaWorkerClient WORKER = new JavaWorkerClient();
     private static KotlinWarmupCoordinator coordinator;
     static { org.treblereel.mcp.diagnostics.ShutdownHooks.add(JavaSemanticQueries::close, "quill-java-shutdown"); }

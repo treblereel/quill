@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Removes what a call hierarchy restates about its own edges: the two-step path of a direct edge
@@ -19,7 +20,7 @@ import java.util.Set;
  */
 final class CallHierarchyCompaction {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Map<String, String> ENDPOINT_DEFAULTS = Map.of("origin", "source", "module", ".");
     private static final String BASIS = "bytecode_symbolic_reference";
 

@@ -26,11 +26,12 @@ import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.semantic.JvmDescriptors;
 import org.treblereel.mcp.mcp.semantic.KotlinMemberNames;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
+import org.treblereel.mcp.core.Json;
 
 /** Finds declared method overrides in indexed descendants. */
 public final class MethodOverrideQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String findMethodOverrides(ReadQueryContext reader, String target, String method,
             String signature, boolean transitive, int limit, int offset) {

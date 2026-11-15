@@ -18,11 +18,12 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.mcp.support.ArgumentAliases;
+import org.treblereel.mcp.core.Json;
 
 /** Describes project-module dependencies and transitive classpath visibility. */
 public final class ModuleGraphQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> DIRECTIONS = Set.of("inbound", "outbound", "both");
 
     public String getModuleGraph(ReadQueryContext reader, String module, String direction,

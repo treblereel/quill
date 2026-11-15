@@ -3,10 +3,11 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.*;
 import java.nio.file.*;
 import java.util.*;
+import org.treblereel.mcp.core.Json;
 
 /** Project-local hook wiring; records exact owned commands and preserves unrelated handlers. */
 public final class PrefetchHooksInstaller {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     private static final List<String> FILES=List.of(".codex/hooks.json",".claude/settings.json");
     public static boolean install(Path root,String binary) {
         if(binary==null || !Path.of(binary).isAbsolute())return false;

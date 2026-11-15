@@ -13,12 +13,13 @@ import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import org.treblereel.mcp.core.Json;
 
 @Command(name = "status", mixinStandardHelpOptions = true,
         description = "Show the persisted workspace configuration")
 public final class WorkspaceStatusCommand implements Callable<Integer> {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     @Option(names = "--project", description = "Path to the workspace root")
     Path workspaceRoot;

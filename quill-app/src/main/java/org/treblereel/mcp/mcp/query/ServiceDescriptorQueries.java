@@ -10,11 +10,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.core.Json;
 
 /** Returns the ordered provider declarations captured from META-INF/services. */
 public final class ServiceDescriptorQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String inspect(ReadQueryContext reader, String serviceFilter) {
         Map<String, String> metadata = reader.index.getMetadata();

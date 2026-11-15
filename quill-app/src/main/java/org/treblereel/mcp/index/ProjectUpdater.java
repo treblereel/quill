@@ -12,10 +12,11 @@ import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.core.Json;
 
 /** Updates index generations independently of CLI parsing. */
 public final class ProjectUpdater {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private ProjectUpdater() {}
 

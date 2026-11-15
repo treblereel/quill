@@ -7,6 +7,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.mcp.semantic.JavaFieldSourceDeclaration;
 import org.treblereel.mcp.mcp.semantic.JavaSemanticQueries;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Optional exact field coordinates: javac first; without compiler evidence, only a unique declaration
@@ -30,7 +31,7 @@ public final class ConfigurationDeclarationLocations {
             if(!file.startsWith(root))throw new IllegalStateException("source_outside_root");
             if(Files.size(file)>2_000_000)throw new IllegalStateException("source_limit");
             String relative=root.relativize(file).toString().replace('\\','/');
-            String hash=new ObjectMapper().readTree(metadata.getOrDefault("java_source_hashes","{}")).path(relative).asText();
+            String hash=Json.MAPPER.readTree(metadata.getOrDefault("java_source_hashes","{}")).path(relative).asText();
             if(hash.isBlank() || !hash.equals(SourceFileHashes.hash(file)))throw new IllegalStateException("source_hash_unavailable_or_changed");
             var declaration=JavaSemanticQueries.declaration(db,root,file,owner,name,descriptor);
             if(!declaration.path("status").asText().equals("resolved")){

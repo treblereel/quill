@@ -10,13 +10,14 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.treblereel.mcp.core.Json;
 
 /** Enforces a final safety budget across every successful MCP JSON response. */
 public final class ResponseBudget {
 
     /** About 16k tokens per response; QUILL_MCP_MAX_RESPONSE_BYTES overrides it. */
     static final int DEFAULT_MAX_BYTES = 64 * 1024;
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private ResponseBudget() {}
 

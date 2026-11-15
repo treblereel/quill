@@ -30,11 +30,12 @@ import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.semantic.SymbolContract;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.mcp.query.UsageToolQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Cross-repository usages of a provider class or member, read from each consumer index. */
 final class WorkspaceUsageQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final ProjectRegistry registry;
     private final WorkspaceProviders providerLookup;

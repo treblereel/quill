@@ -17,6 +17,7 @@ import org.treblereel.mcp.mcp.query.EntryPointQueries;
 import org.treblereel.mcp.mcp.query.ExternalSymbolQueries;
 import org.treblereel.mcp.mcp.config.FrameworkContracts;
 import org.treblereel.mcp.mcp.query.MethodContextQueries;
+import org.treblereel.mcp.core.Json;
 
 /**
  * What a method fact needs beyond its callers for a first-turn answer, one line per relation:
@@ -26,7 +27,7 @@ import org.treblereel.mcp.mcp.query.MethodContextQueries;
  */
 public final class MethodPrefetchRelations {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int LIMIT = 40;
     private static final int DEPTH = 2;
 

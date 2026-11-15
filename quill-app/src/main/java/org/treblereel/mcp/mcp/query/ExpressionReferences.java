@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Calls to a Spring bean's method written in annotation expressions, such as
@@ -20,7 +21,7 @@ import org.treblereel.mcp.model.ClassRecord;
  * are already indexed as annotation values; this matches {@code @beanName.method(} against the bean's names.
  */
 final class ExpressionReferences {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Pattern BEAN_NAME = Pattern.compile("^@(?:Qualifier|Named)\\(\"(.+)\"\\)$");
     static final int LIMIT = 50;
 

@@ -9,11 +9,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.core.Json;
 
 /** Finds classpath resources and bytecode-visible consumers. */
 public final class ResourceReferenceQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public String find(ReadQueryContext reader, String path, String className, String module,
             int limit, int offset) {

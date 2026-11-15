@@ -21,11 +21,12 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.core.Json;
 
 /** Discovers statically identifiable application and framework entry points. */
 public final class EntryPointQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> KINDS = Set.of(
             "main", "rest_resource", "rest_endpoint", "observer", "scheduled",
             "message_consumer", "annotation_processor", "service_provider");

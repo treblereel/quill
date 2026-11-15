@@ -24,11 +24,12 @@ import org.treblereel.mcp.workspace.WorkspaceDependencyGraph;
 import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 /** Workspace inventory: compact overview, repositories, dependency edges and entity resolution. */
 final class WorkspaceCatalogQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final ProjectRegistry registry;
 

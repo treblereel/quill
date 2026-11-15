@@ -24,11 +24,12 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.DependencyRecord;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.project.UsageCoverage;
+import org.treblereel.mcp.core.Json;
 
 /** Queries that explain where and how an indexed class is used. */
 public final class UsageToolQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> USAGE_KINDS = Set.of(
             "annotation", "constructor_call", "field_access", "inheritance", "injection",
             "method_call", "service_loader", "type_reference", "callback_reference", "method_handle_reference", "field_handle_reference", "bootstrap_reference");

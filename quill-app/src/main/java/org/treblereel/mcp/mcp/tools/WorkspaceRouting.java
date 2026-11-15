@@ -13,11 +13,12 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.diagnostics.DebugTrace;
 import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.core.Json;
 
 /** Answers a local class miss from the one workspace repository that declares the class. */
 final class WorkspaceRouting {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final ProjectRegistry registry;
     private final WorkspaceProviders providerLookup;

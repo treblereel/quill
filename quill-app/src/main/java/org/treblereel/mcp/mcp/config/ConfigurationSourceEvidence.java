@@ -10,7 +10,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.ConfigurationScanner;
 import org.treblereel.mcp.core.SourceFileHashes;
 import org.treblereel.mcp.core.QuarkusTestProfileOverrides;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.treblereel.mcp.core.Json;
 
 /** Explicit, bounded current-source evidence; never evaluates expressions or reads environment values. */
 public final class ConfigurationSourceEvidence {
@@ -69,7 +69,7 @@ public final class ConfigurationSourceEvidence {
         } catch (Exception unavailable) { evidence.put("status", "source_unavailable"); }
     }
     private String profileValue(ObjectNode evidence,String key,Path root,Path source,int line,String provenance) throws Exception {
-        var info=new ObjectMapper().readTree(provenance);
+        var info=Json.MAPPER.readTree(provenance);
         if(line<=0){evidence.put("status","source_line_unknown");return null;}
         if(!files.containsKey(source)) {
             if(files.size()>=5 || Files.size(source)>1_000_000){evidence.put("status","source_file_limit");return null;}

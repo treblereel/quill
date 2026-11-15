@@ -7,7 +7,7 @@ import org.objectweb.asm.*;
 
 /** Immutable JVM API evidence from the same class-file snapshot as the dependency graph. */
 public final class JvmApiScanner {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     private JvmApiScanner() {}
     public static Map<Integer,String> capture(ClassFileSnapshot snapshot,Map<String,Integer> ids) {
         Map<Integer,String> result=new TreeMap<>();

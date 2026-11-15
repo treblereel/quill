@@ -11,10 +11,11 @@ import java.util.List;
 import java.util.Map;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.core.SourceFileHashes;
+import org.treblereel.mcp.core.Json;
 
 /** Per-response compiler evidence, kept separate from bytecode line evidence. */
 public final class JavaSourceLocations {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final ReadQueryContext db;
     private final Path root;
     private final JsonNode hashes;

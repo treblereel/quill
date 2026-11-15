@@ -2,7 +2,6 @@ package org.treblereel.mcp.command;
 
 import org.treblereel.mcp.index.ClaudeSettingsInstaller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
@@ -15,6 +14,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
+import org.treblereel.mcp.core.Json;
 
 @Command(name = "permissions", mixinStandardHelpOptions = true,
         description = "Inspect or manage Quill's local Claude tool permissions",
@@ -70,10 +70,10 @@ public final class ClientPermissionsCommand implements Callable<Integer> {
                     : targets.stream().map(ClaudePermissionStatus::inspect).toList();
             var out = spec.commandLine().getOut();
             if (json) {
-                var document = new ObjectMapper().createObjectNode();
+                var document = Json.MAPPER.createObjectNode();
                 document.put("schema_version", 1);
                 document.put("operation", operation);
-                document.set("projects", new ObjectMapper().valueToTree(reports));
+                document.set("projects", Json.MAPPER.valueToTree(reports));
                 out.println(document);
             } else {
                 for (var report : reports) {

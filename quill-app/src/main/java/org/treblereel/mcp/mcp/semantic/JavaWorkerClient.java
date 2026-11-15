@@ -8,10 +8,11 @@ import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import org.treblereel.mcp.core.Json;
 
 /** One bounded child JVM with a two-module compiler-model cache. */
 final class JavaWorkerClient implements AutoCloseable {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final long timeoutMillis;
     private final String workerMain;
     private Process process;

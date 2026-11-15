@@ -11,6 +11,7 @@ import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.query.ExternalSymbolQueries;
 import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Facts for a qualified name that is not an application class: an application package (the
@@ -18,7 +19,7 @@ import org.treblereel.mcp.mcp.project.ProjectDependencyQueries;
  */
 public final class NameTargetPrefetch {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int LIMIT = 40;
 
     private NameTargetPrefetch() {

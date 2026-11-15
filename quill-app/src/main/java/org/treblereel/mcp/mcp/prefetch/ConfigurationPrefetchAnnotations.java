@@ -5,10 +5,11 @@ import com.fasterxml.jackson.databind.node.*;
 import java.util.*;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.mcp.config.ConfigurationSourceEvidence;
+import org.treblereel.mcp.core.Json;
 
 /** Explicit annotation literals on exact, directly read indexed fields; defaults remain unknown. */
 final class ConfigurationPrefetchAnnotations {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     static void append(ReadQueryContext db,ObjectNode evidence) throws Exception {
         Set<String> primary=new HashSet<>();for(var ref:evidence.path("references"))primary.add(ConfigurationSourceEvidence.baseKey(ref.path("key").asText()));
         var context=evidence.putObject("field_annotations").put("status","ready")

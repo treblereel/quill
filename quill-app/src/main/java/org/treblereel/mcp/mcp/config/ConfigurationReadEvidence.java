@@ -5,10 +5,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.core.Json;
 
 /** Bounded bytecode reads with optional compiler coordinates; never executes application code. */
 final class ConfigurationReadEvidence {
-    private static final ObjectMapper JSON=new ObjectMapper();
+    private static final ObjectMapper JSON=Json.MAPPER;
     private static final int LIMIT=8;
     static void append(ReadQueryContext db,ObjectNode result) throws Exception {
         var locations=new ConfigurationDeclarationLocations(db);

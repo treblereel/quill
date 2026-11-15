@@ -23,10 +23,11 @@ import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.ProjectCodeExpectation;
 import org.treblereel.mcp.core.WorktreeSnapshotCache;
 import org.treblereel.mcp.db.IndexGeneration;
+import org.treblereel.mcp.core.Json;
 
 public class ProjectRegistry implements AutoCloseable {
 
-    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = Json.MAPPER;
 
     public record ProjectEntry(String name, Path root, IndexGeneration generation,
             org.treblereel.mcp.model.ProjectReadSnapshot observations) {

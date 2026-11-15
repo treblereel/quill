@@ -7,11 +7,12 @@ import java.util.List;
 import java.util.Set;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.core.Json;
 
 /** Stable structured MCP responses for projects that cannot currently be queried. */
 public final class ProjectAvailabilityResponses {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private ProjectAvailabilityResponses() {}
 

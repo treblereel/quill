@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Whether test classes changed in the worktree have run since they changed. A compiling build says nothing about
@@ -19,7 +20,7 @@ import java.util.stream.Stream;
  * {@code TEST-<class>.xml} per run; a report older than the source is from before the change.
  */
 final class ChangedTestExecution {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Pattern TEST_SOURCE = Pattern.compile("^(?:(.*)/)?src/test/(?:java|kotlin|groovy)/(.+)\\.(?:java|kt|groovy)$");
     private static final Pattern ATTRIBUTE = Pattern.compile("\\b(tests|failures|errors|skipped)=\"(\\d+)\"");
 

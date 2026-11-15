@@ -41,11 +41,12 @@ import org.treblereel.mcp.mcp.support.ArgumentAliases;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.support.ClassTargetResolver;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 /** Structural code and dependency graph queries. */
 public final class StructureToolQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_GRAPH_NODES = 200;
 
     public String searchClasses(ReadQueryContext reader, String pattern, int limit) {

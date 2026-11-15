@@ -28,10 +28,11 @@ import org.treblereel.mcp.mcp.support.ResponseCompaction;
 import org.treblereel.mcp.mcp.tools.Tool;
 import org.treblereel.mcp.mcp.tools.ToolArg;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
+import org.treblereel.mcp.core.Json;
 
 public final class McpToolCatalog {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Map<String, Object> OBJECT_OUTPUT_SCHEMA = Map.of(
             "type", "object",
             "additionalProperties", true);

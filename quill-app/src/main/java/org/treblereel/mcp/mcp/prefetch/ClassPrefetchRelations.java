@@ -16,6 +16,7 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.mcp.query.BeanEvidence;
 import org.treblereel.mcp.mcp.support.BeanTerms;
 import org.treblereel.mcp.mcp.config.ConfigurationSourceEvidence;
+import org.treblereel.mcp.core.Json;
 
 /**
  * The CDI and test relations a class fact needs for a first-turn answer, one line per relation:
@@ -134,7 +135,7 @@ final class ClassPrefetchRelations {
         if (!meanings.isEmpty()) fact.set("candidate_conditions", meanings);
     }
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> EVENT = List.of("jakarta.enterprise.event.Event", "javax.enterprise.event.Event");
     private static final List<String> INSTANCE = List.of("jakarta.enterprise.inject.Instance",
             "javax.enterprise.inject.Instance", "io.quarkus.arc.InjectableInstance");

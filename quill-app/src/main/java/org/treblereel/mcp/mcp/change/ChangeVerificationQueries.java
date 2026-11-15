@@ -15,11 +15,12 @@ import org.treblereel.mcp.mcp.project.ProjectRegistry;
 import org.treblereel.mcp.mcp.support.ToolResponseSupport;
 import org.treblereel.mcp.mcp.project.VerificationPlanQueries;
 import org.treblereel.mcp.mcp.project.WorktreeStatusQueries;
+import org.treblereel.mcp.core.Json;
 
 /** Composes non-mutating evidence about whether a requested change is verified. */
 public final class ChangeVerificationQueries {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private final ContextQueries contexts = new ContextQueries();
     private final WorktreeStatusQueries worktree = new WorktreeStatusQueries();
 

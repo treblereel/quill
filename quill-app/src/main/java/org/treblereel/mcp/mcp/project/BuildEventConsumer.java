@@ -23,11 +23,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.treblereel.mcp.core.WorktreeInspector;
+import org.treblereel.mcp.core.Json;
 
 /** Refreshes build-result markers off the request thread before exposing an index generation. */
 public final class BuildEventConsumer {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int PROTOCOL_VERSION = 3;
     private static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(5);
     private static final Set<String> BUILD_TOOLS = Set.of("maven", "gradle");

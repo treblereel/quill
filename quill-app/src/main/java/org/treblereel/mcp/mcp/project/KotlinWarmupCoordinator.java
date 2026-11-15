@@ -11,6 +11,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Watches the recently queried module while the worker can retain inactive FIR snapshots. A
@@ -19,7 +20,7 @@ import java.util.function.Supplier;
  * leave the next query to analyze the module itself.
  */
 public final class KotlinWarmupCoordinator implements AutoCloseable {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     static final Duration IDLE = Duration.ofMinutes(5);
     private final Function<JsonNode, JsonNode> worker;
     private final long debounceMillis;

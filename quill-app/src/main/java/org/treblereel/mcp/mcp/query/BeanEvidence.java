@@ -10,6 +10,7 @@ import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
 import org.treblereel.mcp.model.ClassMemberRecord;
 import org.treblereel.mcp.model.MemberAnnotationRecord;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Registration conditions and ArC retention signals derived from indexed annotation values.
@@ -18,7 +19,7 @@ import org.treblereel.mcp.model.MemberAnnotationRecord;
  */
 public final class BeanEvidence {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Map<String, String> CONDITIONS = Map.ofEntries(
             Map.entry("io.quarkus.arc.lookup.LookupIfProperty",
                     "Programmatic lookup (Instance) only: available when property `name` equals `stringValue` "

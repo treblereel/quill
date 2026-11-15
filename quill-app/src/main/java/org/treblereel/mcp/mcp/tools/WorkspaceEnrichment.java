@@ -19,11 +19,12 @@ import org.treblereel.mcp.workspace.query.WorkspaceQueryRouter;
 import org.treblereel.mcp.workspace.query.WorkspaceRoute;
 import org.treblereel.mcp.mcp.support.ProjectAvailabilityResponses;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.core.Json;
 
 /** Adds workspace provider routes and readiness to single-project dependency and bean answers. */
 final class WorkspaceEnrichment {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     private final ProjectRegistry registry;
     private final WorkspaceProviders providerLookup;

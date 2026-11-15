@@ -26,6 +26,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.treblereel.mcp.core.GitAnalyzer;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.core.Json;
 
 /**
  * Owns immutable SQLite index generations and the refs that publish them.
@@ -42,7 +43,7 @@ public final class ProjectIndexStore {
      */
     static final long DEFAULT_INDEX_CACHE_BYTES = 1L << 30;
     static final java.time.Duration OUTDATED_GENERATION_GRACE = java.time.Duration.ofDays(1);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = Json.MAPPER;
     private static final ConcurrentMap<Path, Object> VALIDATION_LOCKS = new ConcurrentHashMap<>();
     private static final ConcurrentMap<Path, ValidatedDatabase> VALID_DATABASES =
             new ConcurrentHashMap<>();

@@ -2,13 +2,13 @@ package org.treblereel.mcp.command;
 
 import org.treblereel.mcp.index.ClaudeSettingsInstaller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.treblereel.mcp.mcp.server.ReadOnlyToolNames;
+import org.treblereel.mcp.core.Json;
 
 /** Static local evidence, not an attestation of a running Claude session's effective permissions. */
 final class ClaudePermissionStatus {
@@ -51,7 +51,7 @@ final class ClaudePermissionStatus {
         Path mcp = root.resolve(".mcp.json");
         if (Files.exists(mcp)) {
             try {
-                var configuration = new ObjectMapper().readTree(mcp.toFile());
+                var configuration = Json.MAPPER.readTree(mcp.toFile());
                 if (configuration == null || !configuration.isObject()) throw new IllegalArgumentException("Invalid MCP configuration");
                 var server = configuration.path("mcpServers").path("quill");
                 configured = server.isObject() && server.path("command").isTextual()

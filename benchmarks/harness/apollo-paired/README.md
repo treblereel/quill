@@ -67,7 +67,23 @@ python3.14 benchmarks/harness/apollo-paired/arm.py ask codex with_quill --case A
 ```
 
 `--case` sends the shared context block plus the case prompts as one session, like the
-Cryostat schedule. There is no scheduler or scorer here yet.
+Cryostat schedule.
+
+## Runs and scoring
+
+```bash
+python3.14 benchmarks/harness/apollo-paired/refresh_quill.py      # after rebuilding native Quill
+python3.14 benchmarks/harness/apollo-paired/run_cases.py NAME --cases AQ-005,AQ-011 --repeats 3
+python3.14 benchmarks/harness/apollo-paired/score.py --cases A/run.log B/run.log
+```
+
+`run_cases.py` refuses a with_quill run when Quill sources are uncommitted or the fixture binary
+is not `quill-app/target/quill` built from HEAD; it writes `results/apollo-paired/NAME/run.log`
+and prints the rubric tables. `score.py` reads run logs or `metrics.json` files and reports
+strict sessions (every `rubric.py` fact of the case found in the answers), input/output tokens and
+cost, or with `--cases` one column per log. The rubric is private like the oracles. On the v1
+blind grades it passes 99% of answers graded correct but only flags 15% of partial ones (it cannot
+see side errors or forbidden claims), so it is a regression signal for core facts, not a grade.
 
 ## Surviving a reboot
 

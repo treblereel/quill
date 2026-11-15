@@ -839,4 +839,12 @@ public final class UsageRepository {
                   AND (tc.source_set = 'test' OR tc.source_file LIKE '%src/test/%')
                 ORDER BY tc.class_name LIMIT :limit""").bind("id", classId).bind("limit", limit).mapTo(String.class).list();
     }
+
+    /** The evidence_lines JSON of each of a method's calls and field accesses. */
+    public List<String> findMethodEvidenceLines(int classId, String method, String descriptor) {
+        return handle.createQuery(
+                "SELECT evidence_lines FROM method_calls WHERE from_class_id=:id AND from_method=:name AND from_descriptor=:descriptor "
+                        + "UNION ALL SELECT evidence_lines FROM field_accesses WHERE from_class_id=:id AND from_method=:name AND from_descriptor=:descriptor")
+                .bind("id", classId).bind("name", method).bind("descriptor", descriptor).mapTo(String.class).list();
+    }
 }

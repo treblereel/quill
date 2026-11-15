@@ -79,10 +79,7 @@ final class MethodContextQueries {
     }
     /** Lines of the method's own calls and field accesses; empty for a method without code. */
     private static java.util.List<Integer> bytecodeLines(ReadQueryContext db,int classId,String name,String descriptor) {
-        java.util.List<String> rows=db.jdbi().withHandle(handle->handle.createQuery(
-                "SELECT evidence_lines FROM method_calls WHERE from_class_id=:id AND from_method=:name AND from_descriptor=:descriptor "
-                        +"UNION ALL SELECT evidence_lines FROM field_accesses WHERE from_class_id=:id AND from_method=:name AND from_descriptor=:descriptor")
-                .bind("id",classId).bind("name",name).bind("descriptor",descriptor).mapTo(String.class).list());
+        java.util.List<String> rows=db.usages.findMethodEvidenceLines(classId,name,descriptor);
         java.util.List<Integer> lines=new java.util.ArrayList<>();
         for(String row:rows) {
             try { for(JsonNode line:JSON.readTree(row)) if(line.isInt() && line.asInt()>0) lines.add(line.asInt()); }

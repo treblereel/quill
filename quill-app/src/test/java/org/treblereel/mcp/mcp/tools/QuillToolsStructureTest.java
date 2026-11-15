@@ -781,7 +781,9 @@ class QuillToolsStructureTest extends QuillToolsTestBase {
     @Test
     void findCyclesRejectsUnknownScope() throws Exception {
         JsonNode result = JDBI_READS.findCycles(jdbi, "package", null, false, false, 20, 0);
-        assertEquals("Invalid scope: expected class or module", result.path("message").asText());
+        assertEquals(
+                "Invalid scope: expected class, module, cdi, a class or a package",
+                result.path("message").asText());
     }
 
     @Test

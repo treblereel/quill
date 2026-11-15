@@ -1277,7 +1277,10 @@ public final class QuillTools {
             structured = true,
             description = "Find class or module dependency cycles.")
     public ObjectNode find_cycles(
-            @ToolArg(description = "class (default) or module") Optional<String> scope,
+            @ToolArg(
+                            description =
+                                    "class (default), module, cdi (injection cycles), or a class or package name")
+                    Optional<String> scope,
             @ToolArg(description = "Class-scope module filter") Optional<String> module,
             @ToolArg(description = "Include generated classes") Optional<Boolean> include_generated,
             @ToolArg(description = "Include test classes") Optional<Boolean> include_tests,

@@ -32,6 +32,9 @@ public final class CycleQueries {
 
     private static final ObjectMapper JSON = Json.MAPPER;
     private static final Set<String> SCOPES = Set.of("class", "module");
+    private static final Set<String> CDI_SCOPES = Set.of("cdi", "injection", "bean", "beans", "di");
+    private static final Set<String> NORMAL_SCOPES =
+            Set.of("@ApplicationScoped", "@RequestScoped", "@SessionScoped", "@ConversationScoped");
     private static final int DETAIL_LIMIT = 100;
 
     public ObjectNode findCycles(
@@ -43,7 +46,10 @@ public final class CycleQueries {
             int limit,
             int offset) {
         String normalizedScope = scope == null ? "class" : scope.strip().toLowerCase(Locale.ROOT);
+        // V66 CQ-030: Codex asked for scope "cdi" to tell injection cycles from creation cycles.
+        if (CDI_SCOPES.contains(normalizedScope)) return findCdiCycles(reader, limit, offset);
         ClassRecord through = null;
+        String packageFilter = null;
         if (!SCOPES.contains(normalizedScope)) {
             // Agents name the class they ask about as the scope: answer the class cycles through
             // it.
@@ -51,15 +57,140 @@ public final class CycleQueries {
                     scope.contains(".") || scope.contains("#")
                             ? ClassTargetResolver.resolve(reader, scope.strip())
                             : null;
-            if (lookup == null || lookup.error() != null) {
-                return errorNode("Invalid scope: expected class or module");
+            if ((lookup == null || lookup.error() != null) && isPackage(reader, scope.strip())) {
+                packageFilter = scope.strip();
+            } else if (lookup == null || lookup.error() != null) {
+                return errorNode(
+                        "Invalid scope: expected class, module, cdi, a class or a package");
+            } else {
+                through = lookup.cls();
             }
-            through = lookup.cls();
         }
         return "module".equals(normalizedScope)
                 ? findModuleCycles(reader, limit, offset)
                 : findClassCycles(
-                        reader, module, includeGenerated, includeTests, limit, offset, through);
+                        reader,
+                        module,
+                        includeGenerated,
+                        includeTests,
+                        limit,
+                        offset,
+                        through,
+                        packageFilter);
+    }
+
+    private static boolean isPackage(ReadQueryContext reader, String name) {
+        if (!name.contains(".") || name.contains("#")) return false;
+        return reader.jdbi()
+                        .withHandle(
+                                handle ->
+                                        handle.createQuery(
+                                                        "SELECT count(*) FROM classes WHERE lifecycle = 'current'"
+                                                                + " AND substr(class_name, 1, length(:prefix)) = :prefix")
+                                                .bind("prefix", name + ".")
+                                                .mapTo(Integer.class)
+                                                .one())
+                > 0;
+    }
+
+    /**
+     * Cycles of resolved injection points. An edge into a normal-scoped bean goes through a client
+     * proxy, so creating the owner does not create the target; a cycle made only of edges into
+     * {@code @Dependent} or {@code @Singleton} beans recurses at creation.
+     */
+    private ObjectNode findCdiCycles(ReadQueryContext reader, int limit, int offset) {
+        List<Map<String, Object>> rows =
+                reader.jdbi()
+                        .withHandle(
+                                handle ->
+                                        handle.createQuery(
+                                                        """
+                                                        SELECT oc.class_name AS from_class, ip.field_name, ip.kind,
+                                                               rc.class_name AS to_class, rb.scope AS to_scope
+                                                        FROM injection_points ip
+                                                        JOIN beans ob ON ob.id = ip.bean_id
+                                                        JOIN beans rb ON rb.id = ip.resolved_bean_id
+                                                        JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                                                        JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                                                        WHERE oc.id <> rc.id AND COALESCE(oc.source_set, 'main') <> 'test'
+                                                        ORDER BY oc.class_name, ip.field_name""")
+                                                .mapToMap()
+                                                .list());
+        List<Pair<String>> edges = new ArrayList<>();
+        Map<Pair<String>, List<String>> labels = new LinkedHashMap<>();
+        Set<Pair<String>> direct = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            Pair<String> edge =
+                    new Pair<>(
+                            String.valueOf(row.get("from_class")),
+                            String.valueOf(row.get("to_class")));
+            String scope =
+                    row.get("to_scope") == null
+                            ? "@Dependent"
+                            : String.valueOf(row.get("to_scope"));
+            boolean proxied = NORMAL_SCOPES.contains(scope);
+            if (!labels.containsKey(edge)) edges.add(edge);
+            String member =
+                    row.get("field_name") == null
+                            ? String.valueOf(row.get("kind")).toLowerCase(Locale.ROOT)
+                            : String.valueOf(row.get("field_name"));
+            labels.computeIfAbsent(edge, ignored -> new ArrayList<>())
+                    .add(
+                            edge.from()
+                                    + "#"
+                                    + member
+                                    + " -> "
+                                    + edge.to()
+                                    + " ("
+                                    + scope
+                                    + (proxied ? ", client proxy)" : ", no client proxy)"));
+            if (!proxied) direct.add(edge);
+        }
+        Map<String, List<String>> graph = adjacency(edges);
+        List<List<String>> components = new ArrayList<>(cyclicComponents(graph));
+        components.sort(
+                Comparator.<List<String>>comparingInt(List::size)
+                        .reversed()
+                        .thenComparing(
+                                component -> component.stream().min(String::compareTo).orElse("")));
+        ObjectNode root = base("cdi", components.size(), limit, offset);
+        root.put("analyzed_edges", edges.size());
+        root.put("cycle_semantics", "strongly_connected_component_of_resolved_injection_points");
+        root.put(
+                "verdict_basis",
+                "an injection into a normal-scoped bean (@ApplicationScoped, @RequestScoped, "
+                        + "@SessionScoped) receives a client proxy, so creating its owner does not create the target; "
+                        + "creation_cycle is true only when the cycle closes through @Dependent or @Singleton targets alone, "
+                        + "which recurses when the first bean is created");
+        ArrayNode values = root.putArray("cycles");
+        for (List<String> component : page(components, limit, offset)) {
+            Set<String> members = new HashSet<>(component);
+            ObjectNode cycle = values.addObject();
+            cycle.put("member_count", component.size());
+            cycle.set(
+                    "members",
+                    JSON.valueToTree(component.stream().sorted().limit(DETAIL_LIMIT).toList()));
+            List<Pair<String>> internal =
+                    edges.stream()
+                            .filter(
+                                    edge ->
+                                            members.contains(edge.from())
+                                                    && members.contains(edge.to()))
+                            .toList();
+            List<Pair<String>> unproxied = internal.stream().filter(direct::contains).toList();
+            cycle.put("creation_cycle", !cyclicComponents(adjacency(unproxied)).isEmpty());
+            ArrayNode edgeNodes = cycle.putArray("edges");
+            internal.stream()
+                    .limit(DETAIL_LIMIT)
+                    .forEach(edge -> labels.get(edge).forEach(edgeNodes::add));
+            cycle.put("edges_truncated", internal.size() > DETAIL_LIMIT);
+        }
+        root.putArray("limitations")
+                .add(
+                        "Only resolved injection points are edges; Instance<T>, Provider<T> and @Lazy lookups defer creation and are not edges")
+                .add("Test beans are left out");
+        appendMeta(root, reader, 0);
+        return root;
     }
 
     private ObjectNode findClassCycles(
@@ -69,7 +200,8 @@ public final class CycleQueries {
             boolean includeTests,
             int limit,
             int offset,
-            ClassRecord through) {
+            ClassRecord through,
+            String packageFilter) {
         List<DependencyRecord> edges =
                 reader.usages.findCurrentDependencyGraph(module, includeGenerated, includeTests);
         Set<Integer> ids = new LinkedHashSet<>();
@@ -90,6 +222,18 @@ public final class CycleQueries {
             int owner = topLevelId(through, classes);
             components.removeIf(component -> !component.contains(owner));
         }
+        if (packageFilter != null) {
+            String prefix = packageFilter + ".";
+            components.removeIf(
+                    component ->
+                            component.stream()
+                                    .noneMatch(
+                                            id ->
+                                                    classes.get(id) != null
+                                                            && classes.get(id)
+                                                                    .className()
+                                                                    .startsWith(prefix)));
+        }
         components.sort(componentComparator(classes));
 
         ObjectNode root = base("class", components.size(), limit, offset);
@@ -97,6 +241,7 @@ public final class CycleQueries {
             root.put("class_filter", through.className());
             root.put("class_in_cycle", !components.isEmpty());
         }
+        if (packageFilter != null) root.put("package_filter", packageFilter);
         if (module == null || module.isBlank()) root.putNull("module");
         else root.put("module", module);
         root.put("include_generated", includeGenerated);

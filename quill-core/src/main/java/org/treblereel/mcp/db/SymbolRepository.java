@@ -1153,4 +1153,28 @@ public final class SymbolRepository {
         return handle.createQuery("SELECT DISTINCT module FROM classes WHERE lifecycle='current' AND origin='source' AND module IS NOT NULL ORDER BY module LIMIT 33")
                 .mapTo(String.class).list();
     }
+
+    /** A {@code static final String} field of a source class whose constant value is a configuration key. */
+    public record KeyConstant(String className, String sourceFile, String sourceSet, String field, String key) {}
+
+    /**
+     * Up to {@code limit} captured {@code static final String} fields of current source classes whose value is one of
+     * {@code keys}, in one module or all (blank), by key, class and field.
+     */
+    public List<KeyConstant> findKeyConstants(Collection<String> keys, String module, int limit) {
+        return handle.createQuery("""
+            SELECT c.class_name,c.source_file,c.source_set,json_extract(m.value,'$.name') AS field,
+                   json_extract(m.value,'$.constant.value') AS key
+            FROM jvm_api a JOIN classes c ON c.id=a.class_id JOIN json_each(a.evidence,'$.members') m
+            WHERE json_extract(a.evidence,'$.status')='captured' AND c.origin='source' AND c.lifecycle='current'
+              AND json_extract(m.value,'$.kind')='FIELD' AND json_extract(m.value,'$.descriptor')='Ljava/lang/String;'
+              AND (json_extract(m.value,'$.access_flags') & 24)=24
+              AND json_extract(m.value,'$.constant.value') IN (<keys>)
+            AND (:module='' OR c.module=:module)
+            ORDER BY key,c.class_name,field LIMIT :limit
+            """)
+                .bindList("keys", List.copyOf(keys)).bind("module", module).bind("limit", limit)
+                .map((rs, ctx) -> new KeyConstant(rs.getString("class_name"), rs.getString("source_file"),
+                        rs.getString("source_set"), rs.getString("field"), rs.getString("key"))).list();
+    }
 }

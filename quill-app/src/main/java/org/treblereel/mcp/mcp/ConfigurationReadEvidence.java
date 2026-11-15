@@ -42,28 +42,17 @@ final class ConfigurationReadEvidence {
             }
         }
         if(keys.isEmpty())return;
-        String sql="""
-            SELECT c.class_name,c.source_file,c.source_set,json_extract(m.value,'$.name') AS field,
-                   json_extract(m.value,'$.constant.value') AS key
-            FROM jvm_api a JOIN classes c ON c.id=a.class_id JOIN json_each(a.evidence,'$.members') m
-            WHERE json_extract(a.evidence,'$.status')='captured' AND c.origin='source' AND c.lifecycle='current'
-              AND json_extract(m.value,'$.kind')='FIELD' AND json_extract(m.value,'$.descriptor')='Ljava/lang/String;'
-              AND (json_extract(m.value,'$.access_flags') & 24)=24
-              AND json_extract(m.value,'$.constant.value') IN (<keys>)
-            AND (:module='' OR c.module=:module)
-            ORDER BY key,c.class_name,field LIMIT :limit
-            """;
-        var rows=db.jdbi().withHandle(h->h.createQuery(sql).bindList("keys",keys).bind("module",result.path("module").asText("")).bind("limit",LIMIT+1).mapToMap().list());
+        var rows=db.symbols.findKeyConstants(keys,result.path("module").asText(""),LIMIT+1);
         var constants=result.putObject("key_constants").put("basis","indexed static final String literals equal to shown keys; source reference binding not proven")
                 .put("coverage","captured application source classes only; missing bytecode is not absence")
                 .put("limit",LIMIT).put("truncated",rows.size()>LIMIT);
         var items=constants.putArray("items");
         for(var row:rows.stream().limit(LIMIT).toList()) {
-            var item=items.addObject().put("key",(String)row.get("key")).put("class",(String)row.get("class_name"))
-                    .put("field",(String)row.get("field")).put("source",(String)row.get("source_file"))
-                    .put("sourceSet",(String)row.get("source_set"));
+            var item=items.addObject().put("key",row.key()).put("class",row.className())
+                    .put("field",row.field()).put("source",row.sourceFile())
+                    .put("sourceSet",row.sourceSet());
             item.putNull("line");item.put("location_status","declaration_line_not_indexed");
-            locations.append(item,(String)row.get("class_name"),(String)row.get("field"),"Ljava/lang/String;");
+            locations.append(item,row.className(),row.field(),"Ljava/lang/String;");
         }
         keyVia(result,locations);
         ConfigurationReadSnippets.append(db,result,sourceLines);

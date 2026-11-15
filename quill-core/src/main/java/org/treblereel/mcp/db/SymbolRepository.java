@@ -1078,4 +1078,32 @@ public final class SymbolRepository {
     public Optional<String> findJvmApiEvidence(int classId) {
         return handle.createQuery("SELECT evidence FROM jvm_api WHERE class_id=:id").bind("id", classId).mapTo(String.class).findOne();
     }
+
+    /** A class annotation by name. */
+    public record NamedClassAnnotation(String className, String annotationName) {}
+    /** A member with its raw annotation details (JSON). */
+    public record AnnotatedMember(String className, String name, String annotationDetails) {}
+
+    /** LIKE pattern for annotation values naming {@code key} as {@code "name":"key"}, escaped with {@code !}. */
+    private static String namedKeyPattern(String key) {
+        return "%\"name\":\"" + key.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "\"%";
+    }
+
+    /** Class annotations whose values name {@code key}, by class. */
+    public List<NamedClassAnnotation> findClassAnnotationsNamingKey(String key) {
+        return handle.createQuery("""
+                SELECT c.class_name, a.annotation_name FROM class_annotations a JOIN classes c ON c.id = a.class_id
+                WHERE a.annotation_values LIKE :needle ESCAPE '!' ORDER BY c.class_name""")
+                .bind("needle", namedKeyPattern(key))
+                .map((rs, ctx) -> new NamedClassAnnotation(rs.getString("class_name"), rs.getString("annotation_name"))).list();
+    }
+
+    /** Members whose annotation values name {@code key}, by class and member. */
+    public List<AnnotatedMember> findMembersNamingKey(String key) {
+        return handle.createQuery("""
+                SELECT c.class_name, m.name, m.annotation_details FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE m.annotation_details LIKE :needle ESCAPE '!' ORDER BY c.class_name, m.name""")
+                .bind("needle", namedKeyPattern(key))
+                .map((rs, ctx) -> new AnnotatedMember(rs.getString("class_name"), rs.getString("name"), rs.getString("annotation_details"))).list();
+    }
 }

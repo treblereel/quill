@@ -23,41 +23,25 @@ final class ApplicationKeyPhase {
 
     static void append(ReadQueryContext reader, String key, ObjectNode result) {
         if (key == null || key.isBlank() || key.contains("*") || key.startsWith("quarkus.")) return;
-        String needle = "%\"name\":\"" + key.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "\"%";
-        List<String> guards = reader.jdbi().withHandle(h -> {
-            List<String> rows = new ArrayList<>();
-            h.createQuery("""
-                    SELECT c.class_name, a.annotation_name FROM class_annotations a JOIN classes c ON c.id = a.class_id
-                    WHERE a.annotation_values LIKE :needle ESCAPE '!' ORDER BY c.class_name""")
-                    .bind("needle", needle).mapToMap()
-                    .forEach(row -> {
-                        String label = BUILD_GUARDS.get(String.valueOf(row.get("annotation_name")));
-                        if (label != null) rows.add(label + " on " + row.get("class_name"));
-                    });
-            h.createQuery("""
-                    SELECT c.class_name, m.name, m.annotation_details FROM class_members m JOIN classes c ON c.id = m.class_id
-                    WHERE m.annotation_details LIKE :needle ESCAPE '!' ORDER BY c.class_name, m.name""")
-                    .bind("needle", needle).mapToMap()
-                    .forEach(row -> BUILD_GUARDS.forEach((annotation, label) -> {
-                        if (String.valueOf(row.get("annotation_details")).contains("\"" + annotation + "\""))
-                            rows.add(label + " on " + row.get("class_name") + "#" + row.get("name"));
-                    }));
-            return rows;
+        List<String> guards = new ArrayList<>();
+        reader.symbols.findClassAnnotationsNamingKey(key).forEach(row -> {
+            String label = BUILD_GUARDS.get(String.valueOf(row.annotationName()));
+            if (label != null) guards.add(label + " on " + row.className());
         });
-        List<Map<String, Object>> consumers = reader.jdbi().withHandle(h -> h.createQuery("""
-                SELECT DISTINCT u.class_name, u.member, u.annotation, b.scope, b.kind FROM configuration_usages u
-                LEFT JOIN beans b ON b.class_id = u.class_id AND b.member_name IS NULL
-                WHERE u.key = :key AND u.source_set = 'main' ORDER BY u.class_name, u.member""")
-                .bind("key", key).mapToMap().list());
+        reader.symbols.findMembersNamingKey(key).forEach(row -> BUILD_GUARDS.forEach((annotation, label) -> {
+            if (String.valueOf(row.annotationDetails()).contains("\"" + annotation + "\""))
+                guards.add(label + " on " + row.className() + "#" + row.name());
+        }));
+        var consumers = reader.references.findMainKeyConsumers(key);
         if (guards.isEmpty() && consumers.isEmpty()) return;
         List<String> injected = new ArrayList<>();
         List<String> programmatic = new ArrayList<>();
         for (var consumer : consumers) {
-            String annotation = String.valueOf(consumer.get("annotation"));
-            String target = consumer.get("class_name") + "#" + consumer.get("member");
+            String annotation = String.valueOf(consumer.annotation());
+            String target = consumer.className() + "#" + consumer.member();
             if (annotation.contains("#")) programmatic.add(target + " via " + annotation);
-            else if ("DECORATOR".equals(consumer.get("kind"))) injected.add(target + " (decorator, created with each decorated bean instance)");
-            else injected.add(target + (consumer.get("scope") == null ? "" : " (" + consumer.get("scope") + ")"));
+            else if ("DECORATOR".equals(consumer.kind())) injected.add(target + " (decorator, created with each decorated bean instance)");
+            else injected.add(target + (consumer.scope() == null ? "" : " (" + consumer.scope() + ")"));
         }
         List<String> parts = new ArrayList<>();
         if (!guards.isEmpty())

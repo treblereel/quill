@@ -421,4 +421,18 @@ public final class ReferenceRepository {
                 ORDER BY key,file,line LIMIT 9
                 """).bind("key", key).map((rs, ctx) -> keyDeclaration(rs)).list();
     }
+
+    /** A main-source consumer of a key, with the scope and kind of its class bean, if any. */
+    public record KeyConsumer(String className, String member, String annotation, String scope, String kind) {}
+
+    /** Main-source consumers of {@code key}, by class and member. */
+    public List<KeyConsumer> findMainKeyConsumers(String key) {
+        return handle.createQuery("""
+                SELECT DISTINCT u.class_name, u.member, u.annotation, b.scope, b.kind FROM configuration_usages u
+                LEFT JOIN beans b ON b.class_id = u.class_id AND b.member_name IS NULL
+                WHERE u.key = :key AND u.source_set = 'main' ORDER BY u.class_name, u.member""")
+                .bind("key", key)
+                .map((rs, ctx) -> new KeyConsumer(rs.getString("class_name"), rs.getString("member"), rs.getString("annotation"),
+                        rs.getString("scope"), rs.getString("kind"))).list();
+    }
 }

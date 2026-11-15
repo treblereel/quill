@@ -31,6 +31,8 @@ def main():
         src, dst = F / name, F / f'{name}.prev-{old}'
         if src.exists() and not dst.exists():
             subprocess.run(['/bin/cp', '-cRp', str(src), str(dst)], check=True)
+    # A new inode: macOS kills a signed binary overwritten in place (its cached signature no longer matches).
+    (F / 'native/quill').unlink(missing_ok=True)
     shutil.copy(new, F / 'native/quill')
 
     # The clean source state with the recorded build output, as each session starts.

@@ -42,6 +42,8 @@ import org.treblereel.mcp.mcp.change.TestImpactQueries;
 import org.treblereel.mcp.mcp.project.WorktreeStatusQueries;
 
 class QuillToolsTest {
+
+    private static final QuillToolsJdbiReads JDBI_READS = new QuillToolsJdbiReads();
     @org.junit.jupiter.api.extension.RegisterExtension
     final ProjectEntryFixture projectEntries = new ProjectEntryFixture();
 
@@ -151,8 +153,7 @@ class QuillToolsTest {
 
     @Test
     void getBeansReturnsAllBeans() {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, null, null, null, null);
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, null);
         assertTrue(result.contains("OrderService"));
         assertTrue(result.contains("StripePaymentService"));
         assertTrue(result.contains("\"total\":3"));
@@ -160,10 +161,9 @@ class QuillToolsTest {
 
     @Test
     void getBeansResolvesShortClassName() throws Exception {
-        var tools = new QuillTools();
-        JsonNode shortName = JSON.readTree(tools.getBeans(
+        JsonNode shortName = JSON.readTree(JDBI_READS.getBeans(
                 jdbi, "StripePaymentService", null, null, null, null));
-        JsonNode fqcn = JSON.readTree(tools.getBeans(
+        JsonNode fqcn = JSON.readTree(JDBI_READS.getBeans(
                 jdbi, "org.acme.StripePaymentService", null, null, null, null));
 
         assertEquals(1, shortName.get("total").asInt());
@@ -206,7 +206,7 @@ class QuillToolsTest {
 
     @Test
     void getBeansReturnsCandidatesForUnknownClassName() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools().getBeans(
+        JsonNode result = JSON.readTree(JDBI_READS.getBeans(
                 jdbi, "PaymentServ", null, null, null, null));
 
         assertEquals("CLASS_NOT_FOUND", result.path("error_code").asText());
@@ -242,8 +242,7 @@ class QuillToolsTest {
 
     @Test
     void getBeansFiltersByScope() {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, "@ApplicationScoped", null, null, null);
+        String result = JDBI_READS.getBeans(jdbi, null, "@ApplicationScoped", null, null, null);
         assertTrue(result.contains("OrderService"));
         assertTrue(result.contains("StripePaymentService"));
         assertFalse(result.contains("AuditService"));
@@ -251,8 +250,7 @@ class QuillToolsTest {
 
     @Test
     void getBeansFiltersByProfile() {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, null, null, "dev", null);
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, "dev", null);
         assertTrue(result.contains("AuditService"));
         assertTrue(result.contains("OrderService"));
         assertFalse(result.contains("StripePaymentService"));
@@ -261,8 +259,7 @@ class QuillToolsTest {
 
     @Test
     void getBeansFiltersByQualifier() {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, null, null, null, "@Premium");
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, "@Premium");
         assertTrue(result.contains("StripePaymentService"));
         assertFalse(result.contains("OrderService"));
         assertFalse(result.contains("AuditService"));
@@ -271,8 +268,7 @@ class QuillToolsTest {
 
     @Test
     void getDependenciesShowsOutbound() {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "OrderService", "outbound", 1);
+        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1);
         assertTrue(result.contains("StripePaymentService"));
         assertTrue(result.contains("CDI_INJECT"));
     }
@@ -280,7 +276,7 @@ class QuillToolsTest {
     @Test
     void getDependenciesReturnsCallSiteEvidence() throws Exception {
         JsonNode result = JSON.readTree(
-                new QuillTools().getDependencies(jdbi, "AuditService", "inbound", 1));
+                JDBI_READS.getDependencies(jdbi, "AuditService", "inbound", 1));
         JsonNode edge = result.get("depended_by").get(0);
         assertEquals("CONSTRUCTS", edge.get("kind").asText());
         assertEquals("src/main/java/org/acme/StripePaymentService.java",
@@ -291,7 +287,7 @@ class QuillToolsTest {
 
     @Test
     void findUsagesReturnsConstructorEvidenceAndFiltersKinds() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools().findUsages(
+        JsonNode result = JSON.readTree(JDBI_READS.findUsages(
                 jdbi, "AuditService", "constructor_call", null, 10, 0));
 
         assertEquals("org.acme.AuditService", result.path("target").asText());
@@ -321,9 +317,8 @@ class QuillToolsTest {
                       (3, 'callback', '()V', 1, 'selected', '(I)V', 'dynamic', 4, '[50]'),
                       (4, 'otherTarget', '()V', 2, 'notThisTarget', '()V', 'interface', 1, '[60]')""");
         });
-        QuillTools tools = new QuillTools();
-        JsonNode first = JSON.readTree(tools.findUsages(jdbi, "OrderService", "method_call", null, 1, 0));
-        JsonNode second = JSON.readTree(tools.findUsages(jdbi, "OrderService", "method_call", null, 1, 1));
+        JsonNode first = JSON.readTree(JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 1, 0));
+        JsonNode second = JSON.readTree(JDBI_READS.findUsages(jdbi, "OrderService", "method_call", null, 1, 1));
         assertEquals(2, first.path("total").asInt());
         assertTrue(first.path("has_more").asBoolean());
         assertEquals("org.acme.AuditService", first.path("usages").get(0).path("class").asText());
@@ -337,7 +332,7 @@ class QuillToolsTest {
         assertEquals(5, usage.path("invoked_members").get(0).path("instruction_occurrences").asLong());
         assertEquals("virtual", usage.path("invoked_members").get(0).path("invocation_kind").asText());
         assertEquals("(Ljava/lang/String;)V", usage.path("invoked_members").get(1).path("descriptor").asText());
-        JsonNode callback = JSON.readTree(tools.findUsages(jdbi, "OrderService", "callback_reference", null, 10, 0));
+        JsonNode callback = JSON.readTree(JDBI_READS.findUsages(jdbi, "OrderService", "callback_reference", null, 10, 0));
         assertFalse(callback.path("usages").get(0).has("invoked_members"));
         assertTrue(org.treblereel.mcp.db.IndexReader.findInvokedMembers(jdbi, 1, List.of()).isEmpty());
         var batches = org.treblereel.mcp.db.IndexReader.findInvokedMembers(jdbi, 1,
@@ -358,7 +353,7 @@ class QuillToolsTest {
                         VALUES (3, 'run', '()V', 1, ?, '()V', 'static', 1, '[]')""", "m" + index);
             }
         });
-        JsonNode result = JSON.readTree(new QuillTools().findUsages(
+        JsonNode result = JSON.readTree(JDBI_READS.findUsages(
                 jdbi, "OrderService", "method_call", null, 10, 0));
         JsonNode usage = result.path("usages").get(0);
         assertEquals(40, usage.path("invoked_member_groups").asInt());
@@ -373,11 +368,10 @@ class QuillToolsTest {
                   (from_class_id, to_class_id, kind, occurrence_count, evidence_lines)
                 VALUES (1, 2, 'TYPE_USE', 2, '[18,21]')"""));
 
-        QuillTools tools = new QuillTools();
         JsonNode first = JSON.readTree(
-                tools.findUsages(jdbi, "PaymentService", null, null, 1, 0));
+                JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 0));
         JsonNode second = JSON.readTree(
-                tools.findUsages(jdbi, "PaymentService", null, null, 1, 1));
+                JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 1));
 
         assertEquals(2, first.path("total").asInt());
         assertTrue(first.path("has_more").asBoolean());
@@ -391,20 +385,19 @@ class QuillToolsTest {
     void findUsagesValidatesKindAndFiltersModule() throws Exception {
         jdbi.useHandle(handle -> handle.execute(
                 "UPDATE classes SET module = 'payments' WHERE id = 3"));
-        QuillTools tools = new QuillTools();
 
-        JsonNode matching = JSON.readTree(tools.findUsages(
+        JsonNode matching = JSON.readTree(JDBI_READS.findUsages(
                 jdbi, "AuditService", null, "payments", 10, 0));
-        JsonNode excluded = JSON.readTree(tools.findUsages(
+        JsonNode excluded = JSON.readTree(JDBI_READS.findUsages(
                 jdbi, "AuditService", null, "orders", 10, 0));
-        JsonNode invalid = JSON.readTree(tools.findUsages(
+        JsonNode invalid = JSON.readTree(JDBI_READS.findUsages(
                 jdbi, "AuditService", "reflection", null, 10, 0));
 
         assertEquals(1, matching.path("total").asInt());
         assertEquals(0, excluded.path("total").asInt());
         assertTrue(invalid.path("message").asText().startsWith("Invalid usage_kind"));
-        JsonNode alias = JSON.readTree(tools.findUsages(jdbi, "AuditService", "di", null, 10, 0));
-        JsonNode canonical = JSON.readTree(tools.findUsages(jdbi, "AuditService", "injection", null, 10, 0));
+        JsonNode alias = JSON.readTree(JDBI_READS.findUsages(jdbi, "AuditService", "di", null, 10, 0));
+        JsonNode canonical = JSON.readTree(JDBI_READS.findUsages(jdbi, "AuditService", "injection", null, 10, 0));
         assertEquals(canonical.path("usages"), alias.path("usages"));
         assertEquals("injection", alias.path("usage_kind").asText());
     }
@@ -432,10 +425,9 @@ class QuillToolsTest {
                             'org.acme.Order', '["java.lang.String"]', 'public', '[]')""");
         });
 
-        QuillTools tools = new QuillTools();
-        JsonNode first = JSON.readTree(tools.getSymbolDetails(
+        JsonNode first = JSON.readTree(JDBI_READS.getSymbolDetails(
                 jdbi, "OrderService", true, null, 1, 0));
-        JsonNode methods = JSON.readTree(tools.getSymbolDetails(
+        JsonNode methods = JSON.readTree(JDBI_READS.getSymbolDetails(
                 jdbi, "OrderService", true, "method", 10, 0));
 
         assertEquals("org.acme.OrderService", first.path("class").asText());
@@ -469,10 +461,9 @@ class QuillToolsTest {
 
     @Test
     void getSymbolDetailsCanSkipMembersAndValidatesMemberKind() throws Exception {
-        QuillTools tools = new QuillTools();
-        JsonNode compact = JSON.readTree(tools.getSymbolDetails(
+        JsonNode compact = JSON.readTree(JDBI_READS.getSymbolDetails(
                 jdbi, "PaymentService", false, null, 10, 0));
-        JsonNode invalid = JSON.readTree(tools.getSymbolDetails(
+        JsonNode invalid = JSON.readTree(JDBI_READS.getSymbolDetails(
                 jdbi, "PaymentService", true, "property", 10, 0));
 
         assertFalse(compact.path("members_included").asBoolean());
@@ -517,9 +508,8 @@ class QuillToolsTest {
 
     @Test
     void getContextComposesCompactEvidenceAndKeepsPartialResults() throws Exception {
-        QuillTools tools = new QuillTools();
 
-        JsonNode result = JSON.readTree(tools.getContext(
+        JsonNode result = JSON.readTree(JDBI_READS.getContext(
                 jdbi, List.of("OrderService", "MissingService"), false, 5));
 
         assertEquals(1, result.path("resolved_target_count").asInt());
@@ -552,9 +542,8 @@ class QuillToolsTest {
 
     @Test
     void getContextRequiresTargetsAndReportsEveryUnresolvedTarget() throws Exception {
-        QuillTools tools = new QuillTools();
-        JsonNode empty = JSON.readTree(tools.getContext(jdbi, List.of(), false, 10));
-        JsonNode tooMany = JSON.readTree(tools.getContext(jdbi, List.of(
+        JsonNode empty = JSON.readTree(JDBI_READS.getContext(jdbi, List.of(), false, 10));
+        JsonNode tooMany = JSON.readTree(JDBI_READS.getContext(jdbi, List.of(
                 "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"),
                 false, 10));
 
@@ -565,10 +554,9 @@ class QuillToolsTest {
 
     @Test
     void planChangeSeparatesPrimaryEditsFromDependencyReview() throws Exception {
-        QuillTools tools = new QuillTools();
         writeMinimalPom();
 
-        JsonNode result = JSON.readTree(tools.planChange(jdbi, tempDir,
+        JsonNode result = JSON.readTree(JDBI_READS.planChange(jdbi, tempDir,
                 List.of("StripePaymentService"), "Add idempotent payment retries", 10));
 
         assertEquals("Add idempotent payment retries", result.path("change").asText());
@@ -600,7 +588,7 @@ class QuillToolsTest {
                   type_name, parameter_types, modifiers, annotations)
                 VALUES (1, 'METHOD', 'work', 'work():void', '()V', 'void', '[]', 'public', '[]')"""));
 
-        JsonNode result = JSON.readTree(new QuillTools().planChange(jdbi, tempDir,
+        JsonNode result = JSON.readTree(JDBI_READS.planChange(jdbi, tempDir,
                 List.of("OrderService#work()"), "Rename work", 10));
 
         JsonNode primary = result.path("primary_changes").get(0);
@@ -611,7 +599,7 @@ class QuillToolsTest {
 
     @Test
     void planChangeRequiresDescription() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools().planChange(
+        JsonNode result = JSON.readTree(JDBI_READS.planChange(
                 jdbi, tempDir, List.of("OrderService"), "  ", 10));
 
         assertEquals("A non-empty change description is required",
@@ -622,8 +610,7 @@ class QuillToolsTest {
     void planChangeProvidesExecutableContinuationForEveryAffectedTest() throws Exception {
         writeMinimalPom();
         addOrderTests(0, 27);
-        var tools = new QuillTools();
-        JsonNode plan = JSON.readTree(tools.planChange(jdbi, tempDir,
+        JsonNode plan = JSON.readTree(JDBI_READS.planChange(jdbi, tempDir,
                 List.of("OrderService"), "Change order processing", 10));
         JsonNode testPlan = plan.path("test_plan");
         assertEquals(27, testPlan.path("total").asInt());
@@ -638,9 +625,9 @@ class QuillToolsTest {
         assertEquals(3, args.path("max_depth").asInt());
         assertEquals("org.acme.OrderService", args.path("targets").get(0).asText());
 
-        JsonNode second = JSON.readTree(tools.findImpactedTests(jdbi,
+        JsonNode second = JSON.readTree(JDBI_READS.findImpactedTests(jdbi,
                 List.of("org.acme.OrderService"), true, 3, 10, 10));
-        JsonNode third = JSON.readTree(tools.findImpactedTests(jdbi,
+        JsonNode third = JSON.readTree(JDBI_READS.findImpactedTests(jdbi,
                 List.of("org.acme.OrderService"), true, 3, 10, 20));
         assertEquals(10, second.path("showing").asInt());
         assertEquals(7, third.path("showing").asInt());
@@ -660,21 +647,20 @@ class QuillToolsTest {
     void planChangeContinuationAppearsOnlyBeyondHundredTests() throws Exception {
         writeMinimalPom();
         addOrderTests(0, 100);
-        var tools = new QuillTools();
-        JsonNode exact = JSON.readTree(tools.planChange(jdbi, tempDir,
+        JsonNode exact = JSON.readTree(JDBI_READS.planChange(jdbi, tempDir,
                 List.of("OrderService"), "Change order processing", 100));
         assertEquals(100, exact.path("test_plan").path("showing").asInt());
         assertFalse(exact.path("test_plan").path("has_more").asBoolean());
         assertFalse(exact.path("test_plan").has("next_page_request"));
 
         addOrderTests(100, 1);
-        JsonNode overflow = JSON.readTree(tools.planChange(jdbi, tempDir,
+        JsonNode overflow = JSON.readTree(JDBI_READS.planChange(jdbi, tempDir,
                 List.of("OrderService"), "Change order processing", 100));
         assertEquals(101, overflow.path("test_plan").path("total").asInt());
         assertEquals(100, overflow.path("test_plan").path("showing").asInt());
         assertEquals(100, overflow.path("test_plan").path("next_page_request")
                 .path("arguments").path("offset").asInt());
-        JsonNode last = JSON.readTree(tools.findImpactedTests(jdbi,
+        JsonNode last = JSON.readTree(JDBI_READS.findImpactedTests(jdbi,
                 List.of("org.acme.OrderService"), true, 3, 100, 100));
         assertEquals(1, last.path("showing").asInt());
         assertFalse(last.path("has_more").asBoolean());
@@ -717,7 +703,7 @@ class QuillToolsTest {
                 }
                 """);
 
-        JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+        JsonNode result = JSON.readTree(JDBI_READS.verifyChange(
                 jdbi, tempDir, List.of("OrderService"), 10));
 
         assertEquals("blocked", result.path("verdict").asText());
@@ -753,7 +739,7 @@ class QuillToolsTest {
                  "failureMessages":["Failed to execute goal on project app: Could not resolve dependencies for project io.acme:app:jar:1\\ndependency: io.acme:core:jar:1 (compile)\\n\\tCannot access central in offline mode and the artifact io.acme:core:jar:1 has not been downloaded from it before."]}
                 """);
 
-        JsonNode result = JSON.readTree(new QuillTools().verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
 
         assertEquals("blocked", result.path("verdict").asText());
         assertEquals("BUILD_ENVIRONMENT", result.path("blockers").get(0).path("code").asText(), result.toString());
@@ -773,7 +759,7 @@ class QuillToolsTest {
                  "failureMessages":["Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.1:test (default-test) on project app: There are test failures."]}
                 """);
 
-        JsonNode result = JSON.readTree(new QuillTools().verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
 
         assertEquals("blocked", result.path("verdict").asText());
         assertEquals("TESTS_FAILED", result.path("blockers").get(0).path("code").asText(), result.toString());
@@ -801,7 +787,7 @@ class QuillToolsTest {
                     SELECT t.id, s.id, 'CALLS', 1, '[7]' FROM classes t, classes s
                     WHERE t.class_name = 'org.acme.OrderServiceTest' AND s.class_name = 'org.acme.OrderService'""");
         });
-        JsonNode result = JSON.readTree(new QuillTools().verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
+        JsonNode result = JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of("OrderService"), 10));
 
         JsonNode row = result.path("test_evidence").path("tests").path(0);
         assertEquals("org.acme.OrderServiceTest", row.path("class").asText(), result.toString());
@@ -816,7 +802,7 @@ class QuillToolsTest {
     @Test
     void verifyChangeRequiresBuildEvidenceWhenNoBuildWasCaptured() throws Exception {
         writeMinimalPom();
-        JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+        JsonNode result = JSON.readTree(JDBI_READS.verifyChange(
                 jdbi, tempDir, List.of("OrderService"), 10));
 
         assertEquals("needs_build", result.path("verdict").asText());
@@ -844,7 +830,7 @@ class QuillToolsTest {
                     .setSign(false).call();
             Files.writeString(source, "package org.acme; class OrderService { void changed() {} }\n");
 
-            JsonNode result = JSON.readTree(new QuillTools().verifyChange(
+            JsonNode result = JSON.readTree(JDBI_READS.verifyChange(
                     jdbi, tempDir, List.of(), 10));
 
             assertEquals("dirty_worktree", result.path("target_source").asText());
@@ -871,13 +857,12 @@ class QuillToolsTest {
                 Files.writeString(notes.resolve("note-%03d.md".formatted(i)), "unrelated");
             }
             Files.writeString(source, "package org.acme; class OrderService { void changed() {} }\n");
-            QuillTools tools = new QuillTools();
             JsonNode page = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> new WorktreeStatusQueries()
                     .getFreshWorktreeStatus(readScope, tempDir, null, 10, 0)));
             assertEquals(10, page.path("showing").asInt());
             assertTrue(page.path("has_more").asBoolean());
-            JsonNode verified = JSON.readTree(tools.verifyChange(jdbi, tempDir, List.of(), 10));
-            JsonNode session = JSON.readTree(tools.changeSession(jdbi, tempDir, List.of(),
+            JsonNode verified = JSON.readTree(JDBI_READS.verifyChange(jdbi, tempDir, List.of(), 10));
+            JsonNode session = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir, List.of(),
                     "Change method", 10));
             assertEquals(1, verified.path("inferred_target_count").asInt());
             assertFalse(verified.path("worktree").path("has_more").asBoolean());
@@ -894,7 +879,7 @@ class QuillToolsTest {
                 Files.writeString(source.resolveSibling("Unknown%d.java".formatted(i)),
                         "package org.acme; class Unknown%d {}".formatted(i));
             }
-            JsonNode tooMany = JSON.readTree(tools.changeSession(jdbi, tempDir, List.of(),
+            JsonNode tooMany = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir, List.of(),
                     "Change methods", 10));
             assertTrue(tooMany.path("target_inference_truncated").asBoolean());
             assertFalse(tooMany.path("verification_receipt").path("verified").asBoolean());
@@ -911,13 +896,12 @@ class QuillToolsTest {
             git.add().addFilepattern(".").call();
             git.commit().setMessage("initial").setAuthor("Test", "test@example.com")
                     .setSign(false).call();
-            QuillTools tools = new QuillTools();
-            JsonNode planned = JSON.readTree(tools.changeSession(jdbi, tempDir,
+            JsonNode planned = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                     List.of("OrderService"), "Add a method", 10));
 
             Files.writeString(source,
                     "package org.acme; class OrderService { void changed() {} }\n");
-            JsonNode changed = JSON.readTree(tools.changeSession(jdbi, tempDir,
+            JsonNode changed = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                     List.of("OrderService"), "Add a method", 10));
 
             assertEquals("planned", planned.path("phase").asText());
@@ -943,7 +927,7 @@ class QuillToolsTest {
                      "captureScope":"task_output","diagnostics":["compile error"],
                      "failureMessages":[]}
                     """.formatted(System.currentTimeMillis()));
-            JsonNode blocked = JSON.readTree(tools.changeSession(jdbi, tempDir,
+            JsonNode blocked = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                     List.of("OrderService"), "Add a method", 10));
             assertEquals("blocked", blocked.path("phase").asText());
             assertEquals("fix_diagnostics_and_rebuild",
@@ -961,12 +945,11 @@ class QuillToolsTest {
         writeMinimalPom();
         Path clone = Files.createTempDirectory("quill-clone");
         try {
-            QuillTools tools = new QuillTools();
-            JsonNode external = JSON.readTree(tools.changeSession(jdbi, tempDir,
+            JsonNode external = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                     List.of("OrderService"), "Rename a method", 10, clone.toString()));
-            JsonNode missing = JSON.readTree(tools.changeSession(jdbi, tempDir,
+            JsonNode missing = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                     List.of("OrderService"), "Rename a method", 10, clone.resolve("absent").toString()));
-            JsonNode here = JSON.readTree(tools.changeSession(jdbi, tempDir,
+            JsonNode here = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                     List.of("OrderService"), "Rename a method", 10, tempDir.toString()));
 
             assertEquals("external_checkout", external.path("phase").asText());
@@ -999,7 +982,7 @@ class QuillToolsTest {
     @Test
     void aPlannedChangeSessionStatesOnlyTheCompileCommandEvenInFullDetail() throws Exception {
         writeMinimalPom();
-        JsonNode planned = JSON.readTree(new QuillTools().changeSession(jdbi, tempDir,
+        JsonNode planned = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                 List.of("OrderService"), "Rename a method", 10));
 
         assertEquals("planned", planned.path("phase").asText());
@@ -1014,7 +997,7 @@ class QuillToolsTest {
     @Test
     void aPlannedChangeSessionSaysHowToReportEditsInAnotherCheckout() throws Exception {
         writeMinimalPom();
-        JsonNode planned = JSON.readTree(new QuillTools().changeSession(jdbi, tempDir,
+        JsonNode planned = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                 List.of("OrderService"), "Rename a method", 10));
 
         assertTrue(planned.path("directive").path("other_checkout").asText().contains("checkout"));
@@ -1023,11 +1006,10 @@ class QuillToolsTest {
     @Test
     void changeSessionReturnsStableStatelessWorkflowSnapshot() throws Exception {
         writeMinimalPom();
-        QuillTools tools = new QuillTools();
 
-        JsonNode first = JSON.readTree(tools.changeSession(jdbi, tempDir,
+        JsonNode first = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                 List.of("OrderService"), "Add retry support", 10));
-        JsonNode second = JSON.readTree(tools.changeSession(jdbi, tempDir,
+        JsonNode second = JSON.readTree(JDBI_READS.changeSession(jdbi, tempDir,
                 List.of("org.acme.OrderService"), "Add retry support", 10));
 
         assertEquals(1, first.path("schema_version").asInt());
@@ -1159,7 +1141,7 @@ class QuillToolsTest {
             Files.writeString(source,
                     "package org.acme; class OrderService { void changed() {} }\n");
 
-            JsonNode result = JSON.readTree(new QuillTools().changeSession(
+            JsonNode result = JSON.readTree(JDBI_READS.changeSession(
                     jdbi, tempDir, List.of(), "Add retry support", 10));
 
             assertEquals("dirty_worktree", result.path("target_source").asText());
@@ -1224,7 +1206,7 @@ class QuillToolsTest {
                         "kotlin_metadata", true, true, true,
                         false, false, false, false)));
 
-        JsonNode result = JSON.readTree(new QuillTools().getSymbolDetails(
+        JsonNode result = JSON.readTree(JDBI_READS.getSymbolDetails(
                 jdbi, "OrderService", false, null, 10, 0));
 
         assertEquals("kotlin", result.path("language").asText());
@@ -1350,7 +1332,7 @@ class QuillToolsTest {
                     VALUES (1, 6, 'src/test/java/org/acme/OrderServiceTest.java', 'MODIFY')""");
         });
 
-        JsonNode result = JSON.readTree(new QuillTools().findImpactedTests(
+        JsonNode result = JSON.readTree(JDBI_READS.findImpactedTests(
                 jdbi, List.of("OrderService"), true, 3, 10, 0));
 
         assertEquals("class", result.path("granularity").asText());
@@ -1510,10 +1492,9 @@ class QuillToolsTest {
 
     @Test
     void findImpactedTestsReportsMissingCompiledTestCoverage() throws Exception {
-        QuillTools tools = new QuillTools();
-        JsonNode result = JSON.readTree(tools.findImpactedTests(
+        JsonNode result = JSON.readTree(JDBI_READS.findImpactedTests(
                 jdbi, List.of("AuditService"), true, 3, 10, 0));
-        JsonNode invalid = JSON.readTree(tools.findImpactedTests(
+        JsonNode invalid = JSON.readTree(JDBI_READS.findImpactedTests(
                 jdbi, List.of(), true, 3, 10, 0));
 
         assertFalse(result.path("compiled_test_outputs_indexed").asBoolean());
@@ -1533,10 +1514,9 @@ class QuillToolsTest {
                         'src/main/java/org/acme/PremiumStripePaymentService.java', 1,
                         0, 50, 'source', 'current', '.', 'main')"""));
 
-        QuillTools tools = new QuillTools();
-        JsonNode descendants = JSON.readTree(tools.getTypeHierarchy(
+        JsonNode descendants = JSON.readTree(JDBI_READS.getTypeHierarchy(
                 jdbi, "PaymentService", "descendants", 5, 10, 0));
-        JsonNode ancestors = JSON.readTree(tools.getTypeHierarchy(
+        JsonNode ancestors = JSON.readTree(JDBI_READS.getTypeHierarchy(
                 jdbi, "PremiumStripePaymentService", "ancestors", 5, 10, 0));
 
         assertEquals(2, descendants.path("descendant_count").asInt());
@@ -1561,10 +1541,9 @@ class QuillToolsTest {
 
     @Test
     void getTypeHierarchyValidatesDirectionAndPaginates() throws Exception {
-        QuillTools tools = new QuillTools();
-        JsonNode page = JSON.readTree(tools.getTypeHierarchy(
+        JsonNode page = JSON.readTree(JDBI_READS.getTypeHierarchy(
                 jdbi, "PaymentService", "down", 5, 1, 0));
-        JsonNode invalid = JSON.readTree(tools.getTypeHierarchy(
+        JsonNode invalid = JSON.readTree(JDBI_READS.getTypeHierarchy(
                 jdbi, "PaymentService", "sideways", 5, 10, 0));
 
         assertEquals("descendants", page.path("direction").asText());
@@ -1597,10 +1576,9 @@ class QuillToolsTest {
                             'kotlin_metadata', 0, 0)""");
         });
 
-        QuillTools tools = new QuillTools();
-        JsonNode result = JSON.readTree(tools.searchSymbols(
+        JsonNode result = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "order", "method", 10, 0));
-        JsonNode invalid = JSON.readTree(tools.searchSymbols(
+        JsonNode invalid = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "order", "package", 10, 0));
 
         assertEquals(1, result.path("total").asInt());
@@ -1616,13 +1594,13 @@ class QuillToolsTest {
         assertEquals("org.acme.OrderService", symbol.path("declaring_class").asText());
         assertEquals("org.acme.Order", symbol.path("type").asText());
         assertTrue(symbol.path("annotations").toString().contains("Transactional"));
-        JsonNode kotlinResult = JSON.readTree(tools.searchSymbols(
+        JsonNode kotlinResult = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "createKotlinOrder", "method", 10, 0));
-        JsonNode kotlinOnly = JSON.readTree(tools.searchSymbols(
+        JsonNode kotlinOnly = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "order", null, "kotlin", 10, 0));
-        JsonNode invalidLanguage = JSON.readTree(tools.searchSymbols(
+        JsonNode invalidLanguage = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "order", null, "scala", 10, 0));
-        JsonNode property = JSON.readTree(tools.searchSymbols(
+        JsonNode property = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "orders", "field", "kotlin", 10, 0))
                 .path("symbols").get(0);
         JsonNode kotlinSymbol = kotlinResult.path("symbols").get(0);
@@ -1659,7 +1637,7 @@ class QuillToolsTest {
                             'org.acme.OrderRepository', '[]', 'private', '[]')""");
         });
 
-        JsonNode symbol = JSON.readTree(new QuillTools().searchSymbols(
+        JsonNode symbol = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "orderRepository", "field", 10, 0)).path("symbols").get(0);
 
         assertEquals("src/main/java/org/acme/OrderService.java",
@@ -1677,13 +1655,13 @@ class QuillToolsTest {
                    parameter_types, modifiers, annotations)
                 VALUES (1, 'METHOD', 'runPrecisely', 'runPrecisely()', '()V', 'void',
                         '[]', 'public', '[]')"""));
-        JsonNode symbol = JSON.readTree(new QuillTools().searchSymbols(
+        JsonNode symbol = JSON.readTree(JDBI_READS.searchSymbols(
                 jdbi, "runPrecisely", "method", 10, 0)).path("symbols").get(0);
         assertTrue(symbol.path("location").path("line").isNull());
         assertEquals("unknown", symbol.path("location").path("basis").asText());
         assertTrue(symbol.path("location").path("class_declaration_line").asInt() > 0);
         assertFalse(symbol.path("source").asText().matches(".*:[0-9]+"));
-        JsonNode detail = JSON.readTree(new QuillTools().getSymbolDetails(
+        JsonNode detail = JSON.readTree(JDBI_READS.getSymbolDetails(
                 jdbi, "org.acme.OrderService", true, "method", 100, 0));
         JsonNode member = detail.path("members").valueStream()
                 .filter(value -> value.path("name").asText().equals("runPrecisely"))
@@ -1694,9 +1672,8 @@ class QuillToolsTest {
 
     @Test
     void searchSymbolsIncludesTypesAndPaginates() throws Exception {
-        QuillTools tools = new QuillTools();
-        JsonNode page = JSON.readTree(tools.searchSymbols(jdbi, "Service", null, 2, 1));
-        JsonNode blank = JSON.readTree(tools.searchSymbols(jdbi, " ", null, 10, 0));
+        JsonNode page = JSON.readTree(JDBI_READS.searchSymbols(jdbi, "Service", null, 2, 1));
+        JsonNode blank = JSON.readTree(JDBI_READS.searchSymbols(jdbi, " ", null, 10, 0));
 
         assertEquals(4, page.path("total").asInt());
         assertEquals(2, page.path("showing").asInt());
@@ -1736,16 +1713,15 @@ class QuillToolsTest {
                             'kotlin_metadata', 1)""");
         });
 
-        QuillTools tools = new QuillTools();
-        JsonNode result = JSON.readTree(tools.getCallHierarchy(
+        JsonNode result = JSON.readTree(JDBI_READS.getCallHierarchy(
                 jdbi, "OrderService", "createOrder", "both", 10, 0));
-        JsonNode invalid = JSON.readTree(tools.getCallHierarchy(
+        JsonNode invalid = JSON.readTree(JDBI_READS.getCallHierarchy(
                 jdbi, "OrderService", null, "sideways", 10, 0));
-        JsonNode transitive = JSON.readTree(tools.getCallHierarchy(
+        JsonNode transitive = JSON.readTree(JDBI_READS.getCallHierarchy(
                 jdbi, "OrderService", "createOrder", "outbound", true, 2, 10, 0));
-        JsonNode kotlinResult = JSON.readTree(tools.getCallHierarchy(
+        JsonNode kotlinResult = JSON.readTree(JDBI_READS.getCallHierarchy(
                 jdbi, "OrderService", "createKotlinOrder", "both", 10, 0));
-        JsonNode byId = JSON.readTree(tools.getCallHierarchy(
+        JsonNode byId = JSON.readTree(JDBI_READS.getCallHierarchy(
                 jdbi, kotlinResult.path("symbol_id").asText(), null, "both", 10, 0));
 
         assertEquals(2, result.path("total").asInt());
@@ -2304,15 +2280,14 @@ class QuillToolsTest {
                             '(Ljava/lang/String;)V', 'kotlin_metadata')""");
         });
 
-        QuillTools tools = new QuillTools();
-        JsonNode all = JSON.readTree(tools.findMethodOverrides(
+        JsonNode all = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, "PaymentService", "processPayment", null, true, 10, 0));
-        JsonNode direct = JSON.readTree(tools.findMethodOverrides(
+        JsonNode direct = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, "PaymentService", "processPayment", null, false, 10, 0));
-        JsonNode overload = JSON.readTree(tools.findMethodOverrides(
+        JsonNode overload = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, "PaymentService", "processPayment",
                 "processPayment(java.lang.String):void", true, 10, 0));
-        JsonNode kotlin = JSON.readTree(tools.findMethodOverrides(
+        JsonNode kotlin = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, "PaymentService", "processKotlinPayment", null, true, 10, 0));
 
         assertEquals(3, all.path("total").asInt());
@@ -2323,7 +2298,7 @@ class QuillToolsTest {
                         && node.path("hierarchy_path").size() == 3));
         assertEquals(1, direct.path("total").asInt());
         assertEquals(1, overload.path("total").asInt());
-        JsonNode parameterOverload = JSON.readTree(tools.findMethodOverrides(
+        JsonNode parameterOverload = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, "PaymentService", "processPayment", "(java.lang.String)", true, 10, 0));
         assertEquals(overload.path("overrides"), parameterOverload.path("overrides"));
         assertEquals("processPayment(java.lang.String):void",
@@ -2335,7 +2310,7 @@ class QuillToolsTest {
                 .map(JsonNode::asText).toList());
         String symbolId = kotlin.path("base_declarations").get(0)
                 .path("symbol_id").asText();
-        JsonNode byId = JSON.readTree(tools.findMethodOverrides(
+        JsonNode byId = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, symbolId, null, null, true, 10, 0));
         assertEquals(symbolId,
                 byId.path("base_declarations").get(0).path("symbol_id").asText());
@@ -2351,7 +2326,7 @@ class QuillToolsTest {
                         'java.lang.String','[]','public','[]'),
                        (2,'METHOD','get','get():java.lang.Object','()Ljava/lang/Object;',
                         'java.lang.Object','[]','public','[]')"""));
-        JsonNode result = JSON.readTree(new QuillTools().findMethodOverrides(
+        JsonNode result = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, "PaymentService", "get", "()", true, 10, 0));
         assertEquals("AMBIGUOUS_METHOD", result.path("error_code").asText());
         assertEquals(2, result.path("candidates").size());
@@ -2368,7 +2343,7 @@ class QuillToolsTest {
                         'processPayment(double):void', 'void', '["double"]',
                         'public abstract', '[]')"""));
 
-        JsonNode result = JSON.readTree(new QuillTools().findMethodOverrides(
+        JsonNode result = JSON.readTree(JDBI_READS.findMethodOverrides(
                 jdbi, "PaymentService", "processPayment", "missing()", true, 10, 0));
 
         assertEquals("Method signature not found", result.path("message").asText());
@@ -2416,10 +2391,9 @@ class QuillToolsTest {
                     FROM classes WHERE class_name = 'org.acme.MainApp'""");
         });
 
-        QuillTools tools = new QuillTools();
-        JsonNode defaults = JSON.readTree(tools.findUnusedClasses(
+        JsonNode defaults = JSON.readTree(JDBI_READS.findUnusedClasses(
                 jdbi, null, false, false, 20, 0));
-        JsonNode expanded = JSON.readTree(tools.findUnusedClasses(
+        JsonNode expanded = JSON.readTree(JDBI_READS.findUnusedClasses(
                 jdbi, null, true, true, 20, 0));
 
         assertEquals("candidates_not_proven_dead_code",
@@ -2482,7 +2456,7 @@ class QuillToolsTest {
                             '(Ljava/lang/String;)V', 'special', 2, '[18,21]')""");
         });
 
-        JsonNode result = JSON.readTree(new QuillTools().findUnusedMethods(
+        JsonNode result = JSON.readTree(JDBI_READS.findUnusedMethods(
                 jdbi, null, false, false, 20, 0));
 
         assertEquals("private_method_candidates_not_proven_dead_code",
@@ -2566,10 +2540,9 @@ class QuillToolsTest {
                     FROM classes WHERE class_name = 'org.acme.PlainState'""");
         });
 
-        QuillTools tools = new QuillTools();
-        JsonNode defaults = JSON.readTree(tools.findUnusedFields(
+        JsonNode defaults = JSON.readTree(JDBI_READS.findUnusedFields(
                 jdbi, null, false, false, false, 20, 0));
-        JsonNode expanded = JSON.readTree(tools.findUnusedFields(
+        JsonNode expanded = JSON.readTree(JDBI_READS.findUnusedFields(
                 jdbi, null, false, false, true, 20, 0));
 
         assertEquals("private_field_candidates_not_proven_dead_code",
@@ -2660,10 +2633,9 @@ class QuillToolsTest {
                     """, "service_registrations_detail");
         });
 
-        QuillTools tools = new QuillTools();
-        JsonNode result = JSON.readTree(tools.findEntryPoints(
+        JsonNode result = JSON.readTree(JDBI_READS.findEntryPoints(
                 jdbi, null, null, false, false, 20, 0));
-        JsonNode processors = JSON.readTree(tools.findEntryPoints(
+        JsonNode processors = JSON.readTree(JDBI_READS.findEntryPoints(
                 jdbi, "annotation_processor", null, false, false, 20, 0));
 
         assertEquals(8, result.path("total").asInt());
@@ -2706,14 +2678,13 @@ class QuillToolsTest {
                         0, 10, 'generated', 'current', 'common', 'main')
                 """));
 
-        QuillTools tools = new QuillTools();
-        JsonNode direct = JSON.readTree(tools.getModuleGraph(
+        JsonNode direct = JSON.readTree(JDBI_READS.getModuleGraph(
                 jdbi, null, "both", 5, 20, 0));
-        JsonNode outbound = JSON.readTree(tools.getModuleGraph(
+        JsonNode outbound = JSON.readTree(JDBI_READS.getModuleGraph(
                 jdbi, "app", "outbound", 2, 20, 0));
-        JsonNode inbound = JSON.readTree(tools.getModuleGraph(
+        JsonNode inbound = JSON.readTree(JDBI_READS.getModuleGraph(
                 jdbi, "common", "inbound", 2, 20, 0));
-        JsonNode missing = JSON.readTree(tools.getModuleGraph(
+        JsonNode missing = JSON.readTree(JDBI_READS.getModuleGraph(
                 jdbi, "missing", "both", 2, 20, 0));
 
         assertEquals(2, direct.path("total").asInt());
@@ -2855,7 +2826,7 @@ class QuillToolsTest {
                     """);
         });
 
-        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+        JsonNode result = JSON.readTree(JDBI_READS.findCycles(
                 jdbi, "class", null, false, false, 20, 0));
 
         assertEquals("class", result.path("scope").asText());
@@ -2871,11 +2842,11 @@ class QuillToolsTest {
                         .get(cycle.path("representative_path").size() - 1).asText());
         assertTrue(cycle.path("edges").valueStream()
                 .anyMatch(edge -> edge.path("kinds").toString().contains("CDI_INJECT")));
-        JsonNode through = JSON.readTree(new QuillTools().findCycles(
+        JsonNode through = JSON.readTree(JDBI_READS.findCycles(
                 jdbi, "org.acme.AuditService", null, false, false, 20, 0));
         assertEquals("org.acme.AuditService", through.path("class_filter").asText(), through.toString());
         assertEquals(result.path("cycles"), through.path("cycles"));
-        JsonNode outside = JSON.readTree(new QuillTools().findCycles(
+        JsonNode outside = JSON.readTree(JDBI_READS.findCycles(
                 jdbi, "org.acme.Container", null, false, false, 20, 0));
         assertEquals(0, outside.path("total").asInt(), outside.toString());
         assertFalse(outside.path("class_in_cycle").asBoolean());
@@ -2901,7 +2872,7 @@ class QuillToolsTest {
                     """);
         });
 
-        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+        JsonNode result = JSON.readTree(JDBI_READS.findCycles(
                 jdbi, "class", null, false, true, 20, 0));
 
         assertFalse(result.has("error_code"), result.toString());
@@ -2920,7 +2891,7 @@ class QuillToolsTest {
                 new ModuleClasspathRecord("service", "app", 1, "project_dependency"),
                 new ModuleClasspathRecord("common", "common", 0, "self")));
 
-        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+        JsonNode result = JSON.readTree(JDBI_READS.findCycles(
                 jdbi, "module", null, false, false, 20, 0));
 
         assertEquals(1, result.path("total").asInt());
@@ -2934,24 +2905,22 @@ class QuillToolsTest {
     /** V62: Codex sent these spellings and repeated the identical call after each INVALID_ARGUMENT. */
     @Test
     void graphToolsAcceptTheDirectionSpellingsAgentsSend() throws Exception {
-        QuillTools tools = new QuillTools();
-        assertEquals(JSON.readTree(tools.getDependencies(jdbi, "OrderService", "outbound", 1)).path("dependencies"),
-                JSON.readTree(tools.getDependencies(jdbi, "OrderService", "outgoing", 1)).path("dependencies"));
-        assertEquals(JSON.readTree(tools.getDependencies(jdbi, "AuditService", "inbound", 1)).path("dependents"),
-                JSON.readTree(tools.getDependencies(jdbi, "AuditService", "incoming", 1)).path("dependents"));
-        assertFalse(JSON.readTree(tools.getDependencies(jdbi, "OrderService", "outgoing", 1)).has("error_code"));
-        assertFalse(JSON.readTree(tools.getDependencies(jdbi, "AuditService", "incoming", 1)).has("error_code"));
-        assertEquals("descendants", JSON.readTree(tools.getTypeHierarchy(
+        assertEquals(JSON.readTree(JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1)).path("dependencies"),
+                JSON.readTree(JDBI_READS.getDependencies(jdbi, "OrderService", "outgoing", 1)).path("dependencies"));
+        assertEquals(JSON.readTree(JDBI_READS.getDependencies(jdbi, "AuditService", "inbound", 1)).path("dependents"),
+                JSON.readTree(JDBI_READS.getDependencies(jdbi, "AuditService", "incoming", 1)).path("dependents"));
+        assertFalse(JSON.readTree(JDBI_READS.getDependencies(jdbi, "OrderService", "outgoing", 1)).has("error_code"));
+        assertFalse(JSON.readTree(JDBI_READS.getDependencies(jdbi, "AuditService", "incoming", 1)).has("error_code"));
+        assertEquals("descendants", JSON.readTree(JDBI_READS.getTypeHierarchy(
                 jdbi, "PaymentService", "subtypes", 5, 10, 0)).path("direction").asText());
-        assertEquals("ancestors", JSON.readTree(tools.getTypeHierarchy(
+        assertEquals("ancestors", JSON.readTree(JDBI_READS.getTypeHierarchy(
                 jdbi, "PaymentService", "supertypes", 5, 10, 0)).path("direction").asText());
     }
 
     @Test
     void memberKindAcceptsItsPlural() throws Exception {
-        QuillTools tools = new QuillTools();
-        JsonNode plural = JSON.readTree(tools.getSymbolDetails(jdbi, "PaymentService", true, "methods", 10, 0));
-        JsonNode singular = JSON.readTree(tools.getSymbolDetails(jdbi, "PaymentService", true, "method", 10, 0));
+        JsonNode plural = JSON.readTree(JDBI_READS.getSymbolDetails(jdbi, "PaymentService", true, "methods", 10, 0));
+        JsonNode singular = JSON.readTree(JDBI_READS.getSymbolDetails(jdbi, "PaymentService", true, "method", 10, 0));
 
         assertFalse(plural.has("error_code"), plural.toString());
         assertEquals(singular.path("members"), plural.path("members"));
@@ -2970,7 +2939,7 @@ class QuillToolsTest {
 
     @Test
     void findCyclesRejectsUnknownScope() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools().findCycles(
+        JsonNode result = JSON.readTree(JDBI_READS.findCycles(
                 jdbi, "package", null, false, false, 20, 0));
         assertEquals("Invalid scope: expected class or module", result.path("message").asText());
     }
@@ -3018,7 +2987,7 @@ class QuillToolsTest {
                     """);
         });
 
-        JsonNode result = JSON.readTree(new QuillTools().compareIndex(
+        JsonNode result = JSON.readTree(JDBI_READS.compareIndex(
                 jdbi, tempDir, null, 20));
 
         assertEquals("baseline", result.path("baseline").path("index_id").asText());
@@ -3046,7 +3015,7 @@ class QuillToolsTest {
         jdbi.useHandle(handle -> handle.execute(
                 "INSERT INTO metadata(key, value) VALUES ('index_id', 'current')"));
 
-        JsonNode result = JSON.readTree(new QuillTools().compareIndex(
+        JsonNode result = JSON.readTree(JDBI_READS.compareIndex(
                 jdbi, tempDir, "missing", 20));
 
         assertEquals("Baseline index not found: missing", result.path("error").asText());
@@ -3064,7 +3033,7 @@ class QuillToolsTest {
         Path classes = Files.createDirectories(tempDir.resolve("target/classes/org/acme"));
         Files.write(classes.resolve("Sample.class"), new byte[] {0, 1, 2});
 
-        JsonNode result = JSON.readTree(new QuillTools().getBuildStatus(jdbi, tempDir));
+        JsonNode result = JSON.readTree(JDBI_READS.getBuildStatus(jdbi, tempDir));
 
         assertEquals("maven", result.path("build_system").asText());
         assertEquals(1, result.path("compiled_outputs").path("count").asInt());
@@ -3085,7 +3054,7 @@ class QuillToolsTest {
         Files.setLastModifiedTime(source,
                 java.nio.file.attribute.FileTime.fromMillis(now + 2_000));
 
-        JsonNode stale = JSON.readTree(new QuillTools().getBuildStatus(jdbi, tempDir));
+        JsonNode stale = JSON.readTree(JDBI_READS.getBuildStatus(jdbi, tempDir));
         assertEquals("build_required", stale.path("status").asText());
         assertEquals("classes_stale", stale.path("build_reason").asText());
         assertEquals("stale", stale.path("compiled_outputs").path("status").asText());
@@ -3100,7 +3069,7 @@ class QuillToolsTest {
                 VALUES (?, NULL, 4, ?, ?, ?, 2)""",
                 "src/main/java/org/acme/DeletedGenerator.java",
                 "2026-08-25T08:00:00Z", "dev2", "2026-08-20T08:00:00Z"));
-        JsonNode result = JSON.readTree(new QuillTools().resolveEntities(
+        JsonNode result = JSON.readTree(JDBI_READS.resolveEntities(
                 jdbi, List.of("OrderService", "DeletedGenerator.java", "NeverExisted")));
         JsonNode current = result.get("entities").get(0);
         assertTrue(current.get("current").asBoolean());
@@ -3116,7 +3085,7 @@ class QuillToolsTest {
 
     @Test
     void inspectServiceDescriptorsPreservesProviderOrder() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools().inspectServiceDescriptors(
+        JsonNode result = JSON.readTree(JDBI_READS.inspectServiceDescriptors(
                 jdbi, "Processor"));
         JsonNode descriptor = result.get("descriptors").get(0);
         assertEquals(2, descriptor.get("provider_count").asInt());
@@ -3146,7 +3115,7 @@ class QuillToolsTest {
         });
 
         JsonNode result = JSON.readTree(
-                new QuillTools().getDependencies(jdbi, "OrderService", "outbound", 1));
+                JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1));
         assertEquals(200, result.get("depends_on").size());
         assertTrue(result.get("truncated").asBoolean());
         assertEquals(251, result.get("total").asInt());
@@ -3220,8 +3189,7 @@ class QuillToolsTest {
 
     @Test
     void getDependenciesDepth2ExpandsTransitive() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "OrderService", "outbound", 2);
+        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 2);
         JsonNode root = JSON.readTree(result);
         JsonNode graph = root.get("graph");
         assertEquals(2, graph.size());
@@ -3234,8 +3202,7 @@ class QuillToolsTest {
 
     @Test
     void getDependenciesDepth1DoesNotExpandNested() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "OrderService", "outbound", 1);
+        String result = JDBI_READS.getDependencies(jdbi, "OrderService", "outbound", 1);
         JsonNode root = JSON.readTree(result);
         JsonNode dependsOn = root.get("depends_on");
         assertNull(dependsOn.get(0).get("depends_on"),
@@ -3244,7 +3211,7 @@ class QuillToolsTest {
 
     @Test
     void getDependenciesCanReturnCompactMetricsOnly() throws Exception {
-        JsonNode root = JSON.readTree(new QuillTools().getDependencies(
+        JsonNode root = JSON.readTree(JDBI_READS.getDependencies(
                 jdbi, "OrderService", "both", 1, false, 50, 0, null));
 
         assertFalse(root.get("nodes_included").asBoolean());
@@ -3256,14 +3223,14 @@ class QuillToolsTest {
 
     @Test
     void getDependenciesPaginatesDepthOneWithOffset() throws Exception {
-        JsonNode first = JSON.readTree(new QuillTools().getDependencies(
+        JsonNode first = JSON.readTree(JDBI_READS.getDependencies(
                 jdbi, "StripePaymentService", "both", 1, true, 1, 0, null));
         assertEquals(1, first.get("showing").asInt());
         assertEquals(2, first.get("total").asInt());
         assertEquals(1, first.get("next_offset").asInt());
         assertTrue(first.get("has_more").asBoolean());
 
-        JsonNode second = JSON.readTree(new QuillTools().getDependencies(
+        JsonNode second = JSON.readTree(JDBI_READS.getDependencies(
                 jdbi, "StripePaymentService", "both", 1, true, 1, 1, null));
         assertEquals(1, second.get("showing").asInt());
         assertEquals(2, second.get("total").asInt());
@@ -3273,7 +3240,7 @@ class QuillToolsTest {
 
     @Test
     void getDependenciesContinuesDeepBreadthFirstTraversalWithCursor() throws Exception {
-        JsonNode first = JSON.readTree(new QuillTools().getDependencies(
+        JsonNode first = JSON.readTree(JDBI_READS.getDependencies(
                 jdbi, "OrderService", "outbound", 2, true, 1, 0, null));
         assertEquals("org.acme.StripePaymentService",
                 first.get("graph").get(0).get("class").asText());
@@ -3281,7 +3248,7 @@ class QuillToolsTest {
         assertTrue(first.get("has_more").asBoolean());
         String cursor = first.get("next_cursor").asText();
 
-        JsonNode second = JSON.readTree(new QuillTools().getDependencies(
+        JsonNode second = JSON.readTree(JDBI_READS.getDependencies(
                 jdbi, "OrderService", "outbound", 2, true, 1, 0, cursor));
         assertEquals("org.acme.AuditService",
                 second.get("graph").get(0).get("class").asText());
@@ -3291,11 +3258,11 @@ class QuillToolsTest {
 
     @Test
     void getDependenciesRejectsCursorForDifferentTraversal() throws Exception {
-        JsonNode first = JSON.readTree(new QuillTools().getDependencies(
+        JsonNode first = JSON.readTree(JDBI_READS.getDependencies(
                 jdbi, "OrderService", "outbound", 2, true, 1, 0, null));
         String cursor = first.get("next_cursor").asText();
 
-        JsonNode invalid = JSON.readTree(new QuillTools().getDependencies(
+        JsonNode invalid = JSON.readTree(JDBI_READS.getDependencies(
                 jdbi, "OrderService", "both", 2, true, 1, 0, cursor));
         assertEquals("Invalid or expired dependency cursor", invalid.path("message").asText());
     }
@@ -3308,7 +3275,7 @@ class QuillToolsTest {
 
     @Test
     void interfaceInjectionQueryGuidesToConsumers() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools().getInjectionPoints(jdbi, "PaymentService"));
+        JsonNode result = JSON.readTree(JDBI_READS.getInjectionPoints(jdbi, "PaymentService"));
         assertEquals("dependencies_injected_into_bean", result.path("query_direction").asText());
         assertEquals("find_usages", result.path("next_step").path("tool").asText());
         assertEquals("org.acme.PaymentService", result.path("next_step").path("arguments").path("target").asText());
@@ -3317,8 +3284,7 @@ class QuillToolsTest {
     @Test
     void getInjectionPointsShowsResolutionEvidenceAndKeepsMissingCandidateUnknown()
             throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getInjectionPoints(jdbi, "OrderService");
+        String result = JDBI_READS.getInjectionPoints(jdbi, "OrderService");
         JsonNode root = JSON.readTree(result);
         assertEquals(2, root.get("injection_points").size());
         assertEquals(2, root.path("injection_points_total").asInt());
@@ -3359,7 +3325,7 @@ class QuillToolsTest {
                 new BeanRecord(0,2,"PRODUCER_METHOD","@RequestScoped",List.of("@Default"),List.of(),false,null,null,2,"create",List.of("example.Widget")));
         var ips = List.of(InjectionPointRecord.staticAnalysis(0,1,"FIELD","example.Widget",List.of("@Default"),"widget",3,false,InjectionPointRecord.STATIC_CDI));
         IndexWriter.writeIncremental(jdbi, new IndexFixture().classes(classes).beans(beans).injectionPoints(ips).snapshot());
-        var response=JSON.readTree(new QuillTools().getInjectionPoints(jdbi,"example.Consumer"));
+        var response=JSON.readTree(JDBI_READS.getInjectionPoints(jdbi,"example.Consumer"));
         assertEquals("@Singleton",response.path("scope").asText());
         assertEquals(1,response.path("injection_points_total").asInt());
         assertEquals(1,response.path("injection_points_by_kind").path("FIELD").asInt());
@@ -3372,8 +3338,7 @@ class QuillToolsTest {
 
     @Test
     void getHotspotsReturnsMostChanged() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getHotspots(jdbi, 10, null);
+        String result = JDBI_READS.getHotspots(jdbi, 10, null);
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         assertNotNull(hotspots);
@@ -3385,7 +3350,7 @@ class QuillToolsTest {
 
     @Test
     void hotspotPaginationReportsFullTotalAndTruncation() throws Exception {
-        JsonNode root = JSON.readTree(new QuillTools().getHotspots(jdbi, 1, null));
+        JsonNode root = JSON.readTree(JDBI_READS.getHotspots(jdbi, 1, null));
 
         assertEquals(1, root.path("showing").asInt());
         assertEquals(3, root.path("total").asInt());
@@ -3394,8 +3359,7 @@ class QuillToolsTest {
 
     @Test
     void getHotspotsFiltersBySince() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getHotspots(jdbi, 10, "2026-08-27");
+        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-27");
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         for (JsonNode h : hotspots) {
@@ -3405,8 +3369,7 @@ class QuillToolsTest {
 
     @Test
     void getFileHistoryReturnsCommits() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getFileHistory(jdbi, "StripePaymentService", 10);
+        String result = JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 10);
         JsonNode root = JSON.readTree(result);
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
         JsonNode commits = root.get("commits");
@@ -3429,11 +3392,10 @@ class QuillToolsTest {
 
     @Test
     void getFileHistorySupportsOffsetPagination() throws Exception {
-        var tools = new QuillTools();
         JsonNode first = JSON.readTree(
-                tools.getFileHistory(jdbi, "StripePaymentService", 2, 0));
+                JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 2, 0));
         JsonNode second = JSON.readTree(
-                tools.getFileHistory(jdbi, "StripePaymentService", 2, 2));
+                JDBI_READS.getFileHistory(jdbi, "StripePaymentService", 2, 2));
 
         assertEquals(2, first.get("showing").asInt());
         assertEquals(2, first.get("returned_window").get("commit_count").asInt());
@@ -3451,8 +3413,7 @@ class QuillToolsTest {
 
     @Test
     void getCoChangesFindsCorrelatedFiles() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getCoChanges(jdbi, "OrderService", 10);
+        String result = JDBI_READS.getCoChanges(jdbi, "OrderService", 10);
         JsonNode root = JSON.readTree(result);
         assertEquals("org.acme.OrderService", root.get("target").asText());
         JsonNode coChanges = root.get("co_changes");
@@ -3471,8 +3432,7 @@ class QuillToolsTest {
 
     @Test
     void getRecentChangesReturnsCommitsWithFiles() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getRecentChanges(jdbi, 5);
+        String result = JDBI_READS.getRecentChanges(jdbi, 5);
         JsonNode root = JSON.readTree(result);
         JsonNode changes = root.get("recent_changes");
         assertNotNull(changes);
@@ -3485,9 +3445,8 @@ class QuillToolsTest {
 
     @Test
     void getRecentChangesPagesFilesAndSupportsCompactResponses() throws Exception {
-        var tools = new QuillTools();
-        JsonNode first = JSON.readTree(tools.getRecentChanges(jdbi, 5, 2, 0, false));
-        JsonNode second = JSON.readTree(tools.getRecentChanges(jdbi, 5, 2, 2, false));
+        JsonNode first = JSON.readTree(JDBI_READS.getRecentChanges(jdbi, 5, 2, 0, false));
+        JsonNode second = JSON.readTree(JDBI_READS.getRecentChanges(jdbi, 5, 2, 2, false));
 
         assertEquals(2, first.path("showing").asInt());
         assertEquals(6, first.path("total").asInt());
@@ -3502,8 +3461,7 @@ class QuillToolsTest {
 
     @Test
     void getOverviewReturnsProjectSummary() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getOverview(jdbi);
+        String result = JDBI_READS.getOverview(jdbi);
         JsonNode root = JSON.readTree(result);
 
         JsonNode project = root.get("project");
@@ -3583,8 +3541,7 @@ class QuillToolsTest {
                 .beans(beans)
                 .metadata(Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown")).snapshot());
 
-        var tools = new QuillTools();
-        String result = tools.getOverview(noGitJdbi);
+        String result = JDBI_READS.getOverview(noGitJdbi);
         JsonNode root = JSON.readTree(result);
         assertTrue(root.get("git_summary").isNull());
         assertEquals(1, root.get("project").get("beans").asInt());
@@ -3592,8 +3549,7 @@ class QuillToolsTest {
 
     @Test
     void getRiskReturnsScoreAndSignals() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getRisk(jdbi, "StripePaymentService");
+        String result = JDBI_READS.getRisk(jdbi, "StripePaymentService");
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
@@ -3621,7 +3577,7 @@ class QuillToolsTest {
 
         assertTrue(root.has("_meta"));
 
-        JsonNode sourcePath = JSON.readTree(tools.getRisk(jdbi,
+        JsonNode sourcePath = JSON.readTree(JDBI_READS.getRisk(jdbi,
                 "src/main/java/org/acme/StripePaymentService.java"));
         assertEquals("class", sourcePath.path("target_type").asText());
         assertEquals("org.acme.StripePaymentService", sourcePath.path("target").asText());
@@ -3640,8 +3596,7 @@ class QuillToolsTest {
                 .beans(beans)
                 .metadata(Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown")).snapshot());
 
-        var tools = new QuillTools();
-        String result = tools.getRisk(noGitJdbi, "Bar");
+        String result = JDBI_READS.getRisk(noGitJdbi, "Bar");
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.Bar", root.get("target").asText());
@@ -3658,16 +3613,14 @@ class QuillToolsTest {
 
     @Test
     void getRiskClassNotFound() {
-        var tools = new QuillTools();
-        String result = tools.getRisk(jdbi, "NonExistentClass");
+        String result = JDBI_READS.getRisk(jdbi, "NonExistentClass");
         assertTrue(result.contains("error"));
         assertTrue(result.contains("Class not found"));
     }
 
     @Test
     void getExternalDepsForClassShowsTypesByKind() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getExternalDeps(jdbi, "StripePaymentService", null, 20);
+        String result = JDBI_READS.getExternalDeps(jdbi, "StripePaymentService", null, 20);
         JsonNode root = JSON.readTree(result);
 
         assertEquals("org.acme.StripePaymentService", root.get("target").asText());
@@ -3687,8 +3640,7 @@ class QuillToolsTest {
 
     @Test
     void getExternalDepsLibrarySummary() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getExternalDeps(jdbi, null, null, 20);
+        String result = JDBI_READS.getExternalDeps(jdbi, null, null, 20);
         JsonNode root = JSON.readTree(result);
 
         JsonNode libraries = root.get("libraries");
@@ -3708,8 +3660,7 @@ class QuillToolsTest {
 
     @Test
     void getExternalDepsFilterByLibrary() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getExternalDeps(jdbi, null, "com.stripe", 20);
+        String result = JDBI_READS.getExternalDeps(jdbi, null, "com.stripe", 20);
         JsonNode root = JSON.readTree(result);
 
         assertEquals("com.stripe", root.get("library_filter").asText());
@@ -3721,8 +3672,7 @@ class QuillToolsTest {
 
     @Test
     void getBeansRespectsLimit() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, null, null, null, null, 1);
+        String result = JDBI_READS.getBeans(jdbi, null, null, null, null, null, 1);
         JsonNode root = JSON.readTree(result);
         assertEquals(1, root.get("showing").asInt());
         assertEquals(3, root.get("total").asInt());
@@ -3767,8 +3717,7 @@ class QuillToolsTest {
 
     @Test
     void getHotspotsSinceRecomputesCounts() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getHotspots(jdbi, 10, "2026-08-28");
+        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-28");
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         assertNotNull(hotspots);
@@ -3784,8 +3733,7 @@ class QuillToolsTest {
 
     @Test
     void getHotspotsSinceExcludesOlderCommits() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getHotspots(jdbi, 10, "2026-08-28");
+        String result = JDBI_READS.getHotspots(jdbi, 10, "2026-08-28");
         JsonNode root = JSON.readTree(result);
         JsonNode hotspots = root.get("hotspots");
         for (JsonNode h : hotspots) {
@@ -3832,23 +3780,22 @@ class QuillToolsTest {
                 .bind("path", "src/main/java/example/Deleted.java")
                 .execute());
 
-        var tools = new QuillTools();
-        JsonNode currentOnly = JSON.readTree(tools.getHotspots(historyDb, 10, null, false));
+        JsonNode currentOnly = JSON.readTree(JDBI_READS.getHotspots(historyDb, 10, null, false));
         assertFalse(currentOnly.path("hotspots").toString().contains("Deleted.java"));
-        JsonNode overview = JSON.readTree(tools.getOverview(historyDb));
+        JsonNode overview = JSON.readTree(JDBI_READS.getOverview(historyDb));
         assertFalse(overview.path("git_summary").path("top_hotspots").toString()
                 .contains("Deleted.java"));
 
-        JsonNode withHistory = JSON.readTree(tools.getHotspots(historyDb, 10, null, true));
+        JsonNode withHistory = JSON.readTree(JDBI_READS.getHotspots(historyDb, 10, null, true));
         assertTrue(withHistory.path("hotspots").toString().contains("Deleted.java"));
         assertTrue(withHistory.path("hotspots").toString().contains("historical"));
 
-        JsonNode history = JSON.readTree(tools.getFileHistory(historyDb,
+        JsonNode history = JSON.readTree(JDBI_READS.getFileHistory(historyDb,
                 "src/main/java/example/Deleted.java", 10));
         assertEquals("historical", history.path("lifecycle").asText());
         assertEquals(2, history.path("commits").size());
 
-        JsonNode missingClass = JSON.readTree(tools.getRisk(historyDb, "example.Deleted"));
+        JsonNode missingClass = JSON.readTree(JDBI_READS.getRisk(historyDb, "example.Deleted"));
         assertEquals("Class not found", missingClass.path("message").asText());
         assertTrue(missingClass.path("candidates").toString().contains("Deleted.java"));
         assertTrue(missingClass.path("candidates").toString().contains("historical"));
@@ -3858,7 +3805,7 @@ class QuillToolsTest {
 
     @Test
     void searchClassesIncludesOriginAndLifecycle() throws Exception {
-        JsonNode result = JSON.readTree(new QuillTools().searchClasses(jdbi, "OrderService", 10));
+        JsonNode result = JSON.readTree(JDBI_READS.searchClasses(jdbi, "OrderService", 10));
 
         assertEquals("source", result.path("classes").get(0).path("origin").asText());
         assertEquals("current", result.path("classes").get(0).path("lifecycle").asText());
@@ -4352,7 +4299,7 @@ class QuillToolsTest {
                     "generated");
         });
 
-        JsonNode result = JSON.readTree(new QuillTools().findImplementations(
+        JsonNode result = JSON.readTree(JDBI_READS.findImplementations(
                 jdbi, "PaymentService", true, null, null, 10, 0));
 
         assertEquals("org.acme.PaymentService", result.path("target").asText());
@@ -4372,7 +4319,7 @@ class QuillToolsTest {
         assertEquals(2, result.path("implementations").get(0)
                 .path("occurrence_count").asInt());
 
-        JsonNode filtered = JSON.readTree(new QuillTools().findImplementations(
+        JsonNode filtered = JSON.readTree(JDBI_READS.findImplementations(
                 jdbi, "PaymentService", true, "checkout-two", null, 10, 0));
         assertEquals(1, filtered.path("implementation_occurrence_count").asInt());
         assertEquals(List.of("checkout-two"), filtered.path("generated_modules")
@@ -4391,10 +4338,9 @@ class QuillToolsTest {
                         'src/main/java/org/acme/SpecialStripePaymentService.java', 1,
                         0, 20, 'source', 'current', 'payments', 'main')"""));
 
-        QuillTools tools = new QuillTools();
-        JsonNode direct = JSON.readTree(tools.findImplementations(
+        JsonNode direct = JSON.readTree(JDBI_READS.findImplementations(
                 jdbi, "PaymentService", false, null, null, 10, 0));
-        JsonNode transitive = JSON.readTree(tools.findImplementations(
+        JsonNode transitive = JSON.readTree(JDBI_READS.findImplementations(
                 jdbi, "PaymentService", true, null, null, 10, 0));
 
         assertEquals(1, direct.path("implementation_class_count").asInt());
@@ -4423,7 +4369,7 @@ class QuillToolsTest {
                         "compiled_before_index", "false")).snapshot());
 
         Files.writeString(repository.resolve("README.md"), "documentation only\n");
-        JsonNode meta = JSON.readTree(new QuillTools().getOverview(docsDb)).path("_meta");
+        JsonNode meta = JSON.readTree(JDBI_READS.getOverview(docsDb)).path("_meta");
 
         assertTrue(meta.path("worktree_dirty").asBoolean());
         assertEquals(1, meta.path("worktree_changed_files").asInt());
@@ -4460,8 +4406,7 @@ class QuillToolsTest {
 
         Files.writeString(service, "example.SecondProcessor\nexample.FirstProcessor\n");
 
-        var tools = new QuillTools();
-        JsonNode overview = JSON.readTree(tools.getOverview(dirtyDb));
+        JsonNode overview = JSON.readTree(JDBI_READS.getOverview(dirtyDb));
         JsonNode meta = overview.path("_meta");
         assertEquals(analysis.headHash(), meta.path("indexed_commit").asText());
         assertEquals(analysis.headHash(), meta.path("current_commit").asText());
@@ -4473,12 +4418,12 @@ class QuillToolsTest {
         assertTrue(meta.path("stale_reasons").toString()
                 .contains("dirty_worktree_not_compiled"));
 
-        JsonNode hotspots = JSON.readTree(tools.getHotspots(dirtyDb, 10, null, false));
+        JsonNode hotspots = JSON.readTree(JDBI_READS.getHotspots(dirtyDb, 10, null, false));
         assertTrue(hotspots.path("worktree_changes").toString()
                 .contains("javax.annotation.processing.Processor"));
         assertTrue(hotspots.path("worktree_changes").toString().contains("modified"));
 
-        JsonNode trackedRisk = JSON.readTree(tools.getRisk(dirtyDb,
+        JsonNode trackedRisk = JSON.readTree(JDBI_READS.getRisk(dirtyDb,
                 "src/main/resources/META-INF/services/javax.annotation.processing.Processor"));
         assertEquals("file", trackedRisk.path("target_type").asText());
         assertEquals("service_descriptor", trackedRisk.path("kind").asText());
@@ -4492,7 +4437,7 @@ class QuillToolsTest {
                 "src/main/resources/META-INF/services/example.NewProvider");
         Files.writeString(untrackedService, "example.Provider\n");
         WorktreeSnapshotCache.shared().invalidate(repository);
-        JsonNode untrackedRisk = JSON.readTree(tools.getRisk(dirtyDb,
+        JsonNode untrackedRisk = JSON.readTree(JDBI_READS.getRisk(dirtyDb,
                 "src/main/resources/META-INF/services/example.NewProvider"));
         assertEquals("file", untrackedRisk.path("target_type").asText());
         assertEquals("untracked", untrackedRisk.path("worktree_status").asText());
@@ -4503,7 +4448,7 @@ class QuillToolsTest {
 
         Files.writeString(repository.resolve("pom.xml"), "<project/>\n");
         WorktreeSnapshotCache.shared().invalidate(repository);
-        JsonNode buildRisk = JSON.readTree(tools.getRisk(dirtyDb, "./pom.xml"));
+        JsonNode buildRisk = JSON.readTree(JDBI_READS.getRisk(dirtyDb, "./pom.xml"));
         assertEquals("file", buildRisk.path("target_type").asText());
         assertEquals("build_configuration", buildRisk.path("kind").asText());
         assertEquals("CRITICAL", buildRisk.path("risk_level").asText());
@@ -4516,12 +4461,11 @@ class QuillToolsTest {
         IndexWriter.writeIncremental(noGitJdbi, new IndexFixture()
                 .metadata(Map.of("indexed_at", "2026-08-26T14:30:00", "last_commit", "unknown")).snapshot());
 
-        var tools = new QuillTools();
-        String result = tools.getHotspots(noGitJdbi, 10, null);
+        String result = JDBI_READS.getHotspots(noGitJdbi, 10, null);
         assertTrue(result.contains("No git data available"));
         assertTrue(result.contains("git init"));
 
-        result = tools.getFileHistory(noGitJdbi, "SomeClass", 10);
+        result = JDBI_READS.getFileHistory(noGitJdbi, "SomeClass", 10);
         assertTrue(result.contains("No git data available"));
     }
 }

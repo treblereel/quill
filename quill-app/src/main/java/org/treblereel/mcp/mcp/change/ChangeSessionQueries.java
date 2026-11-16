@@ -132,6 +132,15 @@ public final class ChangeSessionQueries {
                         inferenceTruncated);
         if (verify.has("error_code")) return verify;
         List<String> canonicalTargets = canonicalTargets(context);
+        List<String> confined = privateOnlyClasses(reader, canonicalTargets, change);
+        if (!confined.isEmpty() && confined.size() == canonicalTargets.size()) {
+            confineToClasses(
+                    plan,
+                    plan.path("verification_plan") instanceof ObjectNode own ? own : null,
+                    confined);
+            if (verify.path("verification_plan") instanceof ObjectNode commands)
+                confineToClasses(null, commands, confined);
+        }
 
         ObjectNode result = JSON.createObjectNode();
         result.put("schema_version", 1);
@@ -313,6 +322,102 @@ public final class ChangeSessionQueries {
                 }
         }
         return withContextMethodsFolded(result);
+    }
+
+    /**
+     * The target classes whose methods the change names are all private: no class outside can call
+     * them. In Apollo AQ-049 (Codex) renaming a private method still listed 48 dependent classes
+     * and 20 controller tests, 23 KB that every later request re-read.
+     */
+    static List<String> privateOnlyClasses(
+            ReadQueryContext reader, List<String> classes, String change) {
+        Set<String> words = new java.util.HashSet<>();
+        IDENTIFIER.matcher(change).results().forEach(match -> words.add(match.group()));
+        List<String> result = new ArrayList<>();
+        for (String type : classes) {
+            ClassTargetResolver.Lookup lookup = ClassTargetResolver.resolve(reader, type);
+            if (lookup.error() != null) continue;
+            boolean named = false;
+            boolean visible = false;
+            for (var member : reader.symbols.findClassMembers(lookup.cls().id())) {
+                if (member.descriptor() == null
+                        || !member.descriptor().startsWith("(")
+                        || member.name().startsWith("<")
+                        // A constructor carries the class name, which a change names anyway.
+                        || "constructor".equalsIgnoreCase(member.kind())
+                        || member.name()
+                                .equals(
+                                        lookup.cls()
+                                                .className()
+                                                .substring(
+                                                        lookup.cls().className().lastIndexOf('.')
+                                                                + 1))
+                        || !words.contains(member.name())) continue;
+                named = true;
+                String modifiers = member.modifiers() == null ? "" : member.modifiers();
+                visible |= !java.util.Arrays.asList(modifiers.split("[\\s,]+")).contains("private");
+            }
+            if (named && !visible) result.add(lookup.cls().className());
+        }
+        return result;
+    }
+
+    /**
+     * A change confined to private members of these classes: dependents become a count, and the
+     * tests (ranked and in the focused command) narrow to the classes' own tests when there are
+     * any; without one the ranked tests stay, since running nothing proves nothing.
+     */
+    static void confineToClasses(
+            ObjectNode plan, ObjectNode verificationPlan, List<String> classes) {
+        java.util.function.Predicate<String> own =
+                test -> {
+                    String simple = test.substring(test.lastIndexOf('.') + 1);
+                    return classes.stream()
+                            .map(type -> type.substring(type.lastIndexOf('.') + 1))
+                            .anyMatch(simple::startsWith);
+                };
+        if (plan != null) {
+            int dependents = plan.path("dependency_review").size();
+            plan.putArray("dependency_review");
+            if (dependents > 0) {
+                plan.putObject("dependency_scope")
+                        .put("omitted", dependents)
+                        .put(
+                                "reason",
+                                "The change names only private methods of "
+                                        + String.join(", ", classes)
+                                        + "; no other class can call them");
+            }
+            if (plan.path("test_plan") instanceof ObjectNode testPlan
+                    && testPlan.path("tests") instanceof ArrayNode tests) {
+                ArrayNode kept = JSON.createArrayNode();
+                tests.forEach(
+                        test -> {
+                            if (own.test(test.path("class").asText())) kept.add(test);
+                        });
+                if (!kept.isEmpty()) {
+                    testPlan.set("tests", kept);
+                    testPlan.put("showing", kept.size());
+                    testPlan.put("total", kept.size());
+                    testPlan.put("has_more", false);
+                    testPlan.remove("next_offset");
+                    testPlan.remove("next_page_request");
+                }
+            }
+        }
+        if (verificationPlan == null) return;
+        for (JsonNode command : verificationPlan.path("commands")) {
+            if (!(command.path("argv") instanceof ArrayNode argv)) continue;
+            for (int i = 0; i < argv.size(); i++) {
+                String argument = argv.get(i).asText();
+                if (!argument.startsWith("-Dtest=")) continue;
+                List<String> kept =
+                        java.util.Arrays.stream(argument.substring(7).split(","))
+                                .filter(own)
+                                .toList();
+                if (!kept.isEmpty()) argv.set(i, "-Dtest=" + String.join(",", kept));
+            }
+        }
     }
 
     /**
@@ -594,6 +699,7 @@ public final class ChangeSessionQueries {
                         "answer_complete",
                         "primary_changes",
                         "dependency_review",
+                        "dependency_scope",
                         "test_plan",
                         "warnings",
                         "sequence"));
@@ -601,7 +707,14 @@ public final class ChangeSessionQueries {
 
     private static ObjectNode summaryPlan(ObjectNode plan) {
         ObjectNode result =
-                compact(plan, List.of("plan_status", "answer_complete", "warnings", "sequence"));
+                compact(
+                        plan,
+                        List.of(
+                                "plan_status",
+                                "answer_complete",
+                                "warnings",
+                                "sequence",
+                                "dependency_scope"));
         var primary = result.putArray("primary_changes");
         for (JsonNode item : plan.path("primary_changes")) {
             primary.add(

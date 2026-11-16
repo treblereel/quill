@@ -186,4 +186,116 @@ class ChangeSessionMemberCallersTest {
         assertEquals(2, context.path("callers_total").asInt(), answer);
         assertTrue(context.path("role").asText().contains("parse"), answer);
     }
+
+    /** Apollo AQ-049 (Codex): only private methods named means no class outside can be affected. */
+    @Test
+    void aChangeNamingOnlyPrivateMethodsIsConfinedToItsClass() throws Exception {
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        """
+            package p;
+            class Mapper {
+              public Object resolve(String v){ return parse(v); }
+              Mapper(){}
+              private Object parse(String v){ return v; }
+            }
+            """);
+        assertEquals(
+                List.of("p.Mapper"),
+                TestReads.read(
+                        db,
+                        scope ->
+                                ChangeSessionQueries.privateOnlyClasses(
+                                        scope,
+                                        List.of("p.Mapper"),
+                                        "Rename private parse to parseValue")));
+        // Apollo stores the constructor under the class name, which the change names too.
+        assertEquals(
+                List.of("p.Mapper"),
+                TestReads.read(
+                        db,
+                        scope ->
+                                ChangeSessionQueries.privateOnlyClasses(
+                                        scope,
+                                        List.of("p.Mapper"),
+                                        "Rename Mapper private parse() to parseValue")));
+        assertEquals(
+                List.of(),
+                TestReads.read(
+                        db,
+                        scope ->
+                                ChangeSessionQueries.privateOnlyClasses(
+                                        scope, List.of("p.Mapper"), "Rename parse and resolve")));
+        assertEquals(
+                List.of(),
+                TestReads.read(
+                        db,
+                        scope ->
+                                ChangeSessionQueries.privateOnlyClasses(
+                                        scope, List.of("p.Mapper"), "Add logging")));
+    }
+
+    /**
+     * Apollo AQ-049 (Codex): renaming a private method got 48 dependent classes and 20 controller
+     * tests (23 KB), and the focused command ran all of them.
+     */
+    @Test
+    void aPrivateOnlyChangeDropsDependentsAndKeepsTheClassOwnTests() throws Exception {
+        ObjectMapper json = new ObjectMapper();
+        var plan =
+                (com.fasterxml.jackson.databind.node.ObjectNode)
+                        json.readTree(
+                                """
+            {"dependency_review":[{"class":"p.Client"},{"class":"p.Other"}],
+             "test_plan":{"tests":[{"class":"p.ClientTest"},{"class":"p.MapperTest"}],
+                          "showing":2,"total":2}}
+            """);
+        var verification =
+                (com.fasterxml.jackson.databind.node.ObjectNode)
+                        json.readTree(
+                                """
+            {"commands":[{"scope":"quick_compile","argv":["mvn","test-compile"]},
+              {"scope":"focused","argv":["mvn","-pl","m","-Dtest=p.ClientTest,p.MapperTest","test"]}]}
+            """);
+        ChangeSessionQueries.confineToClasses(plan, verification, List.of("p.Mapper"));
+
+        assertEquals(0, plan.path("dependency_review").size(), plan.toString());
+        assertEquals(2, plan.path("dependency_scope").path("omitted").asInt(), plan.toString());
+        assertTrue(
+                plan.path("dependency_scope").path("reason").asText().contains("private"),
+                plan.toString());
+        assertEquals(
+                "[{\"class\":\"p.MapperTest\"}]", plan.path("test_plan").path("tests").toString());
+        assertEquals(1, plan.path("test_plan").path("total").asInt(), plan.toString());
+        assertEquals(
+                "-Dtest=p.MapperTest",
+                verification.path("commands").path(1).path("argv").path(3).asText(),
+                verification.toString());
+    }
+
+    /** Without an own test, the ranked tests stay: running nothing would prove nothing. */
+    @Test
+    void aPrivateOnlyChangeWithoutAnOwnTestKeepsTheRankedTests() throws Exception {
+        ObjectMapper json = new ObjectMapper();
+        var plan =
+                (com.fasterxml.jackson.databind.node.ObjectNode)
+                        json.readTree(
+                                """
+            {"dependency_review":[{"class":"p.Client"}],
+             "test_plan":{"tests":[{"class":"p.ClientTest"}],"showing":1,"total":1}}
+            """);
+        var verification =
+                (com.fasterxml.jackson.databind.node.ObjectNode)
+                        json.readTree(
+                                """
+            {"commands":[{"scope":"focused","argv":["mvn","-Dtest=p.ClientTest","test"]}]}
+            """);
+        ChangeSessionQueries.confineToClasses(plan, verification, List.of("p.Mapper"));
+        assertEquals(0, plan.path("dependency_review").size(), plan.toString());
+        assertTrue(plan.path("test_plan").path("tests").toString().contains("ClientTest"));
+        assertEquals(
+                "-Dtest=p.ClientTest",
+                verification.path("commands").path(0).path("argv").path(1).asText());
+    }
 }

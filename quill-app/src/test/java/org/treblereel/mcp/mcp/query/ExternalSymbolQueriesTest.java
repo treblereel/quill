@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.jdbi.v3.core.Jdbi;
@@ -892,6 +893,70 @@ class ExternalSymbolQueriesTest {
         Path classpath = temp.resolve("target/quill-classpath.txt");
         Files.writeString(
                 classpath,
+                java.io.File.pathSeparator + jar,
+                java.nio.file.StandardOpenOption.APPEND);
+    }
+
+    /**
+     * Apollo v1-v3 AQ-011: Claude missed that Spring Security looks the PasswordEncoder bean up by
+     * type.
+     */
+    @Test
+    void frameworkCodeLookingABeanUpByTypeIsFound() throws Exception {
+        writeJar("repository/org/demo/sec/crypto/1.0/crypto-1.0.jar", Encoder.class);
+        writeJar(
+                "repository/org/demo/sec/config/1.0/config-1.0.jar",
+                Configurer.class,
+                LookupContext.class,
+                Bystander.class);
+        List<String> lookups =
+                ReadQueryContext.readWithGraph(
+                        jdbi,
+                        readScope ->
+                                ExternalSymbolQueries.typeLookups(
+                                        readScope, temp, Encoder.class.getName()));
+        assertEquals(
+                List.of(
+                        Configurer.class.getName()
+                                + "#configure looks it up by type via getBeanOrNull (org.demo.sec:config:1.0)"),
+                lookups);
+    }
+
+    static final class Encoder {}
+
+    static final class LookupContext {
+        <T> T getBeanOrNull(Class<T> type) {
+            return null;
+        }
+    }
+
+    static final class Configurer {
+        Object configure(LookupContext context) {
+            return context.getBeanOrNull(Encoder.class);
+        }
+    }
+
+    static final class Bystander {
+        String name() {
+            return Encoder.class.getName();
+        }
+    }
+
+    private void writeJar(String relative, Class<?>... types) throws Exception {
+        Path jar = temp.resolve(relative);
+        Files.createDirectories(jar.getParent());
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            for (Class<?> type : types) {
+                String entryName = type.getName().replace('.', '/') + ".class";
+                try (InputStream bytecode = type.getClassLoader().getResourceAsStream(entryName)) {
+                    output.putNextEntry(new JarEntry(entryName));
+                    bytecode.transferTo(output);
+                    output.closeEntry();
+                }
+            }
+        }
+        Files.writeString(
+                temp.resolve("target/quill-classpath.txt"),
                 java.io.File.pathSeparator + jar,
                 java.nio.file.StandardOpenOption.APPEND);
     }

@@ -727,6 +727,40 @@ class PrefetchContextTest {
                 data.toString().substring(0, 900));
     }
 
+    // Apollo AQ-011 probe: a producer's 16-line factory calls were kept whole while its consumers
+    // and framework lookups went.
+    @Test
+    void aLongCallListIsHalvedBeforeAProducersConsumersGo() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var data = json.createObjectNode();
+        var fact =
+                data.putArray("facts")
+                        .addObject()
+                        .put("kind", "direct_method_impact")
+                        .put("target", "x.A");
+        var calls = fact.putArray("calls");
+        for (int i = 0; i < 16; i++)
+            calls.add((i < 4 ? "1 " : "2 ") + "x.Factory#step" + i + " [static] " + "c".repeat(80));
+        fact.putArray("framework_lookups")
+                .add(
+                        "Encoder: x.Configurer#configure looks it up by type via getBeanOrNull "
+                                + "f".repeat(60));
+        var consumers = fact.putArray("produced_bean_injected_into");
+        for (int i = 0; i < 3; i++)
+            consumers.add("x.C" + i + "#encoder [] [RESOLVED] " + "p".repeat(60));
+        fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 1700));
+        PrefetchContext.boundContext(data);
+        var kept = data.path("facts").get(0);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.has("framework_lookups"), kept.toString().substring(0, 400));
+        org.junit.jupiter.api.Assertions.assertEquals(
+                3,
+                kept.path("produced_bean_injected_into").size(),
+                kept.toString().substring(0, 400));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.path("calls").size() < 16, kept.toString().substring(0, 400));
+    }
+
     // Probe of V66 CQ-027 with calls kept: the cut moved to framework_contract.rules and lost the
     // lambda and rollback rules.
     @Test

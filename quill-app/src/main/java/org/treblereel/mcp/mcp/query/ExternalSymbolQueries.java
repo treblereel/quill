@@ -792,6 +792,145 @@ public final class ExternalSymbolQueries {
         }
     }
 
+    private static final Set<String> BEAN_LOOKUPS =
+            Set.of(
+                    "getBean",
+                    "getBeanOrNull",
+                    "getBeanProvider",
+                    "getBeansOfType",
+                    "getBeanNamesForType",
+                    "getIfAvailable",
+                    "getIfUnique",
+                    "getBeansWithAnnotation");
+    private static final ConcurrentHashMap<String, List<String>> TYPE_LOOKUPS =
+            new ConcurrentHashMap<>();
+    private static final int MAX_TYPE_LOOKUPS = 6;
+    private static final int MAX_LOOKUP_SCAN = 20000;
+
+    /**
+     * Dependency methods, in the artifacts of the type's own group, that pass {@code type}'s class
+     * literal to a bean lookup ({@code getBean}, {@code getBeanOrNull}, {@code
+     * getBeanProvider}...): framework code that fetches a bean of the type by type, so no injection
+     * point names it. Apollo v1-v3 AQ-011: Claude missed Spring Security's
+     * InitializeUserDetailsBeanManagerConfigurer taking the PasswordEncoder bean that way.
+     */
+    public static List<String> typeLookups(ReadQueryContext reader, Path root, String type) {
+        Catalog catalog = catalog(reader, root);
+        return TYPE_LOOKUPS.computeIfAbsent(
+                catalog.fingerprint() + "\0" + type,
+                ignored -> {
+                    if (TYPE_LOOKUPS.size() > 64) TYPE_LOOKUPS.clear();
+                    String artifact =
+                            catalog.classes().stream()
+                                    .filter(ref -> ref.className().equals(type))
+                                    .map(ClassRef::artifact)
+                                    .findFirst()
+                                    .orElse(null);
+                    if (artifact == null || artifact.indexOf(':') < 0) return List.of();
+                    String group = artifact.substring(0, artifact.indexOf(':') + 1);
+                    String internal = type.replace('.', '/');
+                    Map<Path, List<ClassRef>> byJar = new java.util.LinkedHashMap<>();
+                    catalog.classes().stream()
+                            .filter(ref -> ref.artifact().startsWith(group))
+                            .limit(MAX_LOOKUP_SCAN)
+                            .forEach(
+                                    ref ->
+                                            byJar.computeIfAbsent(
+                                                            ref.jar(), jar -> new ArrayList<>())
+                                                    .add(ref));
+                    List<String> found = new ArrayList<>();
+                    for (var entry : byJar.entrySet()) {
+                        if (found.size() >= MAX_TYPE_LOOKUPS) break;
+                        try (JarFile jar = new JarFile(entry.getKey().toFile())) {
+                            for (ClassRef ref : entry.getValue()) {
+                                if (found.size() >= MAX_TYPE_LOOKUPS) break;
+                                JarEntry jarEntry = jar.getJarEntry(ref.entry());
+                                if (jarEntry == null) continue;
+                                try (InputStream input = jar.getInputStream(jarEntry)) {
+                                    new org.objectweb.asm.ClassReader(input)
+                                            .accept(
+                                                    new org.objectweb.asm.ClassVisitor(
+                                                            org.objectweb.asm.Opcodes.ASM9) {
+                                                        @Override
+                                                        public org.objectweb.asm.MethodVisitor
+                                                                visitMethod(
+                                                                        int access,
+                                                                        String name,
+                                                                        String descriptor,
+                                                                        String signature,
+                                                                        String[] exceptions) {
+                                                            return new org.objectweb.asm
+                                                                    .MethodVisitor(
+                                                                    org.objectweb.asm.Opcodes
+                                                                            .ASM9) {
+                                                                boolean literal;
+                                                                String lookup;
+
+                                                                @Override
+                                                                public void visitLdcInsn(
+                                                                        Object value) {
+                                                                    if (value
+                                                                                    instanceof
+                                                                                    org.objectweb
+                                                                                                    .asm
+                                                                                                    .Type
+                                                                                            t
+                                                                            && t.getInternalName()
+                                                                                    .equals(
+                                                                                            internal))
+                                                                        literal = true;
+                                                                }
+
+                                                                @Override
+                                                                public void visitMethodInsn(
+                                                                        int opcode,
+                                                                        String owner,
+                                                                        String method,
+                                                                        String desc,
+                                                                        boolean itf) {
+                                                                    if (BEAN_LOOKUPS.contains(
+                                                                                    method)
+                                                                            && lookup == null)
+                                                                        lookup = method;
+                                                                }
+
+                                                                @Override
+                                                                public void visitEnd() {
+                                                                    String line =
+                                                                            ref.className()
+                                                                                    + "#"
+                                                                                    + name
+                                                                                    + " looks it up by type via "
+                                                                                    + lookup
+                                                                                    + " ("
+                                                                                    + ref.artifact()
+                                                                                    + ")";
+                                                                    if (literal
+                                                                            && lookup != null
+                                                                            && found.size()
+                                                                                    < MAX_TYPE_LOOKUPS
+                                                                            && !found.contains(
+                                                                                    line))
+                                                                        found.add(line);
+                                                                }
+                                                            };
+                                                        }
+                                                    },
+                                                    org.objectweb.asm.ClassReader.SKIP_DEBUG
+                                                            | org.objectweb.asm.ClassReader
+                                                                    .SKIP_FRAMES);
+                                } catch (IOException | RuntimeException unreadable) {
+                                    QuillLog.swallowed(unreadable);
+                                }
+                            }
+                        } catch (IOException unreadable) {
+                            QuillLog.swallowed(unreadable);
+                        }
+                    }
+                    return List.copyOf(found);
+                });
+    }
+
     public static ObjectNode producerEvidence(Path jar, String owner, String member) {
         var ref = new ClassRef(owner, jar, owner.replace('.', '/') + ".class", "");
         ObjectNode evidence = JSON.createObjectNode();

@@ -148,7 +148,7 @@ public final class MethodPrefetchRelations {
         var hops = ThreadHops.of(db, root, classId, name, descriptor);
         if (hops != null) fact.set("thread_hops", hops);
         sameEventObservers(db, fact, classId, name, descriptor);
-        producer(db, fact, classId, name);
+        producer(db, root, fact, classId, name);
         if (root == null) return;
         boolean lambdaGap = missingLambdaEvidence(db, classId, name, descriptor);
         if (lambdaGap) fact.put("lambda_evidence_gap", true);
@@ -878,7 +878,12 @@ public final class MethodPrefetchRelations {
         return lines;
     }
 
-    private static void producer(ReadQueryContext db, ObjectNode fact, int classId, String name) {
+    private static void producer(
+            ReadQueryContext db,
+            java.nio.file.Path root,
+            ObjectNode fact,
+            int classId,
+            String name) {
         var beans = db.beans.findProducerMethodBeans(classId, name);
         if (beans.isEmpty()) return;
         ArrayNode produces = fact.putArray("produces");
@@ -952,6 +957,62 @@ public final class MethodPrefetchRelations {
         if (!parameters.isEmpty()) fact.set("producer_parameters", parameters);
         if (!injectedInto.isEmpty()) fact.set("produced_bean_injected_into", injectedInto);
         sameTypeProviders(db, fact, classId, beans);
+        frameworkLookups(db, root, fact, beans);
+    }
+
+    /**
+     * Framework code fetching a bean of a produced dependency type by type; no injection point
+     * names it.
+     */
+    private static void frameworkLookups(
+            ReadQueryContext db,
+            java.nio.file.Path root,
+            ObjectNode fact,
+            List<BeanRepository.ProducerBean> beans) {
+        if (root == null) return;
+        Set<String> types = new java.util.LinkedHashSet<>();
+        for (var bean : beans) {
+            try {
+                for (var type : JSON.readTree(String.valueOf(bean.beanTypes())))
+                    types.add(type.asText());
+            } catch (Exception unreadable) {
+                // Bean types are written by the indexer; an unreadable row only drops its lookups.
+            }
+        }
+        List<String> lines = new ArrayList<>();
+        Set<String> artifacts = new java.util.LinkedHashSet<>();
+        for (String type : types) {
+            if (type.startsWith("java.")
+                    || db.symbols.findAllClasses().stream()
+                            .anyMatch(c -> c.className().equals(type))) continue;
+            for (String line : ExternalSymbolQueries.typeLookups(db, root, type)) {
+                if (lines.size() >= 4) break;
+                // Short form: simple class name, the artifact once in the basis.
+                java.util.regex.Matcher m =
+                        java.util.regex.Pattern.compile(
+                                        "^([\\w.$]+)#(\\S+) looks it up by type via (\\w+) \\((.+)\\)$")
+                                .matcher(line);
+                if (!m.matches()) continue;
+                String owner = m.group(1).substring(m.group(1).lastIndexOf('.') + 1);
+                lines.add(
+                        type.substring(type.lastIndexOf('.') + 1)
+                                + ": "
+                                + owner
+                                + "#"
+                                + m.group(2)
+                                + " via "
+                                + m.group(3));
+                artifacts.add(m.group(4));
+            }
+        }
+        if (lines.isEmpty()) return;
+        fact.set("framework_lookups", JSON.valueToTree(lines));
+        fact.put(
+                "framework_lookups_basis",
+                "dependency methods ("
+                        + String.join(", ", artifacts)
+                        + ") passing the type's class literal to a bean lookup: framework consumers no injection "
+                        + "point lists; whether they run depends on configuration");
     }
 
     /**

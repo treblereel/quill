@@ -496,7 +496,24 @@ public final class PrefetchContext {
                     "dependency_interceptors",
                     "methods",
                     "calls",
-                    "same_type_providers");
+                    "same_type_providers",
+                    "framework_lookups",
+                    "produced_bean_injected_into",
+                    "produces");
+
+    /**
+     * Calls this many lines long are the method's own work; a longer list (a factory's internals)
+     * may be halved.
+     */
+    private static final int LAST_RESORT_CALLS = 6;
+
+    /**
+     * Apollo AQ-011: a producer's 16-line factory calls were kept whole while its consumers went.
+     */
+    private static boolean lastResort(String field, JsonNode value) {
+        if ("calls".equals(field)) return value.size() <= LAST_RESORT_CALLS;
+        return LAST_RESORT.contains(field);
+    }
 
     /**
      * A shorter field is a statement rather than a body of evidence, and removing it saves little.
@@ -644,7 +661,7 @@ public final class PrefetchContext {
                                             field,
                                             bytes + 1,
                                             false,
-                                            LAST_RESORT.contains(field)));
+                                            lastResort(field, value)));
                         });
     }
 
@@ -669,7 +686,8 @@ public final class PrefetchContext {
                     .forEach(
                             entry -> {
                                 boolean lastResort =
-                                        insideLastResort || LAST_RESORT.contains(entry.getKey());
+                                        insideLastResort
+                                                || lastResort(entry.getKey(), entry.getValue());
                                 if (entry.getValue() instanceof ArrayNode list
                                         && list.size() >= 2) {
                                     int removed = 0;

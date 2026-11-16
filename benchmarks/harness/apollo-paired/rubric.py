@@ -82,7 +82,10 @@ R = {
                'primary': r'Primary'},
     'AQ-048': {'spec': r'apollo\.openapi\.spec\.url|apollo-openapi\.yaml|spec', 'generator': r'openapi-generator|generator|генератор',
                'controller': r'ReleaseController', 'generated': r'generated|сгенер'},
-    'AQ-049': {'rename': r'resolveDelegate', 'test': r'UnifiedPermissionValidatorTest',
+    # 'test': naming the test class, or a counted passing run of the edited test (codex-check-20261116:
+    # "12 тестов прошли" after a correct rename and test change was graded a miss).
+    'AQ-049': {'rename': r'resolveDelegate',
+               'test': r'UnifiedPermissionValidatorTest|\d+\s+тест\w*\s+(?:прош|успеш)|\d+\s+tests?\s+(?:passed|succeeded)',
                'ran': r'BUILD SUCCESS|Tests run|прошл|passed|\d+/\d+'},
     'AQ-050': {'controller': r'ReleaseController', 'method': r'createRelease', 'security': r'PreAuthorize',
                'holder': r'UserInfoHolder', 'config': r'PortalConfig|ServerConfig'},

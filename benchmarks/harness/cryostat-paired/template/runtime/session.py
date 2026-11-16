@@ -173,7 +173,7 @@ def isolated(entry,d,p,preflight=False):
   text+='\n(deny file-write* (require-all (subpath "/Users") (require-not (require-any '+paths+'))))\n'
   if entry['client']=='claude':text+='\n(deny network-outbound)\n(allow network-outbound (remote ip "localhost:*"))\n'
   sb.write_text(text)
-  blocked=[OUT/'protocol.json',OUT.parents[1]/'cdi-quarkus-50/cryostat/oracles.json',Path('/Users/treblereel/workspace/redhat/cryostat/pom.xml')]
+  blocked=[OUT/'protocol.json',next(q for q in OUT.parents if (q/'cdi-quarkus-50').is_dir())/'cdi-quarkus-50/cryostat/oracles.json',Path('/Users/treblereel/workspace/redhat/cryostat/pom.xml')]
   for f in blocked:assert f.exists(),f
   checks=probe(sb,[ROOT/'pom.xml',ROOT/'target/classes/io/cryostat/security/rbac/PermissionMapper.class'],blocked,scratch);write(d/'isolation-probe.json',checks)
   os.environ.clear();os.environ.update(env)

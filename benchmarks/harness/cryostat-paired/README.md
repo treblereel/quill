@@ -26,3 +26,20 @@ synthetic traffic. `new_run.py` reuses it only while `mitmdump --version` still 
 Provider traffic is still stored as one pair of files per frame under each session's
 `wire/`, because `quill_response_reuse_audit.py` reads that layout. Packing it needs
 that reader changed first.
+
+## Runs, results and comparison (both suites)
+
+Apollo and Cryostat runs start from one entry point and land in one layout:
+
+```bash
+python3.14 benchmarks/bench.py new SUITE NAME [--cases ...] [--clients codex,claude] [--repeats N]
+python3.14 benchmarks/bench.py check SUITE NAME      # free: fixture, isolation, client preflights
+python3.14 benchmarks/bench.py start SUITE NAME      # paid; writes summary.json at the end
+python3.14 benchmarks/bench.py compare SUITE RUN [RUN ...] [--cases]
+```
+
+`benchmarks/results/<suite>/<run>/` holds `run.json` (what was asked, Quill commit), `run.log` (one line
+per session), `sessions/<case>-<client>-<arm>-r<N>/` and `summary.json` (tokens, cost, Quill calls,
+rubric verdict and missed facts per session). Runs kept in an older layout stay where they are;
+`bench.py import SUITE NAME PATH` writes their `summary.json` so they compare with new ones.
+Both suites run on disposable fixtures under `/tmp`, never on the original checkouts.

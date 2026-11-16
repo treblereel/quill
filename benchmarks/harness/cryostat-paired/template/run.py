@@ -5,8 +5,10 @@ from pathlib import Path
 
 O = Path(__file__).resolve().parent
 BASE = O / 'base'
-REPO = O.parents[2]
-F = Path('/tmp/quill-@RUN@')
+# The repository root at any depth: runs live in results/<suite>/<run>/ (and older ones in results/<run>/).
+REPO = next(p for p in O.parents if (p / 'quill-app').is_dir())
+# The suite in the name keeps runs of other suites and older runs apart under /tmp.
+F = Path('/tmp/quill-cryostat-@RUN@')
 CASES = @CASES@  # None runs every applicable case; a list makes a targeted run.
 ARM = @ARM@  # A single arm or repeat gives up the pairing: diagnostics only, never acceptance.
 REPEAT = @REPEAT@

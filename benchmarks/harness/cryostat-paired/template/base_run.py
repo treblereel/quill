@@ -1,7 +1,7 @@
 """Frozen paired Cryostat acquisition; no model hints, rerolls or answer repairs."""
 import fcntl,hashlib,importlib.util,json,os,re,shutil,subprocess,sys,threading,time
 from pathlib import Path
-O=Path(__file__).resolve().parent;REPO=O.parents[3];F=Path('/tmp/quill-cryostat-full-paired-v7');ROOT=F/'project';NATIVE=F/'native/quill';INDEX=F/'ready-index';RUNTIME=F/'runtime';MITM=Path('/tmp/quill-codex-wire-tools-v1/bin/mitmdump')
+O=Path(__file__).resolve().parent;REPO=next(p for p in O.parents if (p/'quill-app').is_dir());F=Path('/tmp/quill-cryostat-full-paired-v7');ROOT=F/'project';NATIVE=F/'native/quill';INDEX=F/'ready-index';RUNTIME=F/'runtime';MITM=Path('/tmp/quill-codex-wire-tools-v1/bin/mitmdump')
 sys.path.insert(0,str(O/'frozen-scripts'));sys.path.insert(0,str(O/'runtime'))
 import session as r
 import quill_codex_capture as capture

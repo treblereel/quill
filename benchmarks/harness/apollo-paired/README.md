@@ -69,21 +69,22 @@ python3.14 benchmarks/harness/apollo-paired/arm.py ask codex with_quill --case A
 `--case` sends the shared context block plus the case prompts as one session, like the
 Cryostat schedule.
 
-## Runs and scoring
+## Runs, results and comparison (both suites)
+
+Apollo and Cryostat runs start from one entry point and land in one layout:
 
 ```bash
-python3.14 benchmarks/harness/apollo-paired/refresh_quill.py      # after rebuilding native Quill
-python3.14 benchmarks/harness/apollo-paired/run_cases.py NAME --cases AQ-005,AQ-011 --repeats 3
-python3.14 benchmarks/harness/apollo-paired/score.py --cases A/run.log B/run.log
+python3.14 benchmarks/bench.py new SUITE NAME [--cases ...] [--clients codex,claude] [--repeats N]
+python3.14 benchmarks/bench.py check SUITE NAME      # free: fixture, isolation, client preflights
+python3.14 benchmarks/bench.py start SUITE NAME      # paid; writes summary.json at the end
+python3.14 benchmarks/bench.py compare SUITE RUN [RUN ...] [--cases]
 ```
 
-`run_cases.py` refuses a with_quill run when Quill sources are uncommitted or the fixture binary
-is not `quill-app/target/quill` built from HEAD; it writes `results/apollo-paired/NAME/run.log`
-and prints the rubric tables. `score.py` reads run logs or `metrics.json` files and reports
-strict sessions (every `rubric.py` fact of the case found in the answers), input/output tokens and
-cost, or with `--cases` one column per log. The rubric is private like the oracles. On the v1
-blind grades it passes 99% of answers graded correct but only flags 15% of partial ones (it cannot
-see side errors or forbidden claims), so it is a regression signal for core facts, not a grade.
+`benchmarks/results/<suite>/<run>/` holds `run.json` (what was asked, Quill commit), `run.log` (one line
+per session), `sessions/<case>-<client>-<arm>-r<N>/` and `summary.json` (tokens, cost, Quill calls,
+rubric verdict and missed facts per session). Runs kept in an older layout stay where they are;
+`bench.py import SUITE NAME PATH` writes their `summary.json` so they compare with new ones.
+Both suites run on disposable fixtures under `/tmp`, never on the original checkouts.
 
 ## Surviving a reboot
 

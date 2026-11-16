@@ -9,7 +9,7 @@ Each session restores the disposable fixture from prepare_fixture.py, applies th
 (Quill index + managed configs, or none), and runs the native CLI under the same Seatbelt
 read/write isolation as the Cryostat harness. Client drivers are the Cryostat harness's
 runtime/session.py codex()/claude(), pointed at the Apollo fixture.
-Results: benchmarks/results/apollo-paired/<stamp>-<client>-<arm>[-preflight]/
+Results: benchmarks/results/apollo-paired/<stamp>-<client>-<arm>[-preflight]/, or --out DIR
 """
 import importlib.util, json, os, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
@@ -174,6 +174,14 @@ def isolated(entry, d, p, preflight):
 
 
 def main(argv):
+    # --out DIR: the session directory (bench.py writes results/apollo/<run>/sessions/<case>-<client>-<arm>-r<N>).
+    out = None
+    if '--out' in argv:
+        i = argv.index('--out')
+        if i + 1 >= len(argv):
+            sys.exit(__doc__)
+        out = Path(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
     if len(argv) < 3 or argv[0] not in ('preflight', 'ask') or argv[1] not in CLIENTS or argv[2] not in ARMS \
             or (argv[0] == 'ask') != (len(argv) > 3):
         sys.exit(__doc__)
@@ -191,6 +199,8 @@ def main(argv):
     stamp = time.strftime('%Y%m%d-%H%M%S')
     label = f'{stamp}-{case.lower()}-{client}-{arm}' if case != 'adhoc' else f'{stamp}-{client}-{arm}'
     d = RESULTS / label if mode == 'ask' else RESULTS / f'{stamp}-{client}-{arm}-preflight'
+    if out is not None:
+        d = out
     entry = {'case': case, 'client': client, 'arm': arm, 'prompts': prompts or ['preflight']}
     if not (F / 'fixture.json').exists():  # /tmp was cleared (reboot): bring back the pinned fixture
         subprocess.run([sys.executable, str(HERE / 'vault.py'), 'restore'], check=True)

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Runs Apollo cases with repeats into one named run, then scores it.
+"""Freshness check for Apollo runs; the runs themselves are started by benchmarks/bench.py.
+
+Formerly ran cases with repeats into one named run, then scored it.
 
   python3.14 run_cases.py NAME [--cases AQ-005,AQ-011] [--clients codex,claude] [--repeats 3]
                           [--arm with_quill] [--allow-stale]
@@ -44,40 +46,7 @@ def fresh_or_exit():
 
 
 def main(argv):
-    ap = argparse.ArgumentParser()
-    ap.add_argument('name')
-    ap.add_argument('--cases')
-    ap.add_argument('--clients', default='codex,claude')
-    ap.add_argument('--repeats', type=int, default=1)
-    ap.add_argument('--arm', default='with_quill', choices=['with_quill', 'without_quill'])
-    ap.add_argument('--allow-stale', action='store_true')
-    args = ap.parse_args(argv)
-    if args.arm == 'with_quill' and not args.allow_stale:
-        fresh_or_exit()
-    questions = json.loads((HERE / 'data/questions.json').read_text())['cases']
-    cases = args.cases.split(',') if args.cases else sorted(questions)
-    unknown = [c for c in cases if c not in questions]
-    if unknown:
-        sys.exit(f'unknown cases: {unknown}')
-    out = RESULTS / args.name
-    out.mkdir(parents=True, exist_ok=False)
-    log = out / 'run.log'
-    (out / 'run.json').write_text(json.dumps({
-        'cases': cases, 'clients': args.clients.split(','), 'repeats': args.repeats, 'arm': args.arm,
-        'fixture': json.loads((F / 'fixture.json').read_text()) if (F / 'fixture.json').exists() else None,
-        'started': time.strftime('%Y-%m-%dT%H:%M:%S')}, indent=1) + '\n')
-    with log.open('a') as handle:
-        for repeat in range(1, args.repeats + 1):
-            for case in cases:
-                for client in args.clients.split(','):
-                    start = time.time()
-                    r = subprocess.run([sys.executable, str(HERE / 'arm.py'), 'ask', client, args.arm, '--case', case],
-                                       capture_output=True, text=True)
-                    last = (r.stdout.strip().splitlines() or [r.stderr.strip()[-300:]])[-1]
-                    handle.write(f'{case} {client} r{repeat} rc={r.returncode} {int(time.time() - start)}s {last}\n')
-                    handle.flush()
-    subprocess.run([sys.executable, str(HERE / 'score.py'), str(log)])
-    subprocess.run([sys.executable, str(HERE / 'score.py'), '--cases', str(log)])
+    sys.exit('runs moved to benchmarks/bench.py: new apollo NAME [--cases ...] [--repeats N], check, start, compare')
 
 
 if __name__ == '__main__':

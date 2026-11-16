@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Creates a frozen run directory under benchmarks/results from this template.
+"""Creates a frozen run directory under benchmarks/results/cryostat from this template.
 
 usage: new_run.py <run-name> <seed> [CQ-001,CQ-002,...] [--arm with_quill] [--repeat 1] [--client claude] [--repeats 5]
 A case list makes a targeted run: same protocol and pairing, only those cases. --arm and
@@ -30,7 +30,7 @@ def main(name, seed, cases=None, arm=None, repeat=None, client=None, repeats=3):
         unknown = sorted(set(cases) - set(known))
         if unknown:
             raise SystemExit(f'Unknown cases: {unknown}')
-    run = REPO / 'benchmarks/results' / name
+    run = REPO / 'benchmarks/results/cryostat' / name
     if run.exists():
         raise SystemExit(f'{run} exists; a started run is never reused')
     if subprocess.run(['git', 'status', '--porcelain', '--', 'quill-app/src', 'quill-core/src'],

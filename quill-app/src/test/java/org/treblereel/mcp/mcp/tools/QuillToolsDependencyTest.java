@@ -48,6 +48,20 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
                 result.path("evidence_lines_basis").asText().contains("source"), result.toString());
     }
 
+    /**
+     * Apollo AQ-043 (Codex): UserInfoHolder is injected at 25 points, all ambiguous, so no edge
+     * reached the interface and usage_kind injection found none; Codex grepped every file.
+     */
+    @Test
+    void injectionUsagesCountPointsDeclaringTheTargetType() throws Exception {
+        JsonNode result = JDBI_READS.findUsages(jdbi, "PaymentService", "injection", null, 10, 0);
+        JsonNode usages = result.path("usages");
+        assertEquals(1, usages.size(), result.toString());
+        assertEquals("org.acme.OrderService", usages.get(0).path("class").asText());
+        assertEquals("injection", usages.get(0).path("usage_kind").asText());
+        assertEquals("INJECTION_POINT", usages.get(0).path("indexed_kind").asText());
+    }
+
     @Test
     void classUsagesExposeInvokedMembersWithoutMixingOverloadsOrCallbacks() throws Exception {
         jdbi.useHandle(
@@ -136,9 +150,9 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
                 VALUES (1, 2, 'TYPE_USE', 2, '[18,21]')"""));
 
         JsonNode first = JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 0);
-        JsonNode second = JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 1);
+        JsonNode second = JDBI_READS.findUsages(jdbi, "PaymentService", null, null, 1, 2);
 
-        assertEquals(2, first.path("total").asInt());
+        assertEquals(3, first.path("total").asInt()); // plus OrderService injecting PaymentService
         assertTrue(first.path("has_more").asBoolean());
         assertEquals("inheritance", first.path("usages").get(0).path("usage_kind").asText());
         assertEquals("type_reference", second.path("usages").get(0).path("usage_kind").asText());

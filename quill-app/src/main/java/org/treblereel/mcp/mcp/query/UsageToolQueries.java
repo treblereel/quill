@@ -204,6 +204,8 @@ public final class UsageToolQueries {
                             dependency.evidenceLines()));
         }
 
+        injectionPoints(reader, target, result);
+
         for (ClassRecord candidate : reader.symbols.findAllClasses()) {
             if (Objects.equals(candidate.superclass(), target.className())) {
                 add(result, new Usage(candidate, "inheritance", "EXTENDS", 1, List.of()));
@@ -234,6 +236,36 @@ public final class UsageToolQueries {
                             List.of()));
         }
         return new ArrayList<>(result.values());
+    }
+
+    /**
+     * Beans with an injection point declaring the target type. Injection edges reach only the bean
+     * a point resolves to: Apollo AQ-043 (Codex), UserInfoHolder had 25 points, all ambiguous, so
+     * usage_kind injection found none and Codex grepped every file.
+     */
+    private static void injectionPoints(
+            ReadQueryContext reader, ClassRecord target, Map<UsageKey, Usage> result) {
+        String simple = target.className().substring(target.className().lastIndexOf('.') + 1);
+        List<Integer> owners =
+                reader.jdbi()
+                        .withHandle(
+                                handle ->
+                                        handle.createQuery(
+                                                        """
+                SELECT b.class_id FROM injection_points ip JOIN beans b ON b.id = ip.bean_id
+                WHERE ip.target_type = :name OR ip.target_type = :simple""")
+                                                .bind("name", target.className())
+                                                .bind("simple", simple)
+                                                .mapTo(Integer.class)
+                                                .list());
+        if (owners.isEmpty()) return;
+        Map<Integer, ClassRecord> classes =
+                reader.symbols.findClassesByIds(owners.stream().distinct().toList());
+        for (Integer owner : owners) {
+            ClassRecord consumer = classes.get(owner);
+            if (consumer != null && consumer.id() != target.id())
+                add(result, new Usage(consumer, "injection", "INJECTION_POINT", 1, List.of()));
+        }
     }
 
     private static void add(Map<UsageKey, Usage> result, Usage usage) {

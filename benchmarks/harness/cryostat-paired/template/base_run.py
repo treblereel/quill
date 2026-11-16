@@ -27,9 +27,13 @@ def setup(entry,d,p):
  os.environ['JAVA_HOME']='/Users/treblereel/.sdkman/candidates/java/25.0.1-graalce'
  os.environ['MAVEN_ARGS']='--settings '+str(F/'build-settings/settings.xml')+' --toolchains '+str(F/'build-settings/toolchains.xml')
  os.environ['MAVEN_OPTS']='-Djava.io.tmpdir='+str(build/'tmp')+' -Djansi.tmpdir='+str(build/'tmp')
+ # mvnw reads MAVEN_CONFIG, not MAVEN_ARGS; forked test JVMs ignore MAVEN_OPTS (Apollo AQ-049).
+ os.environ['MAVEN_CONFIG']=os.environ['MAVEN_ARGS']
+ os.environ['JAVA_TOOL_OPTIONS']='-Djava.io.tmpdir='+str(build/'tmp')
  if entry['case']=='CQ-049':
   repo=build/'repository';repo.mkdir();subprocess.run(['/bin/cp','-cR',str(Path.home()/'.m2/repository')+'/.',str(repo)],check=True)
   os.environ['MAVEN_ARGS']+=' -o -Dmaven.repo.local='+str(repo)
+  os.environ['MAVEN_CONFIG']=os.environ['MAVEN_ARGS']
   put(build/'cache-policy.json',{'private_writable_apfs_clone':True,'same_in_both_arms':True,'offline':True,'repository':str(repo)})
  if entry['arm']=='without_quill':
   for path in (ROOT/'target').glob('quill-*'):

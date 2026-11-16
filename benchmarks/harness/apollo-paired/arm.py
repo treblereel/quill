@@ -149,7 +149,13 @@ def isolated(entry, d, p, preflight):
         env.update(CODEX_HOME=str(home), CLAUDE_CONFIG_DIR=str(claude_home), TMPDIR=str(scratch),
                    CLAUDE_CODE_TMPDIR=str(scratch), JAVA_HOME=java, PATH=f"{java}/bin:{old_env['PATH']}",
                    MAVEN_ARGS=f"--settings {F}/build-settings/settings.xml --toolchains {F}/build-settings/toolchains.xml",
-                   MAVEN_OPTS=f'-Djava.io.tmpdir={build_tmp} -Djansi.tmpdir={build_tmp}')
+                   # mvnw (takari) ignores MAVEN_ARGS and reads MAVEN_CONFIG; a clone lacks the ignored
+                   # .mvn/maven.config, so without this mvnw read the sandbox-denied ~/.m2/settings.xml.
+                   MAVEN_CONFIG=f"--settings {F}/build-settings/settings.xml --toolchains {F}/build-settings/toolchains.xml",
+                   MAVEN_OPTS=f'-Djava.io.tmpdir={build_tmp} -Djansi.tmpdir={build_tmp}',
+                   # Forked test JVMs do not inherit MAVEN_OPTS; their default temp dir is denied, and
+                   # Mockito failed there (AQ-049, both arms).
+                   JAVA_TOOL_OPTIONS=f'-Djava.io.tmpdir={build_tmp}')
         allowed = [ROOT, d, home, claude_home, scratch, build_tmp, CRYOSTAT / 'runtime', RUNTIME,
                    Path.home() / '.m2/repository', Path.home() / '.m2/wrapper', Path.home() / '.sdkman',
                    Path.home() / 'Library/Java/JavaVirtualMachines', Path.home() / 'Library/Caches/JNA']

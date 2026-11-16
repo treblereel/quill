@@ -1162,7 +1162,8 @@ public final class StructureToolQueries {
             node.put("reason", point.resolutionReason().name());
             node.put("confidence", point.resolutionConfidence().name().toLowerCase());
             node.set("limitations", JSON.valueToTree(point.limitations()));
-            appendResolutionTrace(node, point, resolvedBeans, resolvedClasses);
+            appendResolutionTrace(
+                    reader, node, point, resolvedBeans, resolvedClasses, cls.inTestSourceSet());
             if (point.resolvedBeanId() == null
                     && (point.resolutionStatus() == ResolutionStatus.UNKNOWN
                             || point.resolutionStatus() == ResolutionStatus.UNSATISFIED)) {
@@ -1372,16 +1373,32 @@ public final class StructureToolQueries {
     }
 
     private static void appendResolutionTrace(
+            ReadQueryContext reader,
             ObjectNode node,
             InjectionPointRecord point,
             Map<Integer, BeanRecord> beans,
-            Map<Integer, ClassRecord> classes) {
+            Map<Integer, ClassRecord> classes,
+            boolean testOwner) {
         ObjectNode trace = node.putObject("resolution_trace");
         trace.set("applied_rules", JSON.valueToTree(point.resolutionTrace().appliedRules()));
         trace.set(
                 "unsupported_rules", JSON.valueToTree(point.resolutionTrace().unsupportedRules()));
         ArrayNode candidates = trace.putArray("candidates");
+        List<String> testSource = new ArrayList<>();
         for (ResolutionCandidate candidate : point.resolutionTrace().candidates()) {
+            BeanRecord candidateBean =
+                    candidate.beanId() == null ? null : beans.get(candidate.beanId());
+            ClassRecord owner = candidateBean == null ? null : classes.get(candidateBean.classId());
+            // Apollo AQ-050: a production class's ambiguous UserInfoHolder listed three test
+            // configurations at full length; test sources are not in its production context.
+            if (!testOwner && owner != null && owner.inTestSourceSet()) {
+                testSource.add(
+                        owner.className()
+                                + (candidateBean.memberName() == null
+                                        ? ""
+                                        : "#" + candidateBean.memberName()));
+                continue;
+            }
             ObjectNode candidateNode = candidates.addObject();
             if (candidate.beanId() == null) candidateNode.putNull("bean_id");
             else candidateNode.put("bean_id", candidate.beanId());
@@ -1402,6 +1419,15 @@ public final class StructureToolQueries {
                 candidateNode.put("scope", BeanTerms.scope(bean));
                 if (bean.memberName() != null) candidateNode.put("member", bean.memberName());
                 candidateNode.set("qualifiers", JSON.valueToTree(BeanTerms.qualifiers(bean)));
+                // Which candidate a profile activates was the question; Codex read the
+                // configuration class for its @Profile.
+                if (bean.profiles() != null && !bean.profiles().isEmpty())
+                    candidateNode.set("profiles", JSON.valueToTree(bean.profiles()));
+                List<String> conditions =
+                        org.treblereel.mcp.mcp.prefetch.MethodPrefetchRelations
+                                .registrationConditions(reader, bean.classId(), bean.memberName());
+                if (!conditions.isEmpty())
+                    candidateNode.set("conditions", JSON.valueToTree(conditions));
             }
             candidateNode.put("disposition", candidate.disposition().name().toLowerCase());
             candidateNode.put("reason", candidate.reason().name());
@@ -1414,6 +1440,13 @@ public final class StructureToolQueries {
                 }
             }
             candidateNode.set("rules", JSON.valueToTree(candidate.rules()));
+        }
+        if (!testSource.isEmpty()) {
+            trace.set("test_source_candidates", JSON.valueToTree(testSource));
+            trace.put(
+                    "test_source_note",
+                    "beans declared in test sources; they join test contexts, not the production"
+                            + " context of this main-source class");
         }
     }
 

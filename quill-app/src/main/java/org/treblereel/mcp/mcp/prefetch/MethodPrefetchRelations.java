@@ -1277,6 +1277,22 @@ public final class MethodPrefetchRelations {
                         + "@ConditionalOnMissingBean skips this method only if a matching bean is registered before it");
     }
 
+    /**
+     * A bean's registration conditions other than @Profile (stated apart): its class's and, for a
+     * bean method, the method's. list_injection_points states them on candidates.
+     */
+    public static List<String> registrationConditions(
+            ReadQueryContext db, int classId, String member) {
+        List<String> result = new ArrayList<>();
+        for (String condition : classConditions(db, classId))
+            if (!condition.startsWith("@Profile(")) result.add(condition);
+        if (member != null)
+            for (String condition : memberConditions(db, classId, member))
+                if (!condition.startsWith("@Profile(") && !result.contains(condition))
+                    result.add(condition);
+        return result;
+    }
+
     private static List<String> classConditions(ReadQueryContext db, int classId) {
         return db
                 .jdbi()

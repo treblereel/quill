@@ -842,6 +842,116 @@ class PrefetchContextTest {
                 kept.toString().substring(0, 300));
     }
 
+    // Budget plan item 13: the fields a question asks about are cut last; the shared context block
+    // above it does not count.
+    @Test
+    void theBudgetKeepsTheFieldsTheQuestionAsksAbout() throws Exception {
+        java.util.function.Function<String, com.fasterxml.jackson.databind.JsonNode> bound =
+                prompt -> {
+                    var json = new com.fasterxml.jackson.databind.ObjectMapper();
+                    var data = json.createObjectNode();
+                    var fact =
+                            data.putArray("facts")
+                                    .addObject()
+                                    .put("kind", "CLASS")
+                                    .put("class", "x.A");
+                    var into = fact.putArray("injected_into");
+                    for (int i = 0; i < 4; i++) into.add("x.C" + i + "#a " + "i".repeat(150));
+                    var tests = fact.putArray("declaring_class_tests");
+                    for (int i = 0; i < 4; i++) tests.add("x.T" + i + "Test " + "t".repeat(150));
+                    fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 1100));
+                    PrefetchContext.boundContext(data, prompt);
+                    return data.path("facts").get(0);
+                };
+        String context =
+                "Context: Enumerations are bounded to application-owned production/test source.\nProfile: prod.\n";
+        var aboutTests = bound.apply(context + "Какие тесты запустить после изменения x.A?");
+        org.junit.jupiter.api.Assertions.assertEquals(
+                4,
+                aboutTests.path("declaring_class_tests").size(),
+                aboutTests.toString().substring(0, 200));
+        org.junit.jupiter.api.Assertions.assertTrue(aboutTests.path("injected_into").size() < 4);
+        var aboutInjection = bound.apply(context + "Where is x.A injected?");
+        org.junit.jupiter.api.Assertions.assertEquals(
+                4,
+                aboutInjection.path("injected_into").size(),
+                aboutInjection.toString().substring(0, 200));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                aboutInjection.path("declaring_class_tests").size() < 4);
+    }
+
+    // Apollo AQ-044 probe: a question touching scope, consumers and the bean name protected so much
+    // that the bean name went.
+    @Test
+    void fieldsTheQuestionAsksAboutOutliveTheStaticLastResortOnes() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var data = json.createObjectNode();
+        var fact =
+                data.putArray("facts").addObject().put("kind", "CLASS").put("class", "x.Validator");
+        fact.putArray("bean_name_expressions")
+                .add(
+                        "bean name validator: 129 annotation expressions (@PreAuthorize) "
+                                + "b".repeat(200));
+        fact.putObject("framework_contract").put("rules", "f".repeat(400));
+        fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 500));
+        PrefetchContext.boundContext(
+                data, "Как заменить x.Validator @Bean-методом, не потеряв имя bean?");
+        var kept = data.path("facts").get(0);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.has("bean_name_expressions"), data.path("context_omitted_fields").toString());
+    }
+
+    // Apollo AQ-046 probe: a test question kept 21 declaring_class_tests lines and dropped every
+    // caller.
+    @Test
+    void aLongListTheQuestionAsksAboutIsStillHalved() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var data = json.createObjectNode();
+        var fact =
+                data.putArray("facts")
+                        .addObject()
+                        .put("kind", "direct_method_impact")
+                        .put("target", "x.A");
+        var tests = fact.putArray("declaring_class_tests");
+        for (int i = 0; i < 20; i++) tests.add("x.T" + i + "Test " + "t".repeat(100));
+        fact.putArray("production_callers").add("x.Caller#run " + "p".repeat(200));
+        fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 2300));
+        PrefetchContext.boundContext(data, "Какие тесты запустить после изменения x.A#run?");
+        var kept = data.path("facts").get(0);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.has("production_callers"), data.path("context_omitted_fields").toString());
+        org.junit.jupiter.api.Assertions.assertTrue(kept.path("declaring_class_tests").size() < 20);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.path("declaring_class_tests").size() >= 5, kept.toString().substring(0, 200));
+    }
+
+    // Apollo AQ-041 probe: asked about five things, the budget removed the one SpEL reference whole
+    // while lists stayed long.
+    @Test
+    void amongAskedFieldsListsAreHalvedBeforeAFieldGoesWhole() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var data = json.createObjectNode();
+        var fact =
+                data.putArray("facts")
+                        .addObject()
+                        .put("kind", "direct_method_impact")
+                        .put("target", "x.A");
+        fact.putObject("expression_references")
+                .put("total", 1)
+                .putArray("references")
+                .add("C#create @PreAuthorize(@v.can(#a)) " + "e".repeat(150));
+        var tests = fact.putArray("declaring_class_tests");
+        for (int i = 0; i < 5; i++) tests.add("x.T" + i + "Test " + "t".repeat(120));
+        var callers = fact.putArray("production_callers");
+        for (int i = 0; i < 4; i++) callers.add("x.C" + i + "#run " + "p".repeat(120));
+        fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 1300));
+        PrefetchContext.boundContext(
+                data, "Отдели Java callers, ссылки вне Java-кода и тесты для x.A#check.");
+        var kept = data.path("facts").get(0);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.has("expression_references"), data.path("context_omitted_fields").toString());
+    }
+
     // Probe of V66 CQ-027 with calls kept: the cut moved to framework_contract.rules and lost the
     // lambda and rollback rules.
     @Test

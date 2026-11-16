@@ -549,12 +549,26 @@ public final class PrefetchContext {
     private static final int TRUNCATION_NOTE_BYTES = 30;
 
     /** Portable hook budget: omit complete facts explicitly instead of letting clients cut JSON. */
+    /** Fields the current question asks about; read by {@link #lastResort} during one bound. */
+    private static final ThreadLocal<Set<String>> ASKED = ThreadLocal.withInitial(Set::of);
+
+    /** Budget plan item 13: the fields the question asks about are cut last. */
+    public static void boundContext(ObjectNode data, String prompt) {
+        ASKED.set(QuestionFocus.fields(prompt));
+        try {
+            boundContext(data);
+        } finally {
+            ASKED.remove();
+        }
+    }
+
     public static void boundContext(ObjectNode data) {
         final int limit = CONTEXT_LIMIT_BYTES;
         if (!(data.path("facts") instanceof ArrayNode facts)) return;
         // Direct evidence takes precedence over navigation and index diagnostics.
         for (String field : OPTIONAL_FIELDS) {
             if (size(data) <= limit) break;
+            if (ASKED.get().contains(field)) continue;
             if (!removeField(facts, field)) continue;
             data.withArray("context_omitted_fields").add(field);
             // V68 CQ-039: these hold navigation and diagnostics, not evidence; "partial" for them
@@ -616,7 +630,12 @@ public final class PrefetchContext {
 
     /** A cut and the bytes it frees after paying for the note that states it. */
     private record Cut(
-            ObjectNode owner, String field, int frees, boolean list, boolean lastResort) {}
+            ObjectNode owner,
+            String field,
+            int frees,
+            boolean list,
+            boolean lastResort,
+            boolean asked) {}
 
     /**
      * Applies the smallest cut that fits the budget, or else the largest, so a small overrun never
@@ -635,7 +654,14 @@ public final class PrefetchContext {
             }
         cuts.removeIf(cut -> cut.frees() <= 0);
         if (cuts.isEmpty()) return false;
-        List<Cut> others = cuts.stream().filter(cut -> !cut.lastResort()).toList();
+        // Three tiers: ordinary fields, then the static last resorts, then what the question asks
+        // about.
+        List<Cut> others = cuts.stream().filter(cut -> !cut.lastResort() && !cut.asked()).toList();
+        if (others.isEmpty()) others = cuts.stream().filter(cut -> !cut.asked()).toList();
+        // Among the fields the question asks about, halve lists before any goes whole (Apollo
+        // AQ-041 lost its
+        // one SpEL reference and the interface contracts while three test lists stayed).
+        if (others.isEmpty()) others = cuts.stream().filter(Cut::list).toList();
         if (!others.isEmpty()) cuts = others;
         int over = size(data) - limit;
         // Several small cuts are better than one far larger than the overrun.
@@ -691,7 +717,8 @@ public final class PrefetchContext {
                                             field,
                                             bytes + 1,
                                             false,
-                                            lastResort(field, value, fact)));
+                                            lastResort(field, value, fact),
+                                            ASKED.get().contains(field)));
                         });
     }
 
@@ -735,7 +762,11 @@ public final class PrefetchContext {
                                                     entry.getKey(),
                                                     removed - note,
                                                     true,
-                                                    lastResort));
+                                                    lastResort,
+                                                    // A long list the question asks about may still
+                                                    // be halved (Apollo AQ-046).
+                                                    ASKED.get().contains(entry.getKey())
+                                                            && list.size() <= LAST_RESORT_CALLS));
                                 }
                                 // Kept whole, but its own list may be halved (Apollo AQ-041).
                                 boolean inherited =

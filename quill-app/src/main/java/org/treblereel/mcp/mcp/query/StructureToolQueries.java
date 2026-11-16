@@ -1060,6 +1060,7 @@ public final class StructureToolQueries {
                     reader, related, cls.className().substring(0, nested), "enclosing_class");
         if (cls.superclass() != null)
             addRelatedBean(reader, related, cls.superclass(), "superclass");
+        appendCreatingBeanMethods(reader, root, cls);
         root.put("query_direction", "dependencies_injected_into_bean");
         root.put(
                 "consumer_guidance",
@@ -1070,6 +1071,69 @@ public final class StructureToolQueries {
                 .put("target", cls.className());
         appendMeta(root, reader, 0);
         return root;
+    }
+
+    /**
+     * @Bean methods whose body constructs this class: the bean is theirs, typed by their return
+     * type. Apollo AQ-023: SpringSecurityUserInfoHolder answered NOT_A_BEAN with no related bean,
+     * though two @Bean methods create it, and Claude read AuthConfiguration whole.
+     */
+    private static void appendCreatingBeanMethods(
+            ReadQueryContext reader, ObjectNode root, ClassRecord cls) {
+        var rows =
+                reader.jdbi()
+                        .withHandle(
+                                handle ->
+                                        handle.createQuery(
+                                                        """
+                SELECT DISTINCT c.id AS class_id, c.class_name, b.member_name, b.profiles, b.bean_types, b.scope, b.framework
+                FROM method_calls mc
+                JOIN beans b ON b.declaring_class_id = mc.from_class_id AND b.member_name = mc.from_method
+                JOIN classes c ON c.id = mc.from_class_id
+                WHERE mc.to_class_id = :id AND mc.to_method = '<init>'
+                ORDER BY c.class_name, b.member_name LIMIT 6""")
+                                                .bind("id", cls.id())
+                                                .mapToMap()
+                                                .list());
+        if (rows.isEmpty()) return;
+        ArrayNode created = root.putArray("created_by_bean_methods");
+        for (var row : rows) {
+            int classId = ((Number) row.get("class_id")).intValue();
+            String member = String.valueOf(row.get("member_name"));
+            StringBuilder line =
+                    new StringBuilder(
+                            row.get("class_name")
+                                    + "#"
+                                    + member
+                                    + " types "
+                                    + row.get("bean_types"));
+            Object profiles = row.get("profiles");
+            if (profiles != null
+                    && !String.valueOf(profiles).isBlank()
+                    && !"[]".equals(String.valueOf(profiles)))
+                line.append(" profiles ").append(String.valueOf(profiles).replace("\"", ""));
+            List<String> conditions =
+                    org.treblereel.mcp.mcp.prefetch.MethodPrefetchRelations.registrationConditions(
+                            reader, classId, member);
+            if (!conditions.isEmpty())
+                line.append(" conditions ").append(String.join(", ", conditions));
+            List<String> parameters = new ArrayList<>();
+            reader.beans
+                    .findMethodParameters(classId, member)
+                    .forEach(
+                            parameter ->
+                                    parameters.add(
+                                            parameter.targetType()
+                                                    + " ["
+                                                    + parameter.resolutionStatus()
+                                                    + "]"));
+            if (!parameters.isEmpty())
+                line.append(" parameters ").append(String.join(", ", parameters));
+            created.add(line.toString());
+        }
+        root.put(
+                "created_by_basis",
+                "the bean is the @Bean method's, registered under its return type; list_injection_points on the declaring class shows that method's parameters");
     }
 
     private static void addRelatedBean(

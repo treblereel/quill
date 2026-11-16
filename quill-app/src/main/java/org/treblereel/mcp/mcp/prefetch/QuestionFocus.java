@@ -60,6 +60,10 @@ final class QuestionFocus {
                         "expression_references",
                         "bean_name_expressions",
                         "test_callers"));
+        // Apollo AQ-018: "какие зависимости нужны ... покажи параметры @Bean-метода".
+        FOCUS.put(
+                List.of("зависимост", "dependenc", "параметр", "parameter", "depends-on"),
+                List.of("producer_parameters", "declaring_class_injects"));
         FOCUS.put(
                 List.of("косвенн", "indirect", "транзитив", "transitive"),
                 List.of("indirect_production"));
@@ -113,7 +117,9 @@ final class QuestionFocus {
                         "framework_key_phases"));
         FOCUS.put(
                 List.of("scope", "lifecycle", "жизненн", "состояни", "callback"),
-                List.of("instance_state", "lifecycle_callbacks", "bean"));
+                List.of("instance_state", "lifecycle_callbacks", "bean", "produces"));
+        // Apollo AQ-016: "что создаёт X#y, какие type, имя, qualifiers и scope".
+        FOCUS.put(List.of("создаёт", "создает", "produce", "creates"), List.of("produces"));
     }
 
     private QuestionFocus() {}

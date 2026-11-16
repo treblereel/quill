@@ -596,6 +596,32 @@ public final class BeanRepository {
                 .list();
     }
 
+    /**
+     * A Spring @Bean method's parameters: Spring indexing records them on the declaring class bean,
+     * as METHOD_PARAM points named after the method.
+     */
+    public List<ProducerParameter> findMethodParameters(int declaringClassId, String member) {
+        return handle.createQuery(
+                        """
+                SELECT ip.field_name, ip.target_type, ip.qualifiers, ip.resolution_status, rc.class_name AS resolved
+                FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id AND ob.class_id = :classId AND ob.member_name IS NULL
+                LEFT JOIN beans rb ON rb.id = ip.resolved_bean_id
+                LEFT JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                WHERE ip.kind = 'METHOD_PARAM' AND ip.field_name = :member ORDER BY ip.id""")
+                .bind("classId", declaringClassId)
+                .bind("member", member)
+                .map(
+                        (rs, ctx) ->
+                                new ProducerParameter(
+                                        rs.getString("field_name"),
+                                        rs.getString("target_type"),
+                                        rs.getString("qualifiers"),
+                                        rs.getString("resolution_status"),
+                                        rs.getString("resolved")))
+                .list();
+    }
+
     /** Injection points resolved to the bean or listing it as a resolution candidate. */
     public List<BeanConsumer> findBeanConsumers(int beanId) {
         return handle.createQuery(

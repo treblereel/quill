@@ -289,6 +289,45 @@ class MethodPrefetchRelationsTest {
     }
 
     /**
+     * Apollo AQ-018: Spring records a @Bean method's parameters on the declaring class bean, under
+     * the method name; producer_parameters looked them up on the produced bean and showed none, so
+     * no answer said where the UserRepository parameter's bean comes from.
+     */
+    @Test
+    void aSpringBeanMethodsParametersComeFromTheDeclaringClassBean() throws Exception {
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        "package p; class Service {} class Repo {} class AuthConfig { Service service(Repo repo) { return null; } }");
+        db.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, framework) SELECT id, 'CLASS', '@Singleton', '[]', '[\"p.AuthConfig\"]', 'spring' FROM classes WHERE class_name = 'p.AuthConfig'");
+                    handle.execute(
+                            "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, declaring_class_id, member_name, framework) "
+                                    + "SELECT id, 'PRODUCER_METHOD', '@Singleton', '[]', '[\"p.Service\"]', id, 'service', 'spring' FROM classes WHERE class_name = 'p.AuthConfig'");
+                    handle.execute(
+                            "INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolution_status, resolution_strategy, "
+                                    + "resolution_reason, resolution_confidence) SELECT b.id, 'METHOD_PARAM', 'p.Repo', '[]', 'service', 'UNKNOWN', "
+                                    + "'STATIC_SPRING', 'NO_CONTEXT_CANDIDATE', 'LOW' FROM beans b JOIN classes c ON c.id = b.class_id WHERE c.class_name = 'p.AuthConfig' AND b.kind = 'CLASS'");
+                });
+        ObjectNode fact =
+                JSON.createObjectNode()
+                        .put("class", "p.AuthConfig")
+                        .put("name", "service")
+                        .put("descriptor", "(Lp/Repo;)Lp/Service;");
+        TestReads.read(
+                db,
+                reader -> {
+                    MethodPrefetchRelations.append(reader, root, fact);
+                    return null;
+                });
+        String parameters = fact.path("producer_parameters").toString();
+        assertTrue(parameters.contains("p.Repo"), fact.toString());
+        assertTrue(parameters.contains("UNKNOWN"), fact.toString());
+    }
+
+    /**
      * V62 CQ-018: every session called list_injection_points on Producers only to learn the
      * declaring bean injects nothing.
      */

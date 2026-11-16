@@ -1168,6 +1168,8 @@ public final class StructureToolQueries {
                     && (point.resolutionStatus() == ResolutionStatus.UNKNOWN
                             || point.resolutionStatus() == ResolutionStatus.UNSATISFIED)) {
                 appendProviderEvidence(reader, node, point, providers);
+                String repository = SpringDataRepositories.describe(reader, point.targetType());
+                if (repository != null) node.put("spring_data_repository", repository);
             }
             if (point.resolutionStatus() == ResolutionStatus.AMBIGUOUS) {
                 node.putNull("resolved_to");

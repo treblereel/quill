@@ -925,30 +925,36 @@ public final class MethodPrefetchRelations {
                             + BeanTerms.qualifiersJson(bean.framework(), bean.qualifiers())
                             + " types "
                             + bean.beanTypes());
-            db.beans
-                    .findProducerParameters(id)
-                    .forEach(
-                            row ->
-                                    parameters.add(
-                                            row.fieldName()
-                                                    + ": "
-                                                    + row.targetType()
-                                                    + " "
-                                                    + BeanTerms.qualifiersJson(
-                                                            bean.framework(), row.qualifiers())
-                                                    + " -> "
-                                                    + (row.resolved() == null
-                                                            ? "not resolved by the application index"
-                                                                    + dependencyProviders(
-                                                                            db,
-                                                                            String.valueOf(
-                                                                                    row
-                                                                                            .targetType()),
-                                                                            row.qualifiers())
-                                                            : row.resolved())
-                                                    + " ["
-                                                    + row.resolutionStatus()
-                                                    + "]"));
+            var ownParameters = db.beans.findProducerParameters(id);
+            // Apollo AQ-018: Spring records a @Bean method's parameters on the declaring class
+            // bean.
+            if (ownParameters.isEmpty())
+                ownParameters = db.beans.findMethodParameters(classId, name);
+            ownParameters.forEach(
+                    row ->
+                            parameters.add(
+                                    row.fieldName()
+                                            + ": "
+                                            + row.targetType()
+                                            + " "
+                                            + BeanTerms.qualifiersJson(
+                                                    bean.framework(), row.qualifiers())
+                                            + " -> "
+                                            + (row.resolved() == null
+                                                    ? "not resolved by the application index"
+                                                            + dependencyProviders(
+                                                                    db,
+                                                                    String.valueOf(
+                                                                            row.targetType()),
+                                                                    row.qualifiers())
+                                                            + springDataRepository(
+                                                                    db,
+                                                                    String.valueOf(
+                                                                            row.targetType()))
+                                                    : row.resolved())
+                                            + " ["
+                                            + row.resolutionStatus()
+                                            + "]"));
             db.beans
                     .findBeanConsumers(id)
                     .forEach(
@@ -1129,6 +1135,12 @@ public final class MethodPrefetchRelations {
                                         .map(t -> t.substring(t.lastIndexOf('.') + 1) + "#" + name)
                                         .toList())
                         + ", which this method calls; they cover the delegates, not this method");
+    }
+
+    /** Apollo AQ-018: a repository parameter left "not resolved" with no word on its bean. */
+    private static String springDataRepository(ReadQueryContext db, String type) {
+        String text = org.treblereel.mcp.mcp.query.SpringDataRepositories.describe(db, type);
+        return text == null ? "" : "; " + text;
     }
 
     private static final int MAX_PROVIDERS = 6;

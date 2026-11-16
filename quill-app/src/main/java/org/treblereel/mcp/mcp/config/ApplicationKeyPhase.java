@@ -76,9 +76,7 @@ final class ApplicationKeyPhase {
                             + String.join("/", labels)
                             + " injection into "
                             + limited(injected)
-                            + " when each bean instance is created, from runtime config sources: no rebuild; a bean created once "
-                            + "(normal-scoped, @Singleton, a Spring singleton) reads it once, so a change applies after a restart, "
-                            + "a @Dependent or prototype one on each new instance");
+                            + " at bean creation: runtime, no rebuild; a bean created once reads it once (restart to apply)");
         if (!programmatic.isEmpty())
             parts.add("read by " + limited(programmatic) + " each time that call runs");
         // Quarkus build guards only; Apollo v2: on a Spring @Value key the clause was noise.

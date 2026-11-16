@@ -439,7 +439,12 @@ public final class PrefetchContext {
                     "override_evidence",
                     "methods",
                     "field_read_source",
-                    "same_event_observers");
+                    "same_event_observers",
+                    // Provenance and navigation of a configuration fact (V68 CQ-039).
+                    "related_declaration_provenance",
+                    "declaration_basis",
+                    "configuration_resources",
+                    "key_constants");
 
     /**
      * What a fact is about and how far it reaches: the rest can go first, so the fact can still be
@@ -499,7 +504,10 @@ public final class PrefetchContext {
                     "same_type_providers",
                     "framework_lookups",
                     "produced_bean_injected_into",
-                    "produces");
+                    "produces",
+                    "references",
+                    "source_precedence",
+                    "application_key_phase");
 
     /**
      * Calls this many lines long are the method's own work; a longer list (a factory's internals)
@@ -604,7 +612,13 @@ public final class PrefetchContext {
         List<Cut> cuts = new ArrayList<>();
         collectLists(facts, cuts);
         for (JsonNode fact : facts)
-            if (fact instanceof ObjectNode object) collectFields(object, cuts);
+            if (fact instanceof ObjectNode object) {
+                collectFields(object, cuts);
+                // V68 CQ-039: a configuration fact keeps everything in evidence, whose only cut was
+                // its references.
+                if (object.path("evidence") instanceof ObjectNode evidence)
+                    collectFields(evidence, cuts);
+            }
         cuts.removeIf(cut -> cut.frees() <= 0);
         if (cuts.isEmpty()) return false;
         List<Cut> others = cuts.stream().filter(cut -> !cut.lastResort()).toList();

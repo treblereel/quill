@@ -761,6 +761,34 @@ class PrefetchContextTest {
                 kept.path("calls").size() < 16, kept.toString().substring(0, 400));
     }
 
+    // V68 CQ-039: application_key_phase grew the packet and the budget halved the key's references,
+    // the answer itself.
+    @Test
+    void theBudgetKeepsAConfigurationKeysReferences() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var data = json.createObjectNode();
+        var evidence =
+                data.putArray("facts")
+                        .addObject()
+                        .put("kind", "configuration")
+                        .putObject("evidence");
+        var references = evidence.putArray("references");
+        for (int i = 0; i < 4; i++)
+            references.add(
+                    json.createObjectNode()
+                            .put("entry_type", i < 2 ? "definition" : "usage")
+                            .put("file", "f" + i + ".properties")
+                            .put("note", "r".repeat(150)));
+        evidence.putObject("key_constants").put("items", "k".repeat(250));
+        evidence.putObject("configuration_resources").put("scope", "c".repeat(180));
+        evidence.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 1400));
+        PrefetchContext.boundContext(data);
+        org.junit.jupiter.api.Assertions.assertEquals(
+                4,
+                data.path("facts").get(0).path("evidence").path("references").size(),
+                data.toString().substring(0, 300));
+    }
+
     // Probe of V66 CQ-027 with calls kept: the cut moved to framework_contract.rules and lost the
     // lambda and rollback rules.
     @Test

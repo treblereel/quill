@@ -60,6 +60,10 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
         assertEquals("org.acme.OrderService", usages.get(0).path("class").asText());
         assertEquals("injection", usages.get(0).path("usage_kind").asText());
         assertEquals("INJECTION_POINT", usages.get(0).path("indexed_kind").asText());
+        // Apollo AQ-043 (Claude): AuthConfiguration was named, not its
+        // portalAuthenticationValidator
+        // bean method whose parameter is the injection point; the answer missed that guard.
+        assertEquals("[\"paymentService (FIELD)\"]", usages.get(0).path("injected_at").toString());
     }
 
     @Test

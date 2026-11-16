@@ -142,6 +142,8 @@ public final class UsageToolQueries {
             node.put("usage_kind", usage.usageKind());
             node.put("indexed_kind", usage.indexedKind());
             node.put("occurrences", usage.occurrenceCount());
+            if (!usage.injectedAt().isEmpty())
+                node.set("injected_at", JSON.valueToTree(usage.injectedAt()));
             List<UsageRepository.InvokedMemberView> invoked =
                     "method_call".equals(usage.usageKind())
                             ? members.getOrDefault(usage.caller().id(), List.of())
@@ -246,26 +248,44 @@ public final class UsageToolQueries {
     private static void injectionPoints(
             ReadQueryContext reader, ClassRecord target, Map<UsageKey, Usage> result) {
         String simple = target.className().substring(target.className().lastIndexOf('.') + 1);
-        List<Integer> owners =
+        List<Map<String, Object>> owners =
                 reader.jdbi()
                         .withHandle(
                                 handle ->
                                         handle.createQuery(
                                                         """
-                SELECT b.class_id FROM injection_points ip JOIN beans b ON b.id = ip.bean_id
-                WHERE ip.target_type = :name OR ip.target_type = :simple""")
+                SELECT b.class_id, ip.field_name, ip.kind FROM injection_points ip
+                JOIN beans b ON b.id = ip.bean_id
+                WHERE ip.target_type = :name OR ip.target_type = :simple
+                ORDER BY b.class_id, ip.field_name""")
                                                 .bind("name", target.className())
                                                 .bind("simple", simple)
-                                                .mapTo(Integer.class)
+                                                .mapToMap()
                                                 .list());
         if (owners.isEmpty()) return;
+        Map<Integer, List<String>> points = new LinkedHashMap<>();
+        for (Map<String, Object> row : owners)
+            points.computeIfAbsent(
+                            ((Number) row.get("class_id")).intValue(), id -> new ArrayList<>())
+                    .add(row.get("field_name") + " (" + row.get("kind") + ")");
         Map<Integer, ClassRecord> classes =
-                reader.symbols.findClassesByIds(owners.stream().distinct().toList());
-        for (Integer owner : owners) {
-            ClassRecord consumer = classes.get(owner);
-            if (consumer != null && consumer.id() != target.id())
-                add(result, new Usage(consumer, "injection", "INJECTION_POINT", 1, List.of()));
-        }
+                reader.symbols.findClassesByIds(List.copyOf(points.keySet()));
+        // AQ-043 (Claude): naming the class only hid
+        // AuthConfiguration#portalAuthenticationValidator.
+        points.forEach(
+                (owner, members) -> {
+                    ClassRecord consumer = classes.get(owner);
+                    if (consumer != null && consumer.id() != target.id())
+                        add(
+                                result,
+                                new Usage(
+                                        consumer,
+                                        "injection",
+                                        "INJECTION_POINT",
+                                        members.size(),
+                                        List.of(),
+                                        List.copyOf(new java.util.LinkedHashSet<>(members))));
+                });
     }
 
     private static void add(Map<UsageKey, Usage> result, Usage usage) {
@@ -284,7 +304,10 @@ public final class UsageToolQueries {
                         previous.usageKind(),
                         previous.indexedKind(),
                         previous.occurrenceCount() + usage.occurrenceCount(),
-                        List.copyOf(lines)));
+                        List.copyOf(lines),
+                        previous.injectedAt().isEmpty()
+                                ? usage.injectedAt()
+                                : previous.injectedAt()));
     }
 
     private static String usageKind(String indexedKind) {
@@ -346,7 +369,17 @@ public final class UsageToolQueries {
             String usageKind,
             String indexedKind,
             int occurrenceCount,
-            List<Integer> evidenceLines) {}
+            List<Integer> evidenceLines,
+            List<String> injectedAt) {
+        Usage(
+                ClassRecord caller,
+                String usageKind,
+                String indexedKind,
+                int occurrenceCount,
+                List<Integer> evidenceLines) {
+            this(caller, usageKind, indexedKind, occurrenceCount, evidenceLines, List.of());
+        }
+    }
 
     private record UsageKey(int callerId, String usageKind, String indexedKind) {}
 }

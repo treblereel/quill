@@ -982,4 +982,29 @@ class MethodPrefetchRelationsTest {
         assertTrue(delegates.contains("p.UserVTest (tests UserV)"), fact.toString());
         assertTrue(fact.path("delegate_tests_basis").asText().contains("V#ok"), fact.toString());
     }
+
+    /**
+     * Apollo AQ-041 probe: verbose SpEL reference objects took the room of the Java callers and
+     * tests the question also asks for.
+     */
+    @Test
+    void compactImpactWritesEachAnnotationExpressionReferenceOnOneLine() throws Exception {
+        ObjectNode fact =
+                (ObjectNode)
+                        JSON.readTree(
+                                """
+                {"expression_references":{"scope":"Spring bean method calls in indexed annotation values","total":2,"showing":2,
+                 "has_more":false,"bean_names":["validator"],"references":[
+                  {"class":"x.web.ReleaseController","method":"create","annotation":"org.springframework.security.access.prepost.PreAuthorize",
+                   "expression":"@validator.canRelease(#appId, #env)","bean_name":"validator","source":"src/main/java/x/web/ReleaseController.java","module":"web","source_set":"main"},
+                  {"class":"x.web.BranchController","on":"class","annotation":"org.springframework.security.access.prepost.PreAuthorize",
+                   "expression":"@validator.canRelease(#appId, #env)","bean_name":"validator","source":"src/main/java/x/web/BranchController.java"}]}}""");
+        MethodPrefetchRelations.compactImpact(fact);
+        var references = fact.path("expression_references");
+        assertEquals(
+                "[\"ReleaseController#create @PreAuthorize(@validator.canRelease(#appId, #env))\",\"BranchController (class) @PreAuthorize(@validator.canRelease(#appId, #env))\"]",
+                references.path("references").toString(),
+                references.toString());
+        assertEquals(2, references.path("total").asInt());
+    }
 }

@@ -789,6 +789,59 @@ class PrefetchContextTest {
                 data.toString().substring(0, 300));
     }
 
+    // Apollo AQ-041 probe: the budget dropped expression_references, the @PreAuthorize callers the
+    // question asks about.
+    @Test
+    void theBudgetKeepsAMethodsAnnotationExpressionCallers() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var data = json.createObjectNode();
+        var fact =
+                data.putArray("facts")
+                        .addObject()
+                        .put("kind", "direct_method_impact")
+                        .put("target", "x.A");
+        var expressions = fact.putObject("expression_references").put("total", 2);
+        expressions
+                .putArray("references")
+                .add("x.C#create @PreAuthorize " + "e".repeat(120))
+                .add("x.D#merge @PreAuthorize " + "e".repeat(120));
+        fact.putArray("interface_contracts").add("x.I#check " + "i".repeat(300));
+        fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 500));
+        PrefetchContext.boundContext(data);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                data.path("facts").get(0).has("expression_references"),
+                data.path("context_omitted_fields").toString());
+    }
+
+    // Apollo AQ-041 probe: protecting every "references" list kept 1.4 KB of SpEL calls and dropped
+    // the Java callers and tests.
+    @Test
+    void onlyAConfigurationKeysReferencesAreLastResort() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var data = json.createObjectNode();
+        var fact =
+                data.putArray("facts")
+                        .addObject()
+                        .put("kind", "direct_method_impact")
+                        .put("target", "x.A");
+        var refs = fact.putObject("expression_references").put("total", 8).putArray("references");
+        for (int i = 0; i < 8; i++)
+            refs.add("x.C" + i + "#create @PreAuthorize " + "e".repeat(140));
+        fact.putArray("production_callers").add("x.Caller#run " + "p".repeat(60));
+        fact.putArray("test_callers").add("x.ATest#t " + "t".repeat(60));
+        fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 1500));
+        PrefetchContext.boundContext(data);
+        var kept = data.path("facts").get(0);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.has("production_callers") && kept.has("test_callers"),
+                data.path("context_omitted_fields").toString());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.has("expression_references"), data.path("context_omitted_fields").toString());
+        org.junit.jupiter.api.Assertions.assertTrue(
+                kept.path("expression_references").path("references").size() < 8,
+                kept.toString().substring(0, 300));
+    }
+
     // Probe of V66 CQ-027 with calls kept: the cut moved to framework_contract.rules and lost the
     // lambda and rollback rules.
     @Test

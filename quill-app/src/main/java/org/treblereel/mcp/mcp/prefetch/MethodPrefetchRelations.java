@@ -48,6 +48,31 @@ public final class MethodPrefetchRelations {
     }
 
     public static void compactImpact(ObjectNode fact) {
+        // Apollo AQ-041: one line per SpEL reference, so the Java callers and tests the question
+        // also asks for fit.
+        if (fact.path("expression_references") instanceof ObjectNode expressions
+                && expressions.path("references") instanceof ArrayNode references) {
+            ArrayNode lines = JSON.createArrayNode();
+            for (JsonNode reference : references) {
+                if (reference.isTextual()) {
+                    lines.add(reference);
+                    continue;
+                }
+                String owner = reference.path("class").asText();
+                String annotation = reference.path("annotation").asText();
+                lines.add(
+                        owner.substring(owner.lastIndexOf('.') + 1)
+                                + (reference.has("method")
+                                        ? "#" + reference.path("method").asText()
+                                        : " (class)")
+                                + " @"
+                                + annotation.substring(annotation.lastIndexOf('.') + 1)
+                                + "("
+                                + reference.path("expression").asText()
+                                + ")");
+            }
+            expressions.set("references", lines);
+        }
         // Its own field, so the budget drops it before halving callers (V63 CQ-046: test_callers
         // were the answer).
         ArrayNode resultUse = JSON.createArrayNode();

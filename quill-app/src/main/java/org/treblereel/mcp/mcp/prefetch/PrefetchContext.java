@@ -518,8 +518,22 @@ public final class PrefetchContext {
     /**
      * Apollo AQ-011: a producer's 16-line factory calls were kept whole while its consumers went.
      */
-    private static boolean lastResort(String field, JsonNode value) {
+    /**
+     * Never removed whole while anything else can go, yet their lists may be halved: Apollo AQ-041
+     * asks for Java callers, tests and SpEL callers together.
+     */
+    private static final Set<String> WHOLE_ONLY =
+            Set.of("expression_references", "production_callers", "test_callers", "delegate_tests");
+
+    private static boolean lastResort(String field, JsonNode value, JsonNode owner) {
+        // An empty expression list says only "none"; it must not outlive the callers (Apollo
+        // AQ-011).
+        if ("expression_references".equals(field)) return value.path("total").asInt() > 0;
+        if (WHOLE_ONLY.contains(field)) return true;
         if ("calls".equals(field)) return value.size() <= LAST_RESORT_CALLS;
+        // A configuration key's definitions and reads; Apollo AQ-041: other "references" lists
+        // (SpEL calls) are not.
+        if ("references".equals(field)) return owner != null && owner.has("resolution_scope");
         return LAST_RESORT.contains(field);
     }
 
@@ -677,7 +691,7 @@ public final class PrefetchContext {
                                             field,
                                             bytes + 1,
                                             false,
-                                            lastResort(field, value)));
+                                            lastResort(field, value, fact)));
                         });
     }
 
@@ -703,7 +717,8 @@ public final class PrefetchContext {
                             entry -> {
                                 boolean lastResort =
                                         insideLastResort
-                                                || lastResort(entry.getKey(), entry.getValue());
+                                                || lastResort(
+                                                        entry.getKey(), entry.getValue(), object);
                                 if (entry.getValue() instanceof ArrayNode list
                                         && list.size() >= 2) {
                                     int removed = 0;
@@ -722,7 +737,10 @@ public final class PrefetchContext {
                                                     true,
                                                     lastResort));
                                 }
-                                collectLists(entry.getValue(), cuts, lastResort);
+                                // Kept whole, but its own list may be halved (Apollo AQ-041).
+                                boolean inherited =
+                                        lastResort && !WHOLE_ONLY.contains(entry.getKey());
+                                collectLists(entry.getValue(), cuts, inherited);
                             });
         } else if (node instanceof ArrayNode list)
             for (JsonNode child : list) collectLists(child, cuts, insideLastResort);

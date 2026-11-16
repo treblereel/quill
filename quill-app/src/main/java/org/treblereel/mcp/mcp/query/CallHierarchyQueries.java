@@ -419,6 +419,7 @@ public final class CallHierarchyQueries {
             if (countedClasses.add(call.toClassId())) naiveTokens += call.toSourceTokens();
         }
         dispatch.writeTargets(root);
+        CallInterception.append(root, reader, page.stream().map(TraversalEdge::call).toList());
         javaLocations.writeDefaults(root);
         appendPage(root, page.size(), filtered.size(), limit, offset);
         UsageCoverage.append(root, reader, cls.id());

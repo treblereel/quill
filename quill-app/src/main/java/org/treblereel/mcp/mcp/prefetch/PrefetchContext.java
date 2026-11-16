@@ -187,7 +187,10 @@ public final class PrefetchContext {
             if (matches.isEmpty() && token.contains(".") && seenNames.add(token)) {
                 // A qualified name that is no application class: a package, or a type from
                 // dependencies.
-                ObjectNode named = NameTargetPrefetch.packageFact(db, token);
+                // Apollo AQ-048: a generated source says where it comes from; its implementer alone
+                // did not.
+                ObjectNode named = GeneratedSourceFact.fact(db, root, token);
+                if (named == null) named = NameTargetPrefetch.packageFact(db, token);
                 if (named == null) named = NameTargetPrefetch.typeProviders(db, token);
                 if (named == null) named = NameTargetPrefetch.generatedClassFact(db, token);
                 if (named != null) {

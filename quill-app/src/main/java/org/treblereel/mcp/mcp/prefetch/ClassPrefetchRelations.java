@@ -341,6 +341,7 @@ final class ClassPrefetchRelations {
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         List<ClassInjection> injectionRows = db.beans.findClassInjections(cls.id());
         lines(fact, "injects", injectionRows, row -> injects(db, row));
+        ambiguousCandidates(db, fact, cls);
         appendStateAndLifecycle(db, fact, cls);
         appendPropertiesRegistration(db, fact, cls);
         var expressions = org.treblereel.mcp.mcp.query.ExpressionReferences.forClass(db, cls);
@@ -803,6 +804,68 @@ final class ClassPrefetchRelations {
                                 + scope
                                 + " is a pseudo-scope: @InjectMock needs @MockitoConfig(convertScopes = true)"
                         : "");
+    }
+
+    /**
+     * Each ambiguous injection point's candidates with their profiles and other registration
+     * conditions; ProfileActivation marks them under the prompt's profiles. Apollo AQ-006: the
+     * injects line said only "not resolved [AMBIGUOUS]".
+     */
+    private static void ambiguousCandidates(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
+        var points =
+                db.jdbi()
+                        .withHandle(
+                                handle ->
+                                        handle.createQuery(
+                                                        """
+                SELECT ip.kind, ip.field_name, ip.target_type, ip.resolution_candidates FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                WHERE ob.class_id = :id AND ob.member_name IS NULL AND ip.resolution_status = 'AMBIGUOUS'
+                ORDER BY ip.id LIMIT 4""")
+                                                .bind("id", cls.id())
+                                                .mapToMap()
+                                                .list());
+        ObjectNode result = JSON.createObjectNode();
+        for (var point : points) {
+            List<Integer> ids = new java.util.ArrayList<>();
+            try {
+                for (var candidate :
+                        JSON.readTree(String.valueOf(point.get("resolution_candidates"))))
+                    if (candidate.path("beanId").isInt()) ids.add(candidate.path("beanId").asInt());
+            } catch (Exception unreadable) {
+                continue;
+            }
+            ArrayNode lines = JSON.createArrayNode();
+            for (var bean : db.beans.findBeansByIds(ids).values()) {
+                int ownerId =
+                        bean.declaringClassId() != null ? bean.declaringClassId() : bean.classId();
+                ClassRecord owner = db.symbols.findClassById(ownerId).orElse(null);
+                if (owner == null || (owner.inTestSourceSet() && !cls.inTestSourceSet())) continue;
+                StringBuilder line =
+                        new StringBuilder(
+                                owner.className().substring(owner.className().lastIndexOf('.') + 1)
+                                        + (bean.memberName() == null
+                                                ? ""
+                                                : "#" + bean.memberName()));
+                if (bean.profiles() != null && !bean.profiles().isEmpty())
+                    line.append(" profiles ").append(bean.profiles().toString());
+                List<String> conditions =
+                        MethodPrefetchRelations.registrationConditions(
+                                db, ownerId, bean.memberName());
+                if (!conditions.isEmpty())
+                    line.append(" conditions ").append(String.join(", ", conditions));
+                if (lines.size() < 8) lines.add(line.toString());
+            }
+            if (!lines.isEmpty())
+                result.set(
+                        point.get("kind")
+                                + " "
+                                + point.get("field_name")
+                                + ": "
+                                + point.get("target_type"),
+                        lines);
+        }
+        if (!result.isEmpty()) fact.set("ambiguous_candidates", result);
     }
 
     private static String injects(ReadQueryContext db, ClassInjection row) {

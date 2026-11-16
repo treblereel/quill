@@ -248,6 +248,7 @@ public final class PrefetchContext {
                 && previousEndpoint != null)
             return EndpointPrefetch.collect(db, root, previousEndpoint, deliveredCurrentIndex);
         result.put("index_id", metadata.getOrDefault("index_id", "unknown"));
+        ProfileActivation.annotate(result, prompt);
         return restated(result).put("status", "ready");
     }
 
@@ -447,7 +448,10 @@ public final class PrefetchContext {
                     "related_declaration_provenance",
                     "declaration_basis",
                     "configuration_resources",
-                    "key_constants");
+                    "key_constants",
+                    // Apollo AQ-007/AQ-045: candidates of a class's ambiguous points matter only to
+                    // injection questions, which ask for them and so keep them.
+                    "ambiguous_candidates");
 
     /**
      * What a fact is about and how far it reaches: the rest can go first, so the fact can still be

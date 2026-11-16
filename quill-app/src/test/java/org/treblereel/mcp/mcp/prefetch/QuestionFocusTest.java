@@ -45,4 +45,16 @@ class QuestionFocusTest {
                         "Можно ли изменить emergencyPublish.supported.envs у работающего apollo-portal без пересборки и перезапуска? Покажи доказательства поведения для этой версии.");
         assertTrue(fields.contains("programmatic_property_sources"), fields.toString());
     }
+
+    /** Apollo AQ-045 asks about consumers; candidates are the class's own dependencies. */
+    @Test
+    void askingAboutConsumersDoesNotAskForAmbiguousCandidates() {
+        assertFalse(
+                QuestionFocus.fields(
+                                "Что изменится? Проверь состояние, proxy, потребителей-singletons.")
+                        .contains("ambiguous_candidates"));
+        assertTrue(
+                QuestionFocus.fields("Что будет внедрено в параметр userInfoHolder?")
+                        .contains("ambiguous_candidates"));
+    }
 }

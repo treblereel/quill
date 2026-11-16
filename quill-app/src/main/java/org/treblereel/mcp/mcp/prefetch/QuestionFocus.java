@@ -45,6 +45,17 @@ final class QuestionFocus {
                         "framework_lookups",
                         "producer_parameters",
                         "bean"));
+        // A class's own ambiguous dependencies: not its consumers (Apollo AQ-045 asks for those).
+        FOCUS.put(
+                List.of(
+                        "внедр",
+                        "инъекц",
+                        "inject",
+                        "qualifier",
+                        "квалификатор",
+                        "кандидат",
+                        "candidate"),
+                List.of("ambiguous_candidates"));
         FOCUS.put(
                 List.of(
                         "вызыва",

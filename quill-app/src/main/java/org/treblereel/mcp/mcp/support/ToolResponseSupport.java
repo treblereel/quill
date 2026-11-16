@@ -360,6 +360,34 @@ public final class ToolResponseSupport {
         presentQueryEvidence(root, tool, JSON.valueToTree(arguments), full, offset);
     }
 
+    /**
+     * Coverage that states nothing beyond "all indexed scopes scanned and fresh". Apollo: every
+     * find_usages and get_call_hierarchy answer carried it at 1.1-1.4 KB, 7-11 calls per case.
+     */
+    /** The only gap is an open page window, which has_more already states. */
+    private static boolean pageWindowOnly(ObjectNode coverage) {
+        var reasons = coverage.path("incomplete_reasons");
+        return reasons.size() == 1 && "page_window_incomplete".equals(reasons.get(0).asText());
+    }
+
+    private static boolean nominal(ObjectNode coverage) {
+        com.fasterxml.jackson.databind.JsonNode outputs = coverage.path("compiled_outputs");
+        return coverage.path("scan_complete").asBoolean()
+                && (coverage.path("page_complete").asBoolean() || pageWindowOnly(coverage))
+                && (coverage.path("indexed_scope_verified").asBoolean() || pageWindowOnly(coverage))
+                && !coverage.path("scope_inventory_truncated").asBoolean()
+                && coverage.path("incomplete_reasons").isArray()
+                && (coverage.path("incomplete_reasons").isEmpty() || pageWindowOnly(coverage))
+                && "complete".equals(coverage.path("module_discovery").asText())
+                && "matching".equals(coverage.path("source_snapshot").path("state").asText())
+                && "fresh".equals(outputs.path("state").asText())
+                && !outputs.path("changed_after_index").asBoolean()
+                && outputs.path("stale_module_count").asInt(0) == 0
+                && coverage.path("missing_test_output_module_count").asInt(0) == 0
+                && coverage.path("unclassified_handle_reference_groups").asInt(0) == 0
+                && coverage.path("legacy_dynamic_reference_groups").asInt(0) == 0;
+    }
+
     private static ObjectNode evidenceRequest(String tool, ObjectNode arguments, int offset) {
         var request = JSON.createObjectNode().put("tool", tool);
         var args =
@@ -418,6 +446,20 @@ public final class ToolResponseSupport {
                         if (coverage.path("compiled_outputs") instanceof ObjectNode outputs)
                             countOnly(outputs, "stale_modules", "stale_module_count");
                         coverage.set("details_request", evidenceRequest(tool, arguments, 0));
+                        if (nominal(coverage)) {
+                            ObjectNode compact = JSON.createObjectNode();
+                            compact.put("state", "complete");
+                            compact.put(
+                                    "meaning",
+                                    "every indexed scope scanned, sources and compiled outputs match the index");
+                            compact.set("not_covered", coverage.path("not_covered").deepCopy());
+                            compact.set(
+                                    "incomplete_reasons",
+                                    coverage.path("incomplete_reasons").deepCopy());
+                            compact.set(
+                                    "details_request", coverage.path("details_request").deepCopy());
+                            object.set("coverage", compact);
+                        }
                     }
                 } else if (!full
                         && Set.of("project_warnings", "unavailable_projects").contains(field)

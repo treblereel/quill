@@ -35,6 +35,7 @@ final class CallHierarchyCompaction {
 
     static void compact(ObjectNode root) {
         referenceRoutes(root);
+        edgeRestatements(root);
         Set<String> fixed = dispatch(root);
         boolean defaulted = false;
         for (JsonNode node : root.path("calls")) {
@@ -52,10 +53,107 @@ final class CallHierarchyCompaction {
                 }
             }
         }
-        if (defaulted) {
+        if (defaulted || root.has("endpoint_source_default")) {
             ObjectNode defaults = root.putObject("endpoint_defaults");
-            ENDPOINT_DEFAULTS.forEach(defaults::put);
+            if (defaulted) ENDPOINT_DEFAULTS.forEach(defaults::put);
+            JsonNode source = root.remove("endpoint_source_default");
+            if (source != null) defaults.set("source", source);
         }
+    }
+
+    private static final String CONVENTIONAL_SOURCE =
+            "<module>/src/main/java/<outer class path>.java when an endpoint states no source";
+
+    /**
+     * Apollo AQ-027 (Codex): a 25-edge transitive answer was 28 KB. Each edge restated: an endpoint
+     * source the module and class already give, a direction shared by every edge, the evidence
+     * status and generation shared by every location, the caller's file as the location file, the
+     * call usage and range kinds, and a single-line location's line, which evidence_lines lists.
+     */
+    private static void edgeRestatements(ObjectNode root) {
+        var calls = root.path("calls");
+        if (calls.isEmpty()) return;
+        java.util.Set<String> directions = new java.util.HashSet<>();
+        java.util.Set<String> statuses = new java.util.HashSet<>();
+        java.util.Set<String> generations = new java.util.HashSet<>();
+        for (JsonNode edge : calls) {
+            directions.add(edge.path("traversal_direction").asText(""));
+            JsonNode evidence = edge.path("source_evidence");
+            if (evidence.isObject()) {
+                statuses.add(evidence.path("status").asText(""));
+                generations.add(evidence.path("generation").asText(""));
+            }
+        }
+        boolean oneDirection = directions.size() == 1 && !directions.contains("");
+        boolean oneStatus = statuses.size() == 1 && !statuses.contains("");
+        boolean oneGeneration = generations.size() == 1 && !generations.contains("");
+        boolean conventional = false;
+        for (JsonNode node : calls) {
+            if (!(node instanceof ObjectNode edge)) continue;
+            if (oneDirection) edge.remove("traversal_direction");
+            String callerFile = edge.path("caller").path("source").asText(null);
+            if (edge.path("source_evidence") instanceof ObjectNode evidence) {
+                if (oneStatus) evidence.remove("status");
+                if (oneGeneration) evidence.remove("generation");
+                JsonNode lines = edge.path("evidence_lines");
+                for (JsonNode item : evidence.path("locations")) {
+                    if (!(item instanceof ObjectNode location)) continue;
+                    if (callerFile != null && callerFile.equals(location.path("file").asText()))
+                        location.remove("file");
+                    if ("call".equals(location.path("usage_kind").asText()))
+                        location.remove("usage_kind");
+                    if ("reference_expression".equals(location.path("range_kind").asText()))
+                        location.remove("range_kind");
+                    boolean oneLine =
+                            location.path("end_line").asInt(-1) == location.path("line").asInt(-2);
+                    if (oneLine) location.remove("end_line");
+                    if (oneLine
+                            && evidence.path("locations").size() == 1
+                            && lines.size() == 1
+                            && lines.get(0).asInt() == location.path("line").asInt())
+                        location.remove("line");
+                }
+            }
+            for (String side : List.of("caller", "callee")) {
+                if (!(edge.path(side) instanceof ObjectNode endpoint)) continue;
+                String className = endpoint.path("class").asText("");
+                String outer =
+                        className.contains("$")
+                                ? className.substring(0, className.indexOf('$'))
+                                : className;
+                String module = endpoint.path("module").asText(".");
+                String expected =
+                        (module.equals(".") ? "" : module + "/")
+                                + "src/main/java/"
+                                + outer.replace('.', '/')
+                                + ".java";
+                if (!outer.isEmpty() && expected.equals(endpoint.path("source").asText())) {
+                    endpoint.remove("source");
+                    conventional = true;
+                }
+            }
+        }
+        if (oneDirection) {
+            ObjectNode defaults =
+                    root.path("edge_defaults") instanceof ObjectNode existing
+                            ? existing
+                            : root.putObject("edge_defaults");
+            defaults.put("traversal_direction", directions.iterator().next());
+        }
+        if (oneStatus || oneGeneration) {
+            ObjectNode defaults =
+                    root.path("source_evidence_defaults") instanceof ObjectNode existing
+                            ? existing
+                            : root.putObject("source_evidence_defaults");
+            if (oneStatus) defaults.put("status", statuses.iterator().next());
+            if (oneGeneration)
+                defaults.put("generation", Long.parseLong(generations.iterator().next()));
+            defaults.put(
+                    "location_defaults",
+                    "file is the caller's source, usage_kind call, range_kind reference_expression,"
+                            + " end_line equals line, and line is the edge's single evidence line, when absent");
+        }
+        if (conventional) root.put("endpoint_source_default", CONVENTIONAL_SOURCE);
     }
 
     /**

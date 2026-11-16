@@ -42,6 +42,10 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
         assertEquals("constructor_call", usage.path("usage_kind").asText());
         assertEquals("CONSTRUCTS", usage.path("indexed_kind").asText());
         assertEquals(42, usage.path("evidence_lines").get(0).asInt());
+        // Apollo AQ-043 (Codex): 52 rows each restated their source file as evidence_file.
+        assertFalse(usage.has("evidence_file"), usage.toString());
+        assertTrue(
+                result.path("evidence_lines_basis").asText().contains("source"), result.toString());
     }
 
     @Test

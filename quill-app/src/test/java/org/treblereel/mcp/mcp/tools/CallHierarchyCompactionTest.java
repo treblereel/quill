@@ -143,4 +143,58 @@ class CallHierarchyCompactionTest {
         assertFalse(calls.get(3).has("via"));
         assertTrue(out.path("route_basis").asText().contains("via"), out.toString());
     }
+
+    private static final String SOURCED =
+            """
+            {"target":"a.ReleaseController","calls":[
+             {"caller":{"class":"a.ReleaseController","method":"publish","descriptor":"()V","source":"admin/src/main/java/a/ReleaseController.java","module":"admin"},
+              "callee":{"class":"b.Namespace","method":"getClusterName","descriptor":"()Ljava/lang/String;","source":"biz/src/main/java/b/Namespace.java","module":"biz"},
+              "invocation_kind":"virtual","occurrence_count":1,"evidence_lines":[134],"depth":1,"traversal_direction":"outbound",
+              "source_evidence":{"status":"corroborated","generation":1,"locations":[{"file":"admin/src/main/java/a/ReleaseController.java",
+                 "usage_kind":"call","range_kind":"reference_expression","line":134,"column":24,"end_line":134,"end_column":54,
+                 "excerpt":"messageCluster = parentNamespace.getClusterName();"}]}},
+             {"caller":{"class":"b.Namespace$Inner","method":"run","descriptor":"()V","source":"biz/src/main/java/b/Namespace.java","module":"biz"},
+              "callee":{"class":"c.Odd","method":"go","descriptor":"()V","source":"elsewhere/Odd.java","module":"c"},
+              "invocation_kind":"virtual","occurrence_count":2,"evidence_lines":[5,9],"depth":2,"traversal_direction":"outbound",
+              "source_evidence":{"status":"corroborated","generation":1,"locations":[
+                 {"file":"biz/src/main/java/b/Namespace.java","usage_kind":"call","range_kind":"reference_expression","line":5,"column":3,"end_line":6,"end_column":2,"excerpt":"go("},
+                 {"file":"biz/src/main/java/b/Namespace.java","usage_kind":"call","range_kind":"reference_expression","line":9,"column":3,"end_line":9,"end_column":7,"excerpt":"go()"}]}}],
+             "source_evidence_defaults":{"basis":"compiler"},
+             "has_more":false}
+            """;
+
+    /**
+     * Apollo AQ-027 (Codex): a 25-edge transitive answer was 28 KB; each edge restated its caller's
+     * file, its conventional source path, the call kind and the line it already listed.
+     */
+    @Test
+    void edgesStopRestatingConventionalPathsDirectionAndTheirOwnLines() throws Exception {
+        JsonNode out = CallHierarchyCompaction.compactAnswer((ObjectNode) JSON.readTree(SOURCED));
+        JsonNode first = out.path("calls").get(0);
+        assertFalse(first.path("caller").has("source"), first.toString());
+        assertFalse(first.path("callee").has("source"), first.toString());
+        assertTrue(out.path("endpoint_defaults").path("source").asText().contains("src/main/java"));
+        assertFalse(first.has("traversal_direction"), first.toString());
+        assertEquals("outbound", out.path("edge_defaults").path("traversal_direction").asText());
+        JsonNode evidence = first.path("source_evidence");
+        assertFalse(evidence.has("status"), evidence.toString());
+        assertFalse(evidence.has("generation"), evidence.toString());
+        assertEquals("corroborated", out.path("source_evidence_defaults").path("status").asText());
+        assertEquals(1, out.path("source_evidence_defaults").path("generation").asInt());
+        assertEquals("compiler", out.path("source_evidence_defaults").path("basis").asText());
+        JsonNode location = evidence.path("locations").get(0);
+        assertEquals(
+                "{\"column\":24,\"end_column\":54,\"excerpt\":\"messageCluster = parentNamespace.getClusterName();\"}",
+                location.toString());
+        assertEquals(134, first.path("evidence_lines").get(0).asInt());
+
+        JsonNode second = out.path("calls").get(1);
+        assertFalse(second.path("caller").has("source"), "a nested class lives in its outer file");
+        assertEquals("elsewhere/Odd.java", second.path("callee").path("source").asText());
+        JsonNode multi = second.path("source_evidence").path("locations");
+        assertEquals(5, multi.get(0).path("line").asInt(), multi.toString());
+        assertEquals(6, multi.get(0).path("end_line").asInt(), multi.toString());
+        assertFalse(multi.get(1).has("end_line"), multi.toString());
+        assertFalse(multi.get(0).has("file"), multi.toString());
+    }
 }

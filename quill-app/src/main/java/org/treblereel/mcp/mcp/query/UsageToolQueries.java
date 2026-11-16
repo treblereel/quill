@@ -167,14 +167,15 @@ public final class UsageToolQueries {
                             : usage.caller().sourceFile()));
             node.put("origin", usage.caller().origin());
             appendContext(node, usage.caller());
-            if (!usage.evidenceLines().isEmpty()) {
-                node.put("evidence_file", usage.caller().sourceFile());
+            // Apollo AQ-043 (Codex): evidence_file always restated the row's source file.
+            if (!usage.evidenceLines().isEmpty())
                 node.set("evidence_lines", JSON.valueToTree(usage.evidenceLines()));
-            }
             appendOccurrences(node, occurrences.get(usage.caller().id()));
             naiveTokens += usage.caller().sourceTokens();
         }
         appendPage(root, page.size(), usages.size(), limit, offset);
+        if (!page.isEmpty())
+            root.put("evidence_lines_basis", "evidence_lines are lines in the row's source file");
         UsageCoverage.append(root, reader, targetClass.id());
         if (includeLiveMeta) appendMeta(root, reader, naiveTokens);
         return root;

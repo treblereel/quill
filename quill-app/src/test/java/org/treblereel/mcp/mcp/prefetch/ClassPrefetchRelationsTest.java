@@ -1470,4 +1470,73 @@ class ClassPrefetchRelationsTest {
         assertTrue(references.contains("canRelease x2"), references);
         assertTrue(references.contains("x.Controller#create"), references);
     }
+
+    /**
+     * Apollo v2/v3 AQ-024: asked who registers a @ConfigurationProperties class and when, Codex
+     * missed the @ConditionalOnProperty.
+     */
+    @Test
+    void aConfigurationPropertiesClassStatesWhoRegistersItAndWhen() throws Exception {
+        Jdbi db = QuillDatabase.create(root.resolve("properties.db"));
+        IndexWriter.writeIncremental(
+                db,
+                new IndexFixture()
+                        .classes(
+                                List.of(
+                                        new ClassRecord(
+                                                0,
+                                                "x.DiscoveryProperties",
+                                                "CLASS",
+                                                "java.lang.Object",
+                                                List.of(),
+                                                "DiscoveryProperties.java",
+                                                1,
+                                                true,
+                                                10),
+                                        new ClassRecord(
+                                                0,
+                                                "x.DiscoveryAutoConfiguration",
+                                                "CLASS",
+                                                "java.lang.Object",
+                                                List.of(),
+                                                "DiscoveryAutoConfiguration.java",
+                                                1,
+                                                true,
+                                                10)))
+                        .dependencies(List.of())
+                        .metadata(Map.of("index_id", "properties"))
+                        .snapshot());
+        db.useHandle(
+                handle -> {
+                    String insert =
+                            "INSERT INTO class_annotations(class_id,annotation_name,direct,annotation_values) VALUES (?,?,1,?)";
+                    handle.execute(
+                            insert,
+                            1,
+                            "org.springframework.boot.context.properties.ConfigurationProperties",
+                            "{\"value\":\"apollo.service.discovery\"}");
+                    handle.execute(
+                            insert,
+                            2,
+                            "org.springframework.boot.context.properties.EnableConfigurationProperties",
+                            "{\"value\":[\"x.DiscoveryProperties\"]}");
+                    handle.execute(
+                            insert,
+                            2,
+                            "org.springframework.boot.autoconfigure.condition.ConditionalOnProperty",
+                            "{\"$defaults\":[\"havingValue\",\"matchIfMissing\",\"name\"],\"havingValue\":\"\",\"matchIfMissing\":false,\"name\":[],\"prefix\":\"apollo.service.discovery\",\"value\":[\"enabled\"]}");
+                });
+
+        ObjectNode properties = relations(db, "x.DiscoveryProperties");
+
+        assertEquals(
+                List.of(
+                        "x.DiscoveryAutoConfiguration via @EnableConfigurationProperties; @ConditionalOnProperty(prefix=apollo.service.discovery, value=[enabled], matchIfMissing=false)"),
+                strings(properties, "registered_by"),
+                properties.toString());
+        assertEquals(
+                "apollo.service.discovery-x.DiscoveryProperties",
+                properties.path("properties_bean_name").asText(),
+                properties.toString());
+    }
 }

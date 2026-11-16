@@ -79,7 +79,8 @@ final class QuestionFocus {
                         "produces",
                         "registration_conditions",
                         "arc_removal",
-                        "candidate_conditions"));
+                        "candidate_conditions",
+                        "registered_by"));
         FOCUS.put(
                 List.of("контракт", "contract", "реализац", "implement", "интерфейс", "interface"),
                 List.of(

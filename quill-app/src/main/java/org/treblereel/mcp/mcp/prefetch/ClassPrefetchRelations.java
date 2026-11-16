@@ -99,10 +99,173 @@ final class ClassPrefetchRelations {
         if (!lifecycle.isEmpty()) fact.set("lifecycle_callbacks", lifecycle);
     }
 
+    private static final String CONFIGURATION_PROPERTIES =
+            "org.springframework.boot.context.properties.ConfigurationProperties";
+    private static final String ENABLE_CONFIGURATION_PROPERTIES =
+            "org.springframework.boot.context.properties.EnableConfigurationProperties";
+
+    /**
+     * A @ConfigurationProperties class is no bean on its own: the classes that register it
+     * through @EnableConfigurationProperties, their conditions, and the bean name Spring gives it.
+     * Apollo v2/v3 AQ-024: asked who registers ApolloServiceDiscoveryProperties and when, Codex
+     * missed the @ConditionalOnProperty.
+     */
+    static void appendPropertiesRegistration(
+            ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
+        var rows =
+                db.jdbi()
+                        .withHandle(
+                                handle ->
+                                        handle.createQuery(
+                                                        """
+                SELECT annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1 AND annotation_name = :name""")
+                                                .bind("id", cls.id())
+                                                .bind("name", CONFIGURATION_PROPERTIES)
+                                                .mapTo(String.class)
+                                                .list());
+        if (rows.isEmpty()) return;
+        String prefix = "";
+        try {
+            var values = JSON.readTree(rows.getFirst());
+            prefix =
+                    values.path("prefix").asText("").isBlank()
+                            ? values.path("value").asText("")
+                            : values.path("prefix").asText();
+        } catch (Exception unreadable) {
+            // Annotation values are written by the indexer; an unreadable row only drops the bean
+            // name.
+        }
+        List<String> lines = new ArrayList<>();
+        db.jdbi()
+                .useHandle(
+                        handle ->
+                                handle.createQuery(
+                                                """
+                SELECT c.id, c.class_name, c.source_set FROM class_annotations a JOIN classes c ON c.id = a.class_id
+                WHERE a.direct = 1 AND a.annotation_name = :name AND a.annotation_values LIKE :type ORDER BY c.source_set, c.class_name""")
+                                        .bind("name", ENABLE_CONFIGURATION_PROPERTIES)
+                                        .bind("type", "%\"" + cls.className() + "\"%")
+                                        .mapToMap()
+                                        .forEach(
+                                                row -> {
+                                                    if (lines.size() >= 4) return;
+                                                    List<String> conditions =
+                                                            handle
+                                                                    .createQuery(
+                                                                            """
+                            SELECT annotation_name, annotation_values FROM class_annotations
+                            WHERE class_id = :id AND direct = 1 ORDER BY annotation_name""")
+                                                                    .bind(
+                                                                            "id",
+                                                                            ((Number) row.get("id"))
+                                                                                    .intValue())
+                                                                    .mapToMap()
+                                                                    .list()
+                                                                    .stream()
+                                                                    .filter(
+                                                                            a -> {
+                                                                                String simple =
+                                                                                        String
+                                                                                                .valueOf(
+                                                                                                        a
+                                                                                                                .get(
+                                                                                                                        "annotation_name"));
+                                                                                simple =
+                                                                                        simple
+                                                                                                .substring(
+                                                                                                        simple
+                                                                                                                        .lastIndexOf(
+                                                                                                                                '.')
+                                                                                                                + 1);
+                                                                                return simple
+                                                                                                .startsWith(
+                                                                                                        "Conditional")
+                                                                                        || simple
+                                                                                                .equals(
+                                                                                                        "Profile");
+                                                                            })
+                                                                    .map(
+                                                                            a -> {
+                                                                                String name =
+                                                                                        String
+                                                                                                .valueOf(
+                                                                                                        a
+                                                                                                                .get(
+                                                                                                                        "annotation_name"));
+                                                                                return "@"
+                                                                                        + name
+                                                                                                .substring(
+                                                                                                        name
+                                                                                                                        .lastIndexOf(
+                                                                                                                                '.')
+                                                                                                                + 1)
+                                                                                        + "("
+                                                                                        + compactValues(
+                                                                                                a
+                                                                                                        .get(
+                                                                                                                "annotation_values"))
+                                                                                        + ")";
+                                                                            })
+                                                                    .toList();
+                                                    lines.add(
+                                                            row.get("class_name")
+                                                                    + ("test"
+                                                                                    .equals(
+                                                                                            row.get(
+                                                                                                    "source_set"))
+                                                                            ? " (test)"
+                                                                            : "")
+                                                                    + " via @EnableConfigurationProperties"
+                                                                    + (conditions.isEmpty()
+                                                                            ? "; unconditional"
+                                                                            : "; "
+                                                                                    + String.join(
+                                                                                            ", ",
+                                                                                            conditions)));
+                                                }));
+        if (lines.isEmpty()) return;
+        fact.set("registered_by", JSON.valueToTree(lines));
+        if (!prefix.isBlank()) fact.put("properties_bean_name", prefix + "-" + cls.className());
+        fact.put(
+                "registered_by_basis",
+                "Spring registers a type listed in @EnableConfigurationProperties as a bean named "
+                        + "<prefix>-<class> when the declaring configuration and its conditions are active");
+    }
+
+    /**
+     * {@code prefix=a, value=[b]}: annotation values without defaults bookkeeping or empty entries.
+     */
+    private static String compactValues(Object raw) {
+        try {
+            var node = JSON.readTree(String.valueOf(raw));
+            List<String> parts = new ArrayList<>();
+            node.properties()
+                    .forEach(
+                            entry -> {
+                                var value = entry.getValue();
+                                if (entry.getKey().startsWith("$")
+                                        || (value.isTextual() && value.asText().isEmpty())
+                                        || (value.isArray() && value.isEmpty())) return;
+                                if (value.isArray()) {
+                                    List<String> items = new ArrayList<>();
+                                    value.forEach(item -> items.add(item.asText()));
+                                    parts.add(entry.getKey() + "=" + items);
+                                } else parts.add(entry.getKey() + "=" + value.asText());
+                            });
+            parts.sort(
+                    java.util.Comparator.comparing((String part) -> !part.startsWith("prefix="))
+                            .thenComparing(part -> !part.startsWith("value=")));
+            return String.join(", ", parts);
+        } catch (Exception unreadable) {
+            return String.valueOf(raw);
+        }
+    }
+
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         List<ClassInjection> injectionRows = db.beans.findClassInjections(cls.id());
         lines(fact, "injects", injectionRows, row -> injects(db, row));
         appendStateAndLifecycle(db, fact, cls);
+        appendPropertiesRegistration(db, fact, cls);
         var expressions = org.treblereel.mcp.mcp.query.ExpressionReferences.forClass(db, cls);
         if (expressions != null) fact.set("bean_name_expressions", expressions);
         String origin = injectionOrigin(injectionRows);

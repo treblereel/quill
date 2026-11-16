@@ -535,9 +535,11 @@ public final class PrefetchContext {
             if (size(data) <= limit) break;
             if (!removeField(facts, field)) continue;
             data.withArray("context_omitted_fields").add(field);
-            data.put("context_limit_bytes", limit)
-                    .put("context_truncated", true)
-                    .put("status", "partial");
+            // V68 CQ-039: these hold navigation and diagnostics, not evidence; "partial" for them
+            // made Claude
+            // repeat the lookup the prefetch had done. The omission stays stated in
+            // context_omitted_fields.
+            data.put("context_limit_bytes", limit).put("context_truncated", true);
         }
         // Lists lose half and other fields go whole, each cut stated, before whole facts go.
         if (size(data) > limit)

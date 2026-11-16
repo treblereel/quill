@@ -1078,7 +1078,7 @@ public final class StructureToolQueries {
      * type. Apollo AQ-023: SpringSecurityUserInfoHolder answered NOT_A_BEAN with no related bean,
      * though two @Bean methods create it, and Claude read AuthConfiguration whole.
      */
-    private static void appendCreatingBeanMethods(
+    public static void appendCreatingBeanMethods(
             ReadQueryContext reader, ObjectNode root, ClassRecord cls) {
         var rows =
                 reader.jdbi()

@@ -1539,4 +1539,60 @@ class ClassPrefetchRelationsTest {
                 properties.path("properties_bean_name").asText(),
                 properties.toString());
     }
+
+    /**
+     * Apollo AQ-033 (Codex): asked what starts ReleaseMessageScanner, its Spring dependencies and
+     * the settings driving its schedule, Codex read four files; the class fact named
+     * InitializingBean but not afterPropertiesSet's scheduling, the interval key it reads through
+     * BizConfig, or the @Bean method creating it.
+     */
+    @Test
+    void aLifecycleCallbackStatesItsSchedulingConfigReadsAndCreator(@TempDir Path dir)
+            throws Exception {
+        Jdbi db =
+                JavaEvidenceFixture.index(
+                        dir,
+                        Map.of(
+                                "src/main/java/org/springframework/beans/factory/InitializingBean.java",
+                                "package org.springframework.beans.factory; public interface InitializingBean { void afterPropertiesSet(); }",
+                                "src/main/java/p/Fixture.java",
+                                "package p; class Cfg { int interval() { return 1; } } "
+                                        + "class Scanner implements org.springframework.beans.factory.InitializingBean { Cfg cfg = new Cfg(); "
+                                        + "public void afterPropertiesSet() { cfg.interval(); } } "
+                                        + "class Auto { Scanner scanner() { return new Scanner(); } }"));
+        db.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, framework) SELECT id, 'CLASS', '@Singleton', '[]', '[\"p.Auto\"]', 'spring' FROM classes WHERE class_name = 'p.Auto'");
+                    handle.execute(
+                            "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, declaring_class_id, member_name, framework) "
+                                    + "SELECT id, 'PRODUCER_METHOD', '@Singleton', '[]', '[\"p.Scanner\"]', id, 'scanner', 'spring' FROM classes WHERE class_name = 'p.Auto'");
+                    handle.execute(
+                            "INSERT INTO configuration_usages(key, kind, class_id, class_name, member, annotation) "
+                                    + "SELECT 'scan.interval', 'config_key', id, class_name, 'interval', 'p.Base#getInt -> org.springframework.core.env.Environment#getProperty' FROM classes WHERE class_name = 'p.Cfg'");
+                    handle.execute(
+                            "INSERT OR REPLACE INTO method_evidence(from_class_id, from_method, from_descriptor, caller_external_calls) "
+                                    + "SELECT id, 'afterPropertiesSet', '()V', ? FROM classes WHERE class_name = 'p.Scanner'",
+                            "[\"47|79|java.util.concurrent.ScheduledExecutorService|scheduleWithFixedDelay|(Ljava/lang/Runnable;JJLjava/util/concurrent/TimeUnit;)Ljava/util/concurrent/ScheduledFuture;|\"]");
+                });
+        ObjectNode fact = new ObjectMapper().createObjectNode();
+        TestReads.read(
+                db,
+                reader -> {
+                    ClassPrefetchRelations.append(
+                            reader,
+                            fact,
+                            reader.symbols.findClassByName("p.Scanner").orElseThrow());
+                    return null;
+                });
+        String lifecycle = fact.path("lifecycle_callbacks").toString();
+        assertTrue(lifecycle.contains("afterPropertiesSet() InitializingBean"), fact.toString());
+        assertTrue(
+                lifecycle.contains("ScheduledExecutorService#scheduleWithFixedDelay line 79"),
+                fact.toString());
+        assertTrue(lifecycle.contains("reads scan.interval via p.Cfg#interval"), fact.toString());
+        assertTrue(
+                fact.path("created_by_bean_methods").toString().contains("p.Auto#scanner"),
+                fact.toString());
+    }
 }

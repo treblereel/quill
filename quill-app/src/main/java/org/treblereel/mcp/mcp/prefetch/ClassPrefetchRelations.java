@@ -70,6 +70,64 @@ final class ClassPrefetchRelations {
      * instance and when it is released. V62 CQ-045: Claude read SsarClientCache for its Cache field
      * and @PreDestroy shutdown().
      */
+    private static final java.util.Map<String, String> CALLBACK_INTERFACES =
+            java.util.Map.of("afterPropertiesSet", "InitializingBean", "destroy", "DisposableBean");
+
+    /**
+     * What a lifecycle callback starts: scheduling calls it makes and configuration keys the
+     * methods it calls read. Apollo AQ-033: the interval key comes from BizConfig through a
+     * wrapper.
+     */
+    private static String callbackWork(
+            ReadQueryContext db, int classId, String method, String descriptor) {
+        List<String> parts = new java.util.ArrayList<>();
+        db.usages
+                .findCallerExternalCalls(classId, method, descriptor)
+                .ifPresent(
+                        json -> {
+                            try {
+                                for (var call : JSON.readTree(json)) {
+                                    String[] fields = call.asText().split("\\|", -1);
+                                    if (fields.length >= 4 && fields[3].startsWith("schedule"))
+                                        parts.add(
+                                                "schedules "
+                                                        + fields[2].substring(
+                                                                fields[2].lastIndexOf('.') + 1)
+                                                        + "#"
+                                                        + fields[3]
+                                                        + " line "
+                                                        + fields[1]);
+                                }
+                            } catch (Exception unreadable) {
+                                // No scheduling evidence.
+                            }
+                        });
+        db.jdbi()
+                .withHandle(
+                        handle ->
+                                handle.createQuery(
+                                                """
+                SELECT DISTINCT cu.key, cu.class_name, cu.member FROM method_calls mc
+                JOIN configuration_usages cu ON cu.class_id = mc.to_class_id AND cu.member = mc.to_method
+                WHERE mc.from_class_id = :id AND mc.from_method = :method AND mc.from_descriptor = :descriptor
+                  AND cu.kind = 'config_key' ORDER BY cu.key LIMIT 4""")
+                                        .bind("id", classId)
+                                        .bind("method", method)
+                                        .bind("descriptor", descriptor)
+                                        .mapToMap()
+                                        .list())
+                .forEach(
+                        row ->
+                                parts.add(
+                                        "reads "
+                                                + row.get("key")
+                                                + " via "
+                                                + row.get("class_name")
+                                                + "#"
+                                                + row.get("member")));
+        return parts.isEmpty() ? "" : "; " + String.join("; ", parts);
+    }
+
     static void appendStateAndLifecycle(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         var members = db.symbols.findFieldsAndMethods(cls.id());
         ArrayNode state = JSON.createArrayNode();
@@ -92,8 +150,27 @@ final class ClassPrefetchRelations {
                         lifecycle.add(
                                 member.name()
                                         + "() @"
-                                        + annotation.substring(annotation.lastIndexOf('.') + 1));
+                                        + annotation.substring(annotation.lastIndexOf('.') + 1)
+                                        + callbackWork(db, cls.id(), member.name(), "()V"));
+                // Apollo AQ-033: ReleaseMessageScanner starts from InitializingBean, not an
+                // annotation.
+                String callback = CALLBACK_INTERFACES.get(member.name());
+                if (callback != null
+                        && cls.interfaces().stream()
+                                .anyMatch(type -> type.endsWith("." + callback)))
+                    lifecycle.add(
+                            member.name()
+                                    + "() "
+                                    + callback
+                                    + callbackWork(db, cls.id(), member.name(), "()V"));
             }
+        }
+        if (db.beans.findBeanByClassId(cls.id()).isEmpty()) {
+            ObjectNode created = JSON.createObjectNode();
+            org.treblereel.mcp.mcp.query.StructureToolQueries.appendCreatingBeanMethods(
+                    db, created, cls);
+            if (created.has("created_by_bean_methods"))
+                fact.set("created_by_bean_methods", created.get("created_by_bean_methods"));
         }
         if (!state.isEmpty()) fact.set("instance_state", state);
         if (!lifecycle.isEmpty()) fact.set("lifecycle_callbacks", lifecycle);

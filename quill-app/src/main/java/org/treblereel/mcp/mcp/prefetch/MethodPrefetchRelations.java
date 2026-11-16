@@ -170,6 +170,7 @@ public final class MethodPrefetchRelations {
         interceptors(db, fact, classId, name, descriptor);
         callees(db, root, fact, classId, name, descriptor);
         delegateTests(db, fact, classId, name, descriptor);
+        MethodImplementations.append(db, fact, classId, name, descriptor);
         var hops = ThreadHops.of(db, root, classId, name, descriptor);
         if (hops != null) fact.set("thread_hops", hops);
         sameEventObservers(db, fact, classId, name, descriptor);

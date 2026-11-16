@@ -289,6 +289,51 @@ class MethodPrefetchRelationsTest {
     }
 
     /**
+     * Apollo AQ-010 (Claude): asked which implementations really serve
+     * PermissionValidator#hasReleaseNamespacePermission, Claude read five classes: the prefetch had
+     * callers but not that UserPermissionValidator inherits AbstractPermissionValidator's body,
+     * which classes are beans, or that the abstract class is none.
+     */
+    @Test
+    void anInterfaceMethodStatesWhereEachImplementationGetsItsBody() throws Exception {
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        "package p; interface V { boolean ok(); } abstract class A implements V { public boolean ok() { return true; } } "
+                                + "class U extends A {} class C extends A { public boolean ok() { return super.ok(); } } "
+                                + "class X implements V { public boolean ok() { return false; } }");
+        db.useHandle(
+                handle -> {
+                    handle.execute(
+                            "UPDATE classes SET source_set = 'test' WHERE class_name = 'p.U'");
+                    for (String type : new String[] {"p.U", "p.C", "p.X"})
+                        handle.execute(
+                                "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, framework) SELECT id, 'CLASS', '@Singleton', '[]', '[\"p.V\"]', 'spring' FROM classes WHERE class_name = ?",
+                                type);
+                });
+        ObjectNode fact =
+                JSON.createObjectNode()
+                        .put("class", "p.V")
+                        .put("name", "ok")
+                        .put("descriptor", "()Z");
+        TestReads.read(
+                db,
+                reader -> {
+                    MethodPrefetchRelations.append(reader, root, fact);
+                    return null;
+                });
+        String lines = fact.path("implementations").toString();
+        assertTrue(lines.contains("p.U inherits p.A#ok; bean u"), lines);
+        assertTrue(lines.contains("p.C declares it (calls super); bean c"), lines);
+        assertTrue(lines.contains("p.X declares it; bean x"), lines);
+        assertTrue(lines.contains("p.A declares it; abstract, not a bean"), lines);
+        // Test implementations come last, marked (Apollo: two AbstractPermissionValidatorTest
+        // impls).
+        var rows = fact.path("implementations");
+        assertTrue(rows.get(rows.size() - 1).asText().endsWith("; test source"), lines);
+    }
+
+    /**
      * Apollo AQ-018: Spring records a @Bean method's parameters on the declaring class bean, under
      * the method name; producer_parameters looked them up on the produced bean and showed none, so
      * no answer said where the UserRepository parameter's bean comes from.

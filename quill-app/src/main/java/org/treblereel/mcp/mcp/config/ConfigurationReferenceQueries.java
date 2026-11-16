@@ -123,6 +123,13 @@ public final class ConfigurationReferenceQueries {
                 result.put(
                         "source_precedence",
                         springProject(reader) ? SPRING_SOURCE_PRECEDENCE : SOURCE_PRECEDENCE);
+            // Apollo AQ-039: a source the application adds, and refreshes, is where a value can
+            // change while running.
+            if (view.equals("declared") && key != null && !key.isBlank()) {
+                List<String> programmatic = ProgrammaticPropertySources.describe(reader, Set.of());
+                if (!programmatic.isEmpty())
+                    result.set("programmatic_property_sources", JSON.valueToTree(programmatic));
+            }
             ConfigurationSourceEvidence source =
                     view.equals("declared") ? new ConfigurationSourceEvidence(reader) : null;
             ArrayNode values = result.putArray("references");

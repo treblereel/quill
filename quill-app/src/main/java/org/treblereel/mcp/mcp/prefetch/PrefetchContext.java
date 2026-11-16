@@ -507,7 +507,8 @@ public final class PrefetchContext {
                     "produces",
                     "references",
                     "source_precedence",
-                    "application_key_phase");
+                    "application_key_phase",
+                    "programmatic_property_sources");
 
     /**
      * Calls this many lines long are the method's own work; a longer list (a factory's internals)

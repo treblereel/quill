@@ -108,6 +108,13 @@ final class QuestionFocus {
                         "контекст запрос",
                         "request context"),
                 List.of("thread_hops"));
+        // Apollo AQ-039: "можно ли изменить ... без пересборки и перезапуска".
+        FOCUS.put(
+                List.of("перезапуск", "restart", "reload", "на лету", "without rebuild"),
+                List.of(
+                        "programmatic_property_sources",
+                        "source_precedence",
+                        "application_key_phase"));
         FOCUS.put(
                 List.of("настройк", "конфигурац", "config", "propert", "ключ"),
                 List.of(

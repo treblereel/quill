@@ -36,4 +36,13 @@ class QuestionFocusTest {
                         "Что создаёт X#y(A,B), какие у результата type, имя, qualifiers и scope? Не смешивай их со свойствами declaring class.");
         assertTrue(fields.contains("produces"), fields.toString());
     }
+
+    /** Apollo AQ-039: a restart question asks where a value can change while running. */
+    @Test
+    void askingAboutChangingWithoutRestartKeepsProgrammaticSources() {
+        var fields =
+                QuestionFocus.fields(
+                        "Можно ли изменить emergencyPublish.supported.envs у работающего apollo-portal без пересборки и перезапуска? Покажи доказательства поведения для этой версии.");
+        assertTrue(fields.contains("programmatic_property_sources"), fields.toString());
+    }
 }

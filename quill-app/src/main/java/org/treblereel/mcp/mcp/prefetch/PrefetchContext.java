@@ -450,6 +450,9 @@ public final class PrefetchContext {
                     "declaration_basis",
                     "configuration_resources",
                     "key_constants",
+                    // Apollo AQ-013: how Spring picks among candidates matters only to questions
+                    // about that choice; AQ-004/AQ-007 lost the bean fact to it.
+                    "spring_candidate_selection",
                     // Apollo AQ-007/AQ-045: candidates of a class's ambiguous points matter only to
                     // injection questions, which ask for them and so keep them.
                     "ambiguous_candidates");
@@ -579,7 +582,10 @@ public final class PrefetchContext {
             if (size(data) <= limit) break;
             if (ASKED.get().contains(field)) continue;
             if (!removeField(facts, field)) continue;
-            data.withArray("context_omitted_fields").add(field);
+            // A general Spring rule, not index evidence: naming its removal cost Apollo AQ-045
+            // two facts.
+            if (!UNLISTED_OMISSIONS.contains(field))
+                data.withArray("context_omitted_fields").add(field);
             // V68 CQ-039: these hold navigation and diagnostics, not evidence; "partial" for them
             // made Claude
             // repeat the lookup the prefetch had done. The omission stays stated in
@@ -631,7 +637,12 @@ public final class PrefetchContext {
 
     private static void removeCompanions(ObjectNode object, String field) {
         object.remove(List.of(field + "_truncated", field + "_basis", field + "_scope"));
+        // The selection rule explains the candidates; without them it says nothing.
+        if (field.equals("ambiguous_candidates")) object.remove("spring_candidate_selection");
     }
+
+    /** Removed without a note in context_omitted_fields: rules, not evidence. */
+    private static final Set<String> UNLISTED_OMISSIONS = Set.of("spring_candidate_selection");
 
     private static boolean statesReach(String field) {
         return REACH.contains(field) || REACH_SUFFIXES.stream().anyMatch(field::endsWith);

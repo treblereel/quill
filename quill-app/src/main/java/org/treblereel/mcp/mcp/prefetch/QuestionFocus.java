@@ -104,6 +104,18 @@ final class QuestionFocus {
                         "contract_beans",
                         "interface_contracts",
                         "implementations"));
+        // Apollo AQ-006/AQ-013: why one candidate wins.
+        FOCUS.put(
+                List.of(
+                        "qualifier",
+                        "квалификатор",
+                        "primary",
+                        "почему выбран",
+                        "why this",
+                        "которого выбира",
+                        "имени параметра",
+                        "parameter name"),
+                List.of("spring_candidate_selection", "ambiguous_candidates"));
         FOCUS.put(
                 List.of("имя bean", "имени bean", "bean name", "имя бина", "имени бина"),
                 List.of("bean_name_expressions", "bean"));

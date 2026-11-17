@@ -1336,13 +1336,19 @@ public final class BeanRepository {
     }
 
     /** An ambiguous injection point of a class bean, with its raw resolution candidates. */
+    /** An ambiguous point of a class bean: its own qualifiers (JSON) and its owner's framework. */
     public record AmbiguousClassPoint(
-            String kind, String fieldName, String targetType, String candidates) {}
+            String kind,
+            String fieldName,
+            String targetType,
+            String candidates,
+            String qualifiers,
+            String framework) {}
 
     public List<AmbiguousClassPoint> findAmbiguousClassInjectionPoints(int classId, int limit) {
         return handle.createQuery(
                         """
-                SELECT ip.kind, ip.field_name, ip.target_type, ip.resolution_candidates FROM injection_points ip
+                SELECT ip.kind, ip.field_name, ip.target_type, ip.resolution_candidates, ip.qualifiers, ob.framework FROM injection_points ip
                 JOIN beans ob ON ob.id = ip.bean_id
                 WHERE ob.class_id = :id AND ob.member_name IS NULL AND ip.resolution_status = 'AMBIGUOUS'
                 ORDER BY ip.id LIMIT :limit""")
@@ -1354,7 +1360,9 @@ public final class BeanRepository {
                                         rs.getString("kind"),
                                         rs.getString("field_name"),
                                         rs.getString("target_type"),
-                                        rs.getString("resolution_candidates")))
+                                        rs.getString("resolution_candidates"),
+                                        rs.getString("qualifiers"),
+                                        rs.getString("framework")))
                 .list();
     }
 

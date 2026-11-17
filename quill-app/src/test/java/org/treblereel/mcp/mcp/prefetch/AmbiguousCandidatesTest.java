@@ -99,6 +99,100 @@ class AmbiguousCandidatesTest {
                 marked);
     }
 
+    /**
+     * Apollo AQ-013 (Claude): asked how bean names, the parameter name, @Primary and @Qualifier
+     * decide ReleaseController's userInfoHolder, Claude read AuthConfiguration five times; the
+     * candidates showed neither @Primary, a bean name differing from its method, nor whether the
+     * point carries a @Qualifier.
+     */
+    @Test
+    void springCandidatesShowPrimaryBeanNamesAndThePointsQualifier() throws Exception {
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        "package p; interface Holder {} class Controller { Controller(Holder holder) {} } "
+                                + "class AuthConfig { Holder authHolder() { return null; } } class TestConfig { Holder holder() { return null; } } "
+                                + "class LdapConfig { Holder ldapHolder() { return null; } }");
+        db.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, framework) SELECT id, 'CLASS', 'singleton', '[]', '[\"p.Controller\"]', 'spring' FROM classes WHERE class_name = 'p.Controller'");
+                    String[][] producers = {
+                        {"p.AuthConfig", "authHolder", "authHolder", "0"},
+                        {"p.TestConfig", "holder", "holder", "1"},
+                        {"p.LdapConfig", "ldapHolder", "directoryHolder", "0"}
+                    };
+                    for (String[] row : producers)
+                        handle.execute(
+                                "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, declaring_class_id, member_name, is_alternative, framework) "
+                                        + "SELECT id, 'PRODUCER_METHOD', 'singleton', ?, '[\"p.Holder\"]', id, ?, ?, 'spring' FROM classes WHERE class_name = ?",
+                                "[\"@Default\",\"@Qualifier(\\\"" + row[2] + "\\\")\"]",
+                                row[1],
+                                Integer.parseInt(row[3]),
+                                row[0]);
+                    String candidates =
+                            handle.createQuery(
+                                            "SELECT '[' || group_concat('{\"beanId\":' || b.id || ',\"disposition\":\"ELIGIBLE\"}') || ']' FROM beans b WHERE b.kind = 'PRODUCER_METHOD'")
+                                    .mapTo(String.class)
+                                    .one();
+                    handle.execute(
+                            "INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolution_status, resolution_strategy, "
+                                    + "resolution_reason, resolution_confidence, resolution_candidates) SELECT b.id, 'CONSTRUCTOR_PARAM', 'p.Holder', '[\"@Default\"]', '<init>', "
+                                    + "'AMBIGUOUS', 'STATIC_SPRING', 'MULTIPLE_CONTEXT_CANDIDATES', 'MEDIUM', ? FROM beans b JOIN classes c ON c.id = b.class_id "
+                                    + "WHERE c.class_name = 'p.Controller' AND b.kind = 'CLASS'",
+                            candidates);
+                });
+        ObjectNode fact = new ObjectMapper().createObjectNode();
+        TestReads.read(
+                db,
+                reader -> {
+                    ClassPrefetchRelations.append(
+                            reader,
+                            fact,
+                            reader.symbols.findClassByName("p.Controller").orElseThrow());
+                    return null;
+                });
+        String listed = fact.path("ambiguous_candidates").toString();
+        assertTrue(listed.contains("CONSTRUCTOR_PARAM <init>: p.Holder no @Qualifier"), listed);
+        assertTrue(listed.matches(".*TestConfig#holder @Primary.*"), listed);
+        assertTrue(listed.matches(".*LdapConfig#ldapHolder bean name directoryHolder.*"), listed);
+        // A bean named after its method states nothing extra.
+        assertTrue(listed.matches(".*\"AuthConfig#authHolder\".*"), listed);
+        String basis = fact.path("spring_candidate_selection").asText();
+        assertTrue(
+                basis.contains("@Qualifier")
+                        && basis.contains("@Primary")
+                        && basis.contains("parameter or field name"),
+                fact.toString());
+    }
+
+    /** Apollo AQ-004/AQ-007: the selection rule took the bean fact from questions not about it. */
+    @Test
+    void theSelectionRuleGoesFirstUnlessTheQuestionAsksWhyACandidateWins() {
+        var json = new ObjectMapper();
+        ObjectNode packet = json.createObjectNode();
+        ObjectNode fact =
+                packet.putArray("facts").addObject().put("kind", "CLASS").put("class", "c".repeat(1900));
+        fact.putObject("ambiguous_candidates").putArray("p").add("x".repeat(1800));
+        // Smaller than the rule, so without its tier the smallest fitting cut would take it.
+        fact.put("superclass", "y".repeat(600));
+        fact.put("spring_candidate_selection", "s".repeat(700));
+        ObjectNode unasked = packet.deepCopy();
+        PrefetchContext.boundContext(unasked, "Что будет внедрено в X?");
+        assertTrue(
+                !unasked.path("facts").get(0).has("spring_candidate_selection")
+                        && unasked.path("facts").get(0).has("superclass")
+                        && unasked.path("facts").get(0).has("ambiguous_candidates"),
+                unasked.toString());
+        // A rule, not evidence: its removal is not listed (Apollo AQ-045 lost two facts to that).
+        assertTrue(
+                !unasked.path("context_omitted_fields").toString().contains("spring_candidate_selection"),
+                unasked.toString());
+        ObjectNode asked = packet.deepCopy();
+        PrefetchContext.boundContext(asked, "Объясни влияние @Primary и @Qualifier на выбор X.");
+        assertTrue(asked.path("facts").get(0).has("spring_candidate_selection"), asked.toString());
+    }
+
     /** Apollo AQ-007/AQ-045: candidates took the budget from questions not about injection. */
     @Test
     void candidatesGoFirstUnlessTheQuestionAsksAboutInjection() {

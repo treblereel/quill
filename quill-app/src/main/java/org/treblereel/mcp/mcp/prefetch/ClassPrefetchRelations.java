@@ -745,6 +745,7 @@ final class ClassPrefetchRelations {
             ReadQueryContext db, ObjectNode fact, ClassRecord cls, String member) {
         var points = db.beans.findAmbiguousClassInjectionPoints(cls.id(), member == null ? 4 : 50);
         ObjectNode result = JSON.createObjectNode();
+        boolean anySpring = false;
         for (var point : points) {
             if (member != null && !member.equals(point.fieldName())) continue;
             List<Integer> ids = new java.util.ArrayList<>();
@@ -757,6 +758,7 @@ final class ClassPrefetchRelations {
             } catch (Exception unreadable) {
                 continue;
             }
+            boolean spring = BeanTerms.spring(String.valueOf(point.framework()));
             ArrayNode lines = JSON.createArrayNode();
             for (var bean : db.beans.findBeansByIds(ids).values()) {
                 int ownerId =
@@ -775,6 +777,7 @@ final class ClassPrefetchRelations {
                         && cls.module() != null
                         && !owner.module().equals(cls.module()))
                     line.append(" module ").append(owner.module());
+                if (spring) line.append(springSelection(bean, owner));
                 if (bean.profiles() != null && !bean.profiles().isEmpty())
                     line.append(" profiles ").append(bean.profiles().toString());
                 List<String> conditions =
@@ -784,11 +787,78 @@ final class ClassPrefetchRelations {
                     line.append(" conditions ").append(String.join(", ", conditions));
                 if (lines.size() < 8) lines.add(line.toString());
             }
-            if (!lines.isEmpty())
+            if (!lines.isEmpty()) {
                 result.set(
-                        point.kind() + " " + point.fieldName() + ": " + point.targetType(), lines);
+                        point.kind()
+                                + " "
+                                + point.fieldName()
+                                + ": "
+                                + point.targetType()
+                                + (spring ? pointQualifiers(point.qualifiers()) : ""),
+                        lines);
+                anySpring |= spring;
+            }
         }
-        if (!result.isEmpty()) fact.set("ambiguous_candidates", result);
+        if (result.isEmpty()) return;
+        fact.set("ambiguous_candidates", result);
+        if (anySpring)
+            fact.put(
+                    "spring_candidate_selection",
+                    "Spring narrows several registered candidates by the point's @Qualifier, then a single @Primary (marked on its line), "
+                            + "then the parameter or field name equal to a bean name (a @Bean method's bean name is its method "
+                            + "name unless listed); otherwise startup fails with NoUniqueBeanDefinitionException");
+    }
+
+    /** The point's explicit Spring qualifiers, or that it has none beyond the implicit default. */
+    private static String pointQualifiers(String raw) {
+        List<String> explicit = new java.util.ArrayList<>();
+        try {
+            for (var qualifier : JSON.readTree(String.valueOf(raw)))
+                if (!qualifier.asText().equals("@Default") && !qualifier.asText().equals("@Any"))
+                    explicit.add(qualifier.asText());
+        } catch (Exception unreadable) {
+            return "";
+        }
+        return explicit.isEmpty() ? " no @Qualifier" : " " + String.join(" ", explicit);
+    }
+
+    /**
+     * A Spring candidate's @Primary, explicit qualifiers and bean names other than the default one.
+     * The indexer lists a @Bean method's explicit qualifiers before @Default and its bean names
+     * after it.
+     */
+    private static String springSelection(
+            org.treblereel.mcp.model.BeanRecord bean, ClassRecord owner) {
+        StringBuilder text = new StringBuilder();
+        if (bean.isAlternative()) text.append(" @Primary");
+        List<String> qualifiers = bean.qualifiers() == null ? List.of() : bean.qualifiers();
+        int split = qualifiers.indexOf("@Default");
+        String simple = owner.className().substring(owner.className().lastIndexOf('.') + 1);
+        simple = simple.substring(simple.lastIndexOf('$') + 1);
+        String defaultName =
+                bean.memberName() != null
+                        ? bean.memberName()
+                        : simple.length() > 1
+                                        && Character.isUpperCase(simple.charAt(0))
+                                        && Character.isUpperCase(simple.charAt(1))
+                                ? simple
+                                : Character.toLowerCase(simple.charAt(0)) + simple.substring(1);
+        List<String> explicit = new java.util.ArrayList<>();
+        List<String> names = new java.util.ArrayList<>();
+        for (int i = 0; i < qualifiers.size(); i++) {
+            String qualifier = qualifiers.get(i);
+            if (qualifier.equals("@Default") || qualifier.equals("@Any")) continue;
+            String value =
+                    qualifier.startsWith("@Qualifier(\"") && qualifier.endsWith("\")")
+                            ? qualifier.substring(12, qualifier.length() - 2)
+                            : null;
+            if (split >= 0 && i > split && value != null) names.add(value);
+            else explicit.add(qualifier);
+        }
+        if (!names.isEmpty() && !names.equals(List.of(defaultName)))
+            text.append(" bean name ").append(String.join(", ", names));
+        if (!explicit.isEmpty()) text.append(" ").append(String.join(" ", explicit));
+        return text.toString();
     }
 
     private static String injects(ReadQueryContext db, ClassInjection row) {

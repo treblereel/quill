@@ -72,4 +72,41 @@ class FrameworkContractsTest {
                 contexts.get(1).path("method_context").has("framework_contract"),
                 contexts.get(1).toString());
     }
+
+    /**
+     * Apollo AQ-035: asked what an ApplicationRunner#run does at startup and in which order, Codex
+     * read SpringApplication#callRunners twice (14 KB each) and listed ApplicationRunner subtypes.
+     */
+    @Test
+    void anApplicationRunnerStatesWhenSpringBootCallsItAndItsPeersOrder() throws Exception {
+        var db =
+                JavaEvidenceFixture.index(
+                        root,
+                        java.util.Map.of(
+                                "src/main/java/org/springframework/boot/ApplicationRunner.java",
+                                "package org.springframework.boot; public interface ApplicationRunner { void run(Object args) throws Exception; }",
+                                "src/main/java/org/springframework/boot/CommandLineRunner.java",
+                                "package org.springframework.boot; public interface CommandLineRunner { void run(String... args) throws Exception; }",
+                                "src/main/java/org/springframework/core/annotation/Order.java",
+                                "package org.springframework.core.annotation; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Order { int value(); }",
+                                "src/main/java/p/Fixture.java",
+                                """
+                        package p;
+                        class Heartbeat implements org.springframework.boot.ApplicationRunner { public void run(Object args) {} }
+                        @org.springframework.core.annotation.Order(5)
+                        class Clear implements org.springframework.boot.ApplicationRunner { public void run(Object args) {} }
+                        class Cli implements org.springframework.boot.CommandLineRunner { public void run(String... args) {} }
+                        """));
+        db.useHandle(h -> h.execute("UPDATE classes SET source_set = 'main', module = 'app'"));
+        var fact = new ObjectMapper().createObjectNode();
+        TestReads.read(db, reader -> {
+            var cls = reader.symbols.findClassByName("p.Heartbeat").orElseThrow();
+            FrameworkContracts.append(reader, fact, cls.id(), "run", "(Ljava/lang/Object;)V");
+            return null;
+        });
+        String contract = fact.path("framework_contract").toString();
+        assertTrue(contract.contains("ApplicationRunner#run: Spring Boot calls it once"), contract);
+        assertTrue(contract.contains("Clear @Order(5)") && contract.contains("Cli CommandLineRunner, no @Order"), contract);
+        assertFalse(contract.contains("Heartbeat ApplicationRunner"), "the method's own class is not its peer: " + contract);
+    }
 }

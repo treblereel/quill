@@ -25,7 +25,7 @@ import org.treblereel.mcp.diagnostics.QuillLog;
 public final class FrameworkContracts {
 
     private static final ObjectMapper JSON = Json.MAPPER;
-    private static final String BASIS = "documented Quarkus/CDI behaviour, not read from dependency bytecode; "
+    private static final String BASIS = "documented framework behaviour, not read from dependency bytecode; "
             + "deployed configuration values are unknown";
     private static final Pattern EXPRESSION = Pattern.compile("\\$\\{([^:}]+)(?::([^}]*))?}");
 
@@ -53,6 +53,17 @@ public final class FrameworkContracts {
             "a RuntimeException or Error rolls back; a checked exception commits unless rollbackOn lists it; dontRollbackOn overrides both",
             "the transaction covers what the method body runs on its own thread, lambdas included; work handed to another thread is outside it",
             "the interceptor wraps the call only through a CDI proxy: a self-invocation from the same bean bypasses it");
+
+    /** Spring Boot startup callbacks, by interface. */
+    private static final Map<String, String> RUNNERS = Map.of(
+            "org.springframework.boot.ApplicationRunner", "ApplicationRunner",
+            "org.springframework.boot.CommandLineRunner", "CommandLineRunner");
+    private static final List<String> RUNNER_RULES = List.of(
+            "Spring Boot calls it once from SpringApplication#run, after the context is refreshed and before the application is reported ready",
+            "all ApplicationRunner and CommandLineRunner beans run one after another on the starting thread, sorted by @Order/Ordered; beans without an order run last, in an unspecified order among themselves",
+            "an exception thrown here fails the startup; nothing calls it again or on shutdown");
+    private static final String ORDER = "org.springframework.core.annotation.Order";
+    private static final int PEERS = 6;
 
     private FrameworkContracts() {
     }
@@ -103,11 +114,57 @@ public final class FrameworkContracts {
             rules.addAll(TRANSACTIONAL);
             settings.put("quarkus.transaction-manager.default-transaction-timeout", "framework default 60s");
         }
+        List<String> peers = new ArrayList<>();
+        var owner = db.symbols.findClassById(classId).orElse(null);
+        String runner = owner == null || !name.equals("run") ? null
+                : owner.interfaces().stream().map(RUNNERS::get).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (runner != null) {
+            rules.add(runner + "#run: " + RUNNER_RULES.getFirst());
+            rules.addAll(RUNNER_RULES.subList(1, RUNNER_RULES.size()));
+            peers.addAll(runnerPeers(db, owner));
+        }
         if (rules.isEmpty()) return;
         ObjectNode contract = fact.putObject("framework_contract");
         contract.put("basis", BASIS);
         rules.forEach(contract.withArray("rules")::add);
+        if (runner != null)
+            contract.set("other_runners", peers.isEmpty()
+                    ? JSON.createArrayNode().add("none in module " + owner.module())
+                    : JSON.valueToTree(peers));
         if (!settings.isEmpty()) contract.set("configuration", declarations(db, settings));
+    }
+
+    /**
+     * The module's other startup runners with their order, so the relative order needs no search.
+     * Apollo AQ-035: Codex listed ApplicationRunner subtypes and read SpringApplication#callRunners.
+     */
+    private static List<String> runnerPeers(ReadQueryContext db, org.treblereel.mcp.model.ClassRecord owner) {
+        List<String> peers = new ArrayList<>();
+        int total = 0;
+        for (var row : db.symbols.findMainSourceClassInterfaces()) {
+            if (row.className().equals(owner.className())) continue;
+            String kind = RUNNERS.entrySet().stream()
+                    .filter(e -> String.valueOf(row.interfaces()).contains("\"" + e.getKey() + "\""))
+                    .map(Map.Entry::getValue).findFirst().orElse(null);
+            if (kind == null) continue;
+            var peer = db.symbols.findClassByName(row.className()).orElse(null);
+            if (peer == null || !java.util.Objects.equals(peer.module(), owner.module())) continue;
+            if (++total > PEERS) continue;
+            String order = null;
+            for (String values : db.symbols.findDirectClassAnnotationValues(peer.id(), ORDER)) {
+                try {
+                    JsonNode value = values == null ? null : JSON.readTree(values).path("value");
+                    order = value == null || value.isMissingNode() ? "@Order" : "@Order(" + value.asText() + ")";
+                } catch (Exception unreadable) {
+                    QuillLog.swallowed(unreadable);
+                    order = "@Order";
+                }
+            }
+            String simple = row.className().substring(row.className().lastIndexOf('.') + 1);
+            peers.add(simple + " " + (order != null ? order : kind + ", no @Order"));
+        }
+        if (total > PEERS) peers.add("+" + (total - PEERS) + " more");
+        return peers;
     }
 
     /** One line per key: each declaration with its value, or the default when nothing declares it. */

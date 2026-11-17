@@ -69,7 +69,7 @@ public final class ExternalBeanScanner {
                 String className = classNames.get(bean.classId());
                 if (className == null) continue;
                 String key = resolution.framework() + '|' + className + '|' + bean.kind()
-                        + '|' + String.valueOf(bean.memberName());
+                        + '|' + bean.memberName();
                 if (!seen.add(key)) continue;
                 Path jar = origins.get(className);
                 result.add(new ExternalBeanRecord(nextId++, className, bean.kind(), bean.scope(),

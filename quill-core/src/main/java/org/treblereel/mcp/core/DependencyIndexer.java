@@ -75,7 +75,7 @@ public final class DependencyIndexer {
         ShardedIndex(List<Index> shards) {
             this.shards = List.copyOf(shards);
             List<IndexView> views = new ArrayList<>(shards);
-            this.view = shards.size() == 1 ? shards.get(0) : CompositeIndex.create(views);
+            this.view = shards.size() == 1 ? shards.getFirst() : CompositeIndex.create(views);
         }
 
         List<Index> shards() { return shards; }
@@ -757,7 +757,7 @@ public final class DependencyIndexer {
 
     private static List<Index> readIndexShards(List<byte[]> serializedShards) throws IOException {
         if (serializedShards.size() == 1) {
-            return List.of(readIndexShard(serializedShards.get(0)));
+            return List.of(readIndexShard(serializedShards.getFirst()));
         }
 
         int threadCount = workerCount(serializedShards.size());

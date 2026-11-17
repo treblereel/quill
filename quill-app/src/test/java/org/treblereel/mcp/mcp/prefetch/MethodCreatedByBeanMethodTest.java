@@ -20,6 +20,34 @@ class MethodCreatedByBeanMethodTest {
 
     @Test
     void aMethodOfAClassABeanMethodCreatesNamesThatMethodAndItsLazyParameter() throws Exception {
+        var db = holderIndex();
+        ObjectNode fact =
+                new ObjectMapper()
+                        .createObjectNode()
+                        .put("class", "p.SpringHolder")
+                        .put("name", "user")
+                        .put("descriptor", "()Ljava/lang/String;");
+        TestReads.read(
+                db,
+                reader -> {
+                    MethodPrefetchRelations.append(reader, fact);
+                    return null;
+                });
+        String created = fact.path("created_by_bean_methods").toString();
+        assertTrue(
+                created.contains("p.AuthConfig#holder") && created.contains("auth"),
+                fact.toString());
+        assertTrue(
+                created.contains(
+                        "org.springframework.beans.factory.ObjectProvider<p.Service> [AMBIGUOUS] lazy: looked up when getObject() runs"),
+                created);
+        // The lazily looked-up type's candidates, so the profiles deciding them need no other read.
+        assertTrue(
+                fact.path("ambiguous_candidates").toString().contains("AuthConfig#authService profiles [auth]"),
+                fact.toString());
+    }
+
+    private org.jdbi.v3.core.Jdbi holderIndex() throws Exception {
         var db =
                 JavaEvidenceFixture.index(
                         root,
@@ -48,27 +76,22 @@ class MethodCreatedByBeanMethodTest {
                                     + "WHERE c.class_name = 'p.AuthConfig' AND b.kind = 'CLASS'",
                             candidates);
                 });
-        ObjectNode fact =
-                new ObjectMapper()
-                        .createObjectNode()
-                        .put("class", "p.SpringHolder")
-                        .put("name", "user")
-                        .put("descriptor", "()Ljava/lang/String;");
+        return db;
+    }
+
+    /** Apollo AQ-014: the class fact of a non-bean class lacked its creator's candidates too. */
+    @Test
+    void aNonBeanClassFactListsItsCreatorsLazyParameterCandidates() throws Exception {
+        var db = holderIndex();
+        ObjectNode fact = new ObjectMapper().createObjectNode();
         TestReads.read(
                 db,
                 reader -> {
-                    MethodPrefetchRelations.append(reader, fact);
+                    ClassPrefetchRelations.append(
+                            reader, fact, reader.symbols.findClassByName("p.SpringHolder").orElseThrow());
                     return null;
                 });
-        String created = fact.path("created_by_bean_methods").toString();
-        assertTrue(
-                created.contains("p.AuthConfig#holder") && created.contains("auth"),
-                fact.toString());
-        assertTrue(
-                created.contains(
-                        "org.springframework.beans.factory.ObjectProvider<p.Service> [AMBIGUOUS] lazy: looked up when getObject() runs"),
-                created);
-        // The lazily looked-up type's candidates, so the profiles deciding them need no other read.
+        assertTrue(fact.path("created_by_bean_methods").toString().contains("p.AuthConfig#holder"), fact.toString());
         assertTrue(
                 fact.path("ambiguous_candidates").toString().contains("AuthConfig#authService profiles [auth]"),
                 fact.toString());

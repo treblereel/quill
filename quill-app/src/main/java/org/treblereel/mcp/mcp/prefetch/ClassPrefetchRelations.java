@@ -153,13 +153,8 @@ final class ClassPrefetchRelations {
                                     + callbackWork(db, cls.id(), member.name(), "()V"));
             }
         }
-        if (db.beans.findBeanByClassId(cls.id()).isEmpty()) {
-            ObjectNode created = JSON.createObjectNode();
-            org.treblereel.mcp.mcp.query.StructureToolQueries.appendCreatingBeanMethods(
-                    db, created, cls);
-            if (created.has("created_by_bean_methods"))
-                fact.set("created_by_bean_methods", created.get("created_by_bean_methods"));
-        }
+        // Apollo AQ-014: with the creator's lazy parameter candidates, as on its methods' facts.
+        MethodPrefetchRelations.createdByBeanMethods(db, fact, cls.id());
         if (!state.isEmpty()) fact.set("instance_state", state);
         if (!lifecycle.isEmpty()) fact.set("lifecycle_callbacks", lifecycle);
     }

@@ -57,4 +57,18 @@ class QuestionFocusTest {
                 QuestionFocus.fields("Что будет внедрено в параметр userInfoHolder?")
                         .contains("ambiguous_candidates"));
     }
+
+    /**
+     * Apollo AQ-014: asked which beans an ObjectProvider can return, the budget kept consumers and
+     * contract callers and cut the creating @Bean method and its candidates.
+     */
+    @Test
+    void askingWhatALazyProviderReturnsKeepsTheCreatorAndItsCandidates() {
+        var fields =
+                QuestionFocus.fields(
+                        "Какие beans может вернуть X через свой ObjectProvider<UserService>? Проследи lookup и условия, из-за которых результат зависит от runtime.");
+        assertTrue(fields.contains("created_by_bean_methods"), fields.toString());
+        assertTrue(fields.contains("ambiguous_candidates"), fields.toString());
+        assertTrue(fields.contains("contract_beans"), fields.toString());
+    }
 }

@@ -1050,7 +1050,7 @@ public final class MethodPrefetchRelations {
      * SpringSecurityUserInfoHolder#getUser() named only its Supplier field, and Claude read
      * AuthConfiguration whole to find the ObjectProvider the holder is built from.
      */
-    private static void createdByBeanMethods(ReadQueryContext db, ObjectNode fact, int classId) {
+    static void createdByBeanMethods(ReadQueryContext db, ObjectNode fact, int classId) {
         if (db.beans.findBeanByClassId(classId).isPresent()) return;
         var cls = db.symbols.findClassById(classId).orElse(null);
         if (cls == null) return;

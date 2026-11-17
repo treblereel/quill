@@ -104,6 +104,10 @@ final class QuestionFocus {
                         "contract_beans",
                         "interface_contracts",
                         "implementations"));
+        // Apollo AQ-014: what a lazy provider can return.
+        FOCUS.put(
+                List.of("objectprovider", "objectfactory", "provider<", "lookup", "getobject", "getifavailable"),
+                List.of("created_by_bean_methods", "ambiguous_candidates", "contract_beans"));
         // Apollo AQ-006/AQ-013: why one candidate wins.
         FOCUS.put(
                 List.of(

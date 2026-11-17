@@ -11,14 +11,14 @@ class SymbolContractTest {
     @Test
     void roundTripsJvmIdentityWithoutLosingUnicodeOrSpecialCharacters() {
         String id = SymbolContract.id("org.acme.Café$Companion", "METHOD",
-                "`when`:impl", "(Ljava/lang/String;[Лмодель;)Ljava/lang/Object;");
+                "`when`:impl", "(Ljava/lang/String;[Lmodèle;)Ljava/lang/Object;");
 
         SymbolContract.Reference reference = SymbolContract.parse(id).orElseThrow();
 
         assertEquals("org.acme.Café$Companion", reference.className());
         assertEquals("METHOD", reference.kind());
         assertEquals("`when`:impl", reference.jvmName());
-        assertEquals("(Ljava/lang/String;[Лмодель;)Ljava/lang/Object;", reference.descriptor());
+        assertEquals("(Ljava/lang/String;[Lmodèle;)Ljava/lang/Object;", reference.descriptor());
         assertEquals("", reference.sourceFile());
     }
 

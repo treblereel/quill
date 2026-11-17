@@ -97,7 +97,7 @@ class ConfigurationReadEvidenceTest {
                         db,
                         readScope ->
                                 PrefetchContext.collect(
-                                        readScope, root, "Расскажи warehouse.enabled."));
+                                        readScope, root, "Tell me about warehouse.enabled."));
         assertTrue(packet.toString().contains("key_constants"));
         assertTrue(packet.toString().contains("field_reads"));
         assertFalse(query("index").toString().contains("key_constants"));

@@ -121,7 +121,7 @@ class CodexConfigInstallerTest {
     @Test
     void appendsDetectedNativeLauncherWithoutChangingExistingSettings() throws Exception {
         Path config = createConfig("model = \"gpt-test\"\n");
-        String launcher = "C:\\Tools\\Quill Лаунчер\\quill.exe";
+        String launcher = "C:\\Tools\\Quill Démarreur\\quill.exe";
 
         var result = CodexConfigInstaller.installIfPresent(tempDir, launcher);
         String content = Files.readString(config);
@@ -129,7 +129,7 @@ class CodexConfigInstallerTest {
         assertEquals(CodexConfigInstaller.Result.ADDED, result);
         assertTrue(content.startsWith("model = \"gpt-test\"\n"));
         assertTrue(content.contains("[mcp_servers.quill]"));
-        assertTrue(content.contains("command = \"C:\\\\Tools\\\\Quill Лаунчер\\\\quill.exe\""));
+        assertTrue(content.contains("command = \"C:\\\\Tools\\\\Quill Démarreur\\\\quill.exe\""));
         assertTrue(content.contains(CodexConfigInstaller.PROJECT_ARGS));
         assertTrue(content.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
     }

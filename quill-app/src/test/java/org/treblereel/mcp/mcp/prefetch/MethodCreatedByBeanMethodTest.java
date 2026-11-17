@@ -110,14 +110,14 @@ class MethodCreatedByBeanMethodTest {
         fact.putArray("created_by_bean_methods").add("x".repeat(1200));
         fact.put("superclass", "y".repeat(900));
         ObjectNode unasked = packet.deepCopy();
-        PrefetchContext.boundContext(unasked, "Что делает X#run при старте?");
+        PrefetchContext.boundContext(unasked, "What does X#run do at startup?");
         assertTrue(
                 !unasked.path("facts").get(0).has("created_by_bean_methods")
                         && unasked.path("facts").get(0).has("superclass")
                         && !"partial".equals(unasked.path("status").asText()),
                 unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "Кто создаёт X и с какими параметрами?");
+        PrefetchContext.boundContext(asked, "Who creates X and with which parameters?");
         assertTrue(asked.path("facts").get(0).has("created_by_bean_methods"), asked.toString());
     }
 }

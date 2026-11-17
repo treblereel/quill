@@ -178,7 +178,7 @@ class AmbiguousCandidatesTest {
         fact.put("superclass", "y".repeat(600));
         fact.put("spring_candidate_selection", "s".repeat(700));
         ObjectNode unasked = packet.deepCopy();
-        PrefetchContext.boundContext(unasked, "Что будет внедрено в X?");
+        PrefetchContext.boundContext(unasked, "What will be injected into X?");
         assertTrue(
                 !unasked.path("facts").get(0).has("spring_candidate_selection")
                         && unasked.path("facts").get(0).has("superclass")
@@ -189,7 +189,7 @@ class AmbiguousCandidatesTest {
                 !unasked.path("context_omitted_fields").toString().contains("spring_candidate_selection"),
                 unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "Объясни влияние @Primary и @Qualifier на выбор X.");
+        PrefetchContext.boundContext(asked, "Explain how @Primary and @Qualifier decide which X is used.");
         assertTrue(asked.path("facts").get(0).has("spring_candidate_selection"), asked.toString());
     }
 
@@ -201,13 +201,13 @@ class AmbiguousCandidatesTest {
         ObjectNode fact = packet.putArray("facts").addObject().put("kind", "CLASS");
         fact.putObject("ambiguous_candidates").putArray("p").add("x".repeat(3000));
         fact.put("superclass", "y".repeat(2500));
-        PrefetchContext.boundContext(packet.deepCopy(), "Какая область видимости у X?");
+        PrefetchContext.boundContext(packet.deepCopy(), "What is the visibility of X?");
         ObjectNode unasked = packet.deepCopy();
-        PrefetchContext.boundContext(unasked, "Какая область видимости у X?");
+        PrefetchContext.boundContext(unasked, "What is the visibility of X?");
         assertTrue(!unasked.path("facts").get(0).has("ambiguous_candidates"), unasked.toString());
         assertTrue(unasked.path("facts").get(0).has("superclass"), unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "Что будет внедрено в X?");
+        PrefetchContext.boundContext(asked, "What will be injected into X?");
         assertTrue(asked.path("facts").get(0).has("ambiguous_candidates"), asked.toString());
     }
 

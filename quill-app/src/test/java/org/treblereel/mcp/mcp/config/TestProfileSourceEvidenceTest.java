@@ -74,7 +74,7 @@ class TestProfileSourceEvidenceTest {
                                 db,
                                 readScope ->
                                         PrefetchContext.collect(
-                                                readScope, root, "Объясни warehouse.enabled."))
+                                                readScope, root, "Explain warehouse.enabled."))
                         .toString();
         assertTrue(packet.contains("quarkus_test_profile"), packet);
         assertTrue(packet.contains("declared_value\":\"false"), packet);

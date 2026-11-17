@@ -486,7 +486,7 @@ class ConfigurationSourceEvidenceTest {
                                         PrefetchContext.collect(
                                                 readScope,
                                                 root,
-                                                "Объясни `warehouse.cache-enabled`."))
+                                                "Explain `warehouse.cache-enabled`."))
                         .path("facts");
         assertEquals(
                 first,

@@ -65,9 +65,9 @@ class EntryContextsTest {
 
     @Test
     void theFieldIsComputedOnlyForQuestionsAboutScopeOrCallContext() {
-        assertTrue(QuestionFocus.fields("Что изменится, если перевести X в request scope? Проверь контекст вызова вне HTTP-запроса.").contains("entry_contexts"));
-        assertTrue(QuestionFocus.fields("Что изменится, если перевести X в @RequestScoped?").contains("entry_contexts"));
-        assertTrue(!QuestionFocus.fields("Кто внедряет X?").contains("entry_contexts"));
+        assertTrue(QuestionFocus.fields("What changes if X moves to request scope? Check the call context outside an HTTP request.").contains("entry_contexts"));
+        assertTrue(QuestionFocus.fields("What changes if X becomes @RequestScoped?").contains("entry_contexts"));
+        assertTrue(!QuestionFocus.fields("Who injects X?").contains("entry_contexts"));
     }
 
     private Jdbi index() throws Exception {

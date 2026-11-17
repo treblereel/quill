@@ -29,7 +29,7 @@ class PrefetchContextTest {
                         db,
                         readScope ->
                                 PrefetchContext.collect(
-                                        readScope, root, "Пожалуйста объясни p.Fixture."));
+                                        readScope, root, "Please explain p.Fixture."));
         assertEquals(1, first.path("facts").size(), first.toString());
         assertEquals(
                 first.path("facts"),
@@ -444,7 +444,7 @@ class PrefetchContextTest {
                                 PrefetchContext.collect(
                                         readScope,
                                         root,
-                                        "Что внедрено в x.Consumer#message и x.Consumer#missing?"));
+                                        "What is injected into x.Consumer#message and x.Consumer#missing?"));
         assertEquals("ready", pack.path("status").asText(), pack.toString());
         var fact = pack.path("facts").get(0);
         assertEquals("injection_point", fact.path("kind").asText(), pack.toString());
@@ -534,7 +534,7 @@ class PrefetchContextTest {
                         db,
                         readScope ->
                                 PrefetchContext.collect(
-                                        readScope, root, "Что внедрено в x.Consumer#events?"));
+                                        readScope, root, "What is injected into x.Consumer#events?"));
         var fact = pack.path("facts").get(0);
         assertEquals(
                 "no application class extends or implements jakarta.enterprise.event.Event (of 2 indexed); no application bean has it among its bean types, @Typed included (of 1)",
@@ -608,7 +608,7 @@ class PrefetchContextTest {
                         db,
                         readScope ->
                                 PrefetchContext.collect(
-                                        readScope, root, "Что внедрено в x.Consumer#events?"));
+                                        readScope, root, "What is injected into x.Consumer#events?"));
         assertEquals(
                 List.of("run line 3: void run(Message m) { events.fire(m); }"),
                 pack.path("facts")
@@ -865,7 +865,7 @@ class PrefetchContextTest {
                 };
         String context =
                 "Context: Enumerations are bounded to application-owned production/test source.\nProfile: prod.\n";
-        var aboutTests = bound.apply(context + "Какие тесты запустить после изменения x.A?");
+        var aboutTests = bound.apply(context + "Which tests should run after changing x.A?");
         org.junit.jupiter.api.Assertions.assertEquals(
                 4,
                 aboutTests.path("declaring_class_tests").size(),
@@ -895,7 +895,7 @@ class PrefetchContextTest {
         fact.putObject("framework_contract").put("rules", "f".repeat(400));
         fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 500));
         PrefetchContext.boundContext(
-                data, "Как заменить x.Validator @Bean-методом, не потеряв имя bean?");
+                data, "How can x.Validator be replaced by a @Bean method without losing its bean name?");
         var kept = data.path("facts").get(0);
         org.junit.jupiter.api.Assertions.assertTrue(
                 kept.has("bean_name_expressions"), data.path("context_omitted_fields").toString());
@@ -916,7 +916,7 @@ class PrefetchContextTest {
         for (int i = 0; i < 20; i++) tests.add("x.T" + i + "Test " + "t".repeat(100));
         fact.putArray("production_callers").add("x.Caller#run " + "p".repeat(200));
         fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 2300));
-        PrefetchContext.boundContext(data, "Какие тесты запустить после изменения x.A#run?");
+        PrefetchContext.boundContext(data, "Which tests should run after changing x.A#run?");
         var kept = data.path("facts").get(0);
         org.junit.jupiter.api.Assertions.assertTrue(
                 kept.has("production_callers"), data.path("context_omitted_fields").toString());
@@ -946,7 +946,7 @@ class PrefetchContextTest {
         for (int i = 0; i < 4; i++) callers.add("x.C" + i + "#run " + "p".repeat(120));
         fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 1300));
         PrefetchContext.boundContext(
-                data, "Отдели Java callers, ссылки вне Java-кода и тесты для x.A#check.");
+                data, "Separate the Java callers, references outside Java code and tests for x.A#check.");
         var kept = data.path("facts").get(0);
         org.junit.jupiter.api.Assertions.assertTrue(
                 kept.has("expression_references"), data.path("context_omitted_fields").toString());

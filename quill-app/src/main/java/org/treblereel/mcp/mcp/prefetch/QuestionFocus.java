@@ -22,22 +22,15 @@ final class QuestionFocus {
     private static final java.util.regex.Pattern LABEL =
             java.util.regex.Pattern.compile("^[\\p{L}][\\p{L} -]{0,20}:\\s");
 
-    /** Word stems (Russian and English) to the fields that answer them. */
+    /** English word stems to the fields that answer them. */
     private static final Map<List<String>, List<String>> FOCUS = new LinkedHashMap<>();
 
     static {
         FOCUS.put(
-                List.of("тест", "test"),
+                List.of("test"),
                 List.of("test_callers", "declaring_class_tests", "delegate_tests", "test_classes"));
         FOCUS.put(
-                List.of(
-                        "внедр",
-                        "инъекц",
-                        "inject",
-                        "qualifier",
-                        "квалификатор",
-                        "потребител",
-                        "consumer"),
+                List.of("inject", "qualifier", "consumer"),
                 List.of(
                         "produced_bean_injected_into",
                         "injected_into",
@@ -46,48 +39,21 @@ final class QuestionFocus {
                         "producer_parameters",
                         "bean"));
         // A class's own ambiguous dependencies: not its consumers (Apollo AQ-045 asks for those).
+        FOCUS.put(List.of("inject", "qualifier", "candidate"), List.of("ambiguous_candidates"));
         FOCUS.put(
-                List.of(
-                        "внедр",
-                        "инъекц",
-                        "inject",
-                        "qualifier",
-                        "квалификатор",
-                        "кандидат",
-                        "candidate"),
-                List.of("ambiguous_candidates"));
-        FOCUS.put(
-                List.of(
-                        "вызыва",
-                        "caller",
-                        "usage",
-                        "использ",
-                        "ссылк",
-                        "reference",
-                        "переимен",
-                        "rename"),
+                List.of("caller", "usage", "reference", "rename"),
                 List.of(
                         "production_callers",
                         "expression_references",
                         "bean_name_expressions",
                         "test_callers"));
-        // Apollo AQ-018: "какие зависимости нужны ... покажи параметры @Bean-метода".
+        // Apollo AQ-018: which dependencies a @Bean method needs, with its parameters.
         FOCUS.put(
-                List.of("зависимост", "dependenc", "параметр", "parameter", "depends-on"),
+                List.of("dependenc", "parameter", "depends-on"),
                 List.of("producer_parameters", "declaring_class_injects", "ambiguous_candidates"));
+        FOCUS.put(List.of("indirect", "transitive"), List.of("indirect_production"));
         FOCUS.put(
-                List.of("косвенн", "indirect", "транзитив", "transitive"),
-                List.of("indirect_production"));
-        FOCUS.put(
-                List.of(
-                        "регистр",
-                        "register",
-                        "профил",
-                        "profile",
-                        "услов",
-                        "condition",
-                        "удал",
-                        "remov"),
+                List.of("register", "profile", "condition", "remov"),
                 List.of(
                         "same_type_providers",
                         "declaring_class_conditions",
@@ -97,7 +63,7 @@ final class QuestionFocus {
                         "candidate_conditions",
                         "registered_by"));
         FOCUS.put(
-                List.of("контракт", "contract", "реализац", "implement", "интерфейс", "interface"),
+                List.of("contract", "implement", "interface"),
                 List.of(
                         "direct_implementations",
                         "contract_callers",
@@ -106,51 +72,42 @@ final class QuestionFocus {
                         "implementations"));
         // Apollo AQ-014: what a lazy provider can return.
         FOCUS.put(
-                List.of("objectprovider", "objectfactory", "provider<", "lookup", "getobject", "getifavailable"),
+                List.of(
+                        "objectprovider",
+                        "objectfactory",
+                        "provider<",
+                        "lookup",
+                        "getobject",
+                        "getifavailable",
+                        "getifunique",
+                        "orderedstream"),
                 List.of("created_by_bean_methods", "ambiguous_candidates", "contract_beans"));
-        // Apollo AQ-006/AQ-013: why one candidate wins.
+        // Apollo AQ-006/AQ-013: why one candidate wins (see also the choice rule in fields()).
         FOCUS.put(
-                List.of(
-                        "qualifier",
-                        "квалификатор",
-                        "primary",
-                        "почему выбран",
-                        "why this",
-                        "которого выбира",
-                        "имени параметра",
-                        "parameter name"),
+                List.of("qualifier", "primary", "parameter name", "precedence"),
                 List.of("spring_candidate_selection", "ambiguous_candidates"));
+        FOCUS.put(List.of("bean name"), List.of("bean_name_expressions", "bean"));
         FOCUS.put(
-                List.of("имя bean", "имени bean", "bean name", "имя бина", "имени бина"),
-                List.of("bean_name_expressions", "bean"));
-        FOCUS.put(
-                List.of("транзакц", "transaction", "propagation"),
+                List.of("transaction", "propagation"),
                 List.of("calls", "framework_contract", "dependency_interceptors"));
+        FOCUS.put(List.of("async", "thread", "request context"), List.of("thread_hops"));
+        // Apollo AQ-039: whether a value can change without a rebuild or restart.
         FOCUS.put(
-                List.of(
-                        "асинхрон",
-                        "async",
-                        "поток",
-                        "thread",
-                        "контекст запрос",
-                        "request context"),
-                List.of("thread_hops"));
-        // Apollo AQ-039: "можно ли изменить ... без пересборки и перезапуска".
-        FOCUS.put(
-                List.of("перезапуск", "restart", "reload", "на лету", "without rebuild"),
+                List.of("restart", "reload", "on the fly", "without rebuild"),
                 List.of(
                         "programmatic_property_sources",
                         "source_precedence",
                         "application_key_phase"));
         FOCUS.put(
-                List.of("настройк", "конфигурац", "config", "propert", "ключ"),
+                List.of("config", "propert"),
                 List.of(
                         "references",
                         "source_precedence",
                         "application_key_phase",
                         "framework_key_phases",
                         "reader_callers"));
-        // Apollo AQ-045, Cryostat CQ-045: what a narrower scope breaks outside a request.
+        // Apollo AQ-045, Cryostat CQ-045: what a narrower scope breaks outside a request (see
+        // also the scope rule in fields()).
         FOCUS.put(
                 List.of(
                         "request scope",
@@ -159,23 +116,31 @@ final class QuestionFocus {
                         "requestscoped",
                         "session scope",
                         "sessionscoped",
-                        "контекст вызова",
-                        "вне http",
-                        "вне запрос",
                         "call context",
                         "outside a request",
-                        "outside the request"),
+                        "outside the request",
+                        "outside an http request"),
                 List.of("entry_contexts"));
         FOCUS.put(
-                List.of("scope", "lifecycle", "жизненн", "состояни", "callback"),
+                List.of("scope", "lifecycle", "state", "callback"),
                 List.of("instance_state", "lifecycle_callbacks", "bean", "produces"));
-        // Apollo AQ-016: "что создаёт X#y, какие type, имя, qualifiers и scope".
+        // Apollo AQ-016: what X#y creates, its type, name, qualifiers and scope.
         FOCUS.put(
                 List.of(
-                        "создаёт", "создает", "produce", "creates", "создаётся", "создается",
-                        "created by", "кто создаёт", "who creates"),
+                        "produce",
+                        "creates",
+                        "created by",
+                        "who creates",
+                        "construct",
+                        "instantiat"),
                 List.of("produces", "created_by_bean_methods"));
     }
+
+    /** Words of choosing; with a bean word they ask why one candidate wins. */
+    private static final List<String> CHOICE =
+            List.of("choose", "chosen", "choice", "pick", " wins", "prefer", "selected");
+
+    private static final List<String> BEAN_WORDS = List.of("bean", "candidate", "spring", "inject");
 
     private QuestionFocus() {}
 
@@ -198,6 +163,14 @@ final class QuestionFocus {
                 (stems, answers) -> {
                     if (stems.stream().anyMatch(question::contains)) fields.addAll(answers);
                 });
+        // "change the scope of X to session": the two words, apart.
+        if (question.contains("scope")
+                && (question.contains("request") || question.contains("session")))
+            fields.add("entry_contexts");
+        // "which of the two beans does Spring pick": a choice about beans, not "choose the tests".
+        if (CHOICE.stream().anyMatch(question::contains)
+                && BEAN_WORDS.stream().anyMatch(question::contains))
+            fields.addAll(List.of("spring_candidate_selection", "ambiguous_candidates"));
         return fields;
     }
 }

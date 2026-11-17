@@ -15,14 +15,14 @@ class QuestionFocusTest {
     void askingForABeanMethodsDependenciesKeepsItsParameters() {
         var fields =
                 QuestionFocus.fields(
-                        "Context: production source.\nКакие зависимости нужны X#y(A,B), чтобы создать результат? Покажи параметры @Bean-метода, явные depends-on и зависимости его declaring class.");
+                        "Context: production source.\nWhich dependencies does X#y(A,B) need to create its result? Show the @Bean method parameters, explicit depends-on and the dependencies of its declaring class.");
         assertTrue(fields.contains("producer_parameters"), fields.toString());
         assertTrue(fields.contains("declaring_class_injects"), fields.toString());
     }
 
     @Test
     void anUnrelatedQuestionDoesNotAskForParameters() {
-        assertFalse(QuestionFocus.fields("Кто вызывает X#y?").contains("producer_parameters"));
+        assertFalse(QuestionFocus.fields("Who calls X#y?").contains("producer_parameters"));
     }
 
     /**
@@ -33,7 +33,7 @@ class QuestionFocusTest {
     void askingWhatABeanMethodCreatesKeepsWhatItProduces() {
         var fields =
                 QuestionFocus.fields(
-                        "Что создаёт X#y(A,B), какие у результата type, имя, qualifiers и scope? Не смешивай их со свойствами declaring class.");
+                        "What does X#y(A,B) create, and what are the type, name, qualifiers and scope of the result? Do not mix them with the declaring class.");
         assertTrue(fields.contains("produces"), fields.toString());
     }
 
@@ -42,7 +42,7 @@ class QuestionFocusTest {
     void askingAboutChangingWithoutRestartKeepsProgrammaticSources() {
         var fields =
                 QuestionFocus.fields(
-                        "Можно ли изменить emergencyPublish.supported.envs у работающего apollo-portal без пересборки и перезапуска? Покажи доказательства поведения для этой версии.");
+                        "Can emergencyPublish.supported.envs change in a running apollo-portal without a rebuild or restart? Show the evidence for this version.");
         assertTrue(fields.contains("programmatic_property_sources"), fields.toString());
     }
 
@@ -51,10 +51,10 @@ class QuestionFocusTest {
     void askingAboutConsumersDoesNotAskForAmbiguousCandidates() {
         assertFalse(
                 QuestionFocus.fields(
-                                "Что изменится? Проверь состояние, proxy, потребителей-singletons.")
+                                "What changes? Check the state, the proxy and the singleton consumers.")
                         .contains("ambiguous_candidates"));
         assertTrue(
-                QuestionFocus.fields("Что будет внедрено в параметр userInfoHolder?")
+                QuestionFocus.fields("What will be injected into the userInfoHolder parameter?")
                         .contains("ambiguous_candidates"));
     }
 
@@ -66,7 +66,7 @@ class QuestionFocusTest {
     void askingWhatALazyProviderReturnsKeepsTheCreatorAndItsCandidates() {
         var fields =
                 QuestionFocus.fields(
-                        "Какие beans может вернуть X через свой ObjectProvider<UserService>? Проследи lookup и условия, из-за которых результат зависит от runtime.");
+                        "Which beans can X return through its ObjectProvider<UserService>? Trace the lookup and the conditions that make the result depend on runtime.");
         assertTrue(fields.contains("created_by_bean_methods"), fields.toString());
         assertTrue(fields.contains("ambiguous_candidates"), fields.toString());
         assertTrue(fields.contains("contract_beans"), fields.toString());

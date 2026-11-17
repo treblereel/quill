@@ -132,7 +132,8 @@ final class QuestionFocus {
                         "references",
                         "source_precedence",
                         "application_key_phase",
-                        "framework_key_phases"));
+                        "framework_key_phases",
+                        "reader_callers"));
         FOCUS.put(
                 List.of("scope", "lifecycle", "жизненн", "состояни", "callback"),
                 List.of("instance_state", "lifecycle_callbacks", "bean", "produces"));

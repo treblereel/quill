@@ -83,6 +83,56 @@ final class ApplicationKeyPhase {
         if (guards.isEmpty() && labels.contains("@ConfigProperty"))
             parts.add("no @IfBuildProperty or @UnlessBuildProperty names it");
         result.put("application_key_phase", key + ": " + String.join("; ", parts));
+        appendReaderCallers(reader, consumers, result);
+    }
+
+    private static final int MAX_CALLERS = 6;
+
+    /**
+     * Production callers of each method reading the key programmatically: where the setting takes
+     * effect. Apollo AQ-036 (Codex) grepped for the controllers calling
+     * PortalConfig#isEmergencyPublishAllowed.
+     */
+    private static void appendReaderCallers(
+            ReadQueryContext reader,
+            List<org.treblereel.mcp.db.ReferenceRepository.KeyConsumer> consumers,
+            ObjectNode result) {
+        List<String> lines = new ArrayList<>();
+        for (var consumer : consumers) {
+            if (!String.valueOf(consumer.annotation()).contains("#") || consumer.member() == null)
+                continue;
+            List<String> callers =
+                    reader.jdbi()
+                            .withHandle(
+                                    handle ->
+                                            handle.createQuery(
+                                                            """
+                SELECT DISTINCT fc.class_name || '#' || mc.from_method FROM method_calls mc
+                JOIN classes tc ON tc.id = mc.to_class_id JOIN classes fc ON fc.id = mc.from_class_id
+                WHERE tc.class_name = :owner AND mc.to_method = :member
+                  AND COALESCE(fc.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+                ORDER BY 1""")
+                                                    .bind("owner", consumer.className())
+                                                    .bind("member", consumer.member())
+                                                    .mapTo(String.class)
+                                                    .list());
+            if (callers.isEmpty()) continue;
+            // One line per reader: the budget halves lists, and the reader repeated on every caller
+            // made Apollo AQ-036 lose three of its six (Apollo AQ-036).
+            String shown =
+                    String.join(", ", callers.subList(0, Math.min(MAX_CALLERS, callers.size())));
+            lines.add(
+                    consumer.className()
+                            + "#"
+                            + consumer.member()
+                            + " <- "
+                            + shown
+                            + (callers.size() > MAX_CALLERS
+                                    ? " (+" + (callers.size() - MAX_CALLERS) + " more)"
+                                    : ""));
+        }
+        if (!lines.isEmpty())
+            result.set("reader_callers", org.treblereel.mcp.core.Json.MAPPER.valueToTree(lines));
     }
 
     private static String limited(List<String> values) {

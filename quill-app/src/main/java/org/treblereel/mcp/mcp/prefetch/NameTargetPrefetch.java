@@ -331,6 +331,19 @@ public final class NameTargetPrefetch {
             String source = sourceFile(db, entry.path("source_class").asText());
             if (source != null) fact.put("generated_for_source", source);
             fact.set("references", entry.path("references"));
+            ObjectNode arc =
+                    org.treblereel.mcp.mcp.query.ArcGeneratedClasses.describe(
+                            db, entry.path("class").asText());
+            if (arc != null) {
+                fact.put("generated_by", "Quarkus ArC (quarkus-arc) at build time");
+                fact.put("generated_role", arc.path("generated_role").asText());
+                if (arc.has("bean"))
+                    fact.put(
+                            "generated_for_bean",
+                            arc.path("bean").path("kind").asText()
+                                    + " "
+                                    + arc.path("bean").path("scope").asText());
+            }
             freshness(generated, entry.path("jar").asText(), fact);
             return fact;
         }

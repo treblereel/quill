@@ -13,7 +13,7 @@ import org.treblereel.mcp.core.Json;
  * X_Subclass, X_Observer_..., X_ProducerMethod_..._Bean). They exist in neither compiled outputs
  * nor jars, so lookups miss them; their bean is in the index and answers what they are.
  */
-final class ArcGeneratedClasses {
+public final class ArcGeneratedClasses {
 
     private static final ObjectMapper JSON = Json.MAPPER;
     private static final Pattern MEMBER = Pattern.compile("(.+?)_(Observer|ProducerMethod|ProducerField)_(.+?)_[0-9a-f]{6,}(_Bean|_ClientProxy)?");
@@ -32,7 +32,7 @@ final class ArcGeneratedClasses {
     }
 
     /** What an ArC-generated class name is generated for, or null when it names no indexed bean. */
-    static ObjectNode describe(ReadQueryContext reader, String name) {
+    public static ObjectNode describe(ReadQueryContext reader, String name) {
         if (name == null) return null;
         String owner, role, member = null;
         Matcher matcher = MEMBER.matcher(name);

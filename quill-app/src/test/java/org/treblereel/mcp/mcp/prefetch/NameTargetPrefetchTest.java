@@ -101,6 +101,11 @@ class NameTargetPrefetchTest {
         assertEquals("target/quarkus-app/quarkus/generated-bytecode.jar!/x/rbac/Mapper_ClientProxy.class", fact.path("artifact").asText());
         assertEquals("Mapper.java", fact.path("generated_for_source").asText());
         assertEquals(true, fact.path("jar_older_than_compiled_classes").asBoolean());
+        // Cryostat CQ-048 (Claude): without the generator and the bean's scope the answer guessed
+        // "probably @ApplicationScoped" and missed that ArC generated the proxy.
+        assertEquals(true, fact.path("generated_by").asText().contains("ArC"), fact.toString());
+        assertEquals("client_proxy", fact.path("generated_role").asText(), fact.toString());
+        assertEquals("CLASS @Singleton", fact.path("generated_for_bean").asText(), fact.toString());
         assertNull(TestReads.read(db, reader -> NameTargetPrefetch.generatedClassFact(reader, "x.rbac.Mapper_Bean")));
 
         var classFact = TestReads.read(db, reader -> {

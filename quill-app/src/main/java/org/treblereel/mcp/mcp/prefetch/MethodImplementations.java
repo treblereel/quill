@@ -151,8 +151,10 @@ final class MethodImplementations {
                         .withHandle(
                                 handle ->
                                         handle.createQuery(
-                                                        "SELECT COUNT(*) FROM method_calls WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor "
-                                                                + "AND to_method = :name AND to_descriptor = :descriptor AND to_class_id = :super")
+                                                        """
+                SELECT COUNT(*) FROM method_calls
+                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor
+                  AND to_method = :name AND to_descriptor = :descriptor AND to_class_id = :super""")
                                                 .bind("id", cls.id())
                                                 .bind("name", name)
                                                 .bind("descriptor", descriptor)

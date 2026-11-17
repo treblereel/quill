@@ -110,25 +110,43 @@ public final class SpringDataRepositories {
                                         .list());
     }
 
+    /**
+     * Fixed statements: LIKE matches an annotation-name pattern, = an exact name; the module filter
+     * applies only when {@code :all_modules} is false.
+     */
+    private static final String ANNOTATED_LIKE =
+            """
+            SELECT DISTINCT a.annotation_name, c.class_name FROM class_annotations a
+            JOIN classes c ON c.id = a.class_id
+            WHERE a.annotation_name LIKE :name AND c.kind <> 'ANNOTATION'
+              AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+              AND (:all_modules OR c.module IN (<modules>))
+            ORDER BY c.class_name LIMIT :limit""";
+
+    private static final String ANNOTATED_EXACT =
+            """
+            SELECT DISTINCT a.annotation_name, c.class_name FROM class_annotations a
+            JOIN classes c ON c.id = a.class_id
+            WHERE a.annotation_name = :name AND c.kind <> 'ANNOTATION'
+              AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+              AND (:all_modules OR c.module IN (<modules>))
+            ORDER BY c.class_name LIMIT :limit""";
+
     private static List<String> annotated(
             ReadQueryContext reader, String annotation, boolean pattern, List<String> modules) {
         return reader
                 .jdbi()
                 .withHandle(
                         handle ->
-                                handle.createQuery(
-                                                "SELECT DISTINCT a.annotation_name, c.class_name FROM class_annotations a JOIN classes c ON c.id = a.class_id WHERE a.annotation_name "
-                                                        + (pattern ? "LIKE" : "=")
-                                                        + " :name AND c.kind <> 'ANNOTATION' AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest') "
-                                                        + (modules.isEmpty()
-                                                                ? ""
-                                                                : "AND c.module IN (<modules>) ")
-                                                        + "ORDER BY c.class_name LIMIT "
-                                                        + MAX_CLASSES)
+                                handle.createQuery(pattern ? ANNOTATED_LIKE : ANNOTATED_EXACT)
                                         .bind("name", annotation)
+                                        .bind("all_modules", modules.isEmpty())
+                                        // An IN list needs one element; all_modules ignores it
+                                        // then.
                                         .bindList(
                                                 "modules",
                                                 modules.isEmpty() ? List.of("") : modules)
+                                        .bind("limit", MAX_CLASSES)
                                         .mapToMap()
                                         .list())
                 .stream()

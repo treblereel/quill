@@ -39,6 +39,30 @@ class EntryContextsTest {
         assertTrue(text.contains("UsesLeaf#go") && !text.contains("Sibling#<init>"), text);
     }
 
+    /**
+     * Cryostat CQ-045: the cache is reached through three lambdas from a Quarkus
+     * HttpAuthenticationMechanism; counting each lambda as a level hid it past the depth limit, and
+     * the mechanism, a per-request framework callback, read as a method nothing calls.
+     */
+    @Test
+    void lambdasCostNoDepthAndRequestCallbacksAreRequestEntries() throws Exception {
+        Jdbi db = JavaEvidenceFixture.index(root, "package p; class Cache { void use() {} } "
+                + "class A { Cache c; void a() { Runnable r = () -> c.use(); r.run(); } } "
+                + "class B { A x; void b() { Runnable r = () -> x.a(); r.run(); } } "
+                + "class C { B x; void c() { Runnable r = () -> x.b(); r.run(); } } "
+                + "class D { C x; void d() { Runnable r = () -> x.c(); r.run(); } } "
+                + "class Mechanism { D x; void authenticate() { x.d(); } }");
+        db.useHandle(h -> {
+            h.execute("UPDATE classes SET source_set = 'main', module = 'app'");
+            h.execute("UPDATE classes SET interfaces = '[\"io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism\"]' "
+                    + "WHERE class_name = 'p.Mechanism'");
+        });
+        var lines = TestReads.read(db, reader -> EntryContexts.of(reader, reader.symbols.findClassByName("p.Cache").orElseThrow()));
+        String text = String.join("\n", lines.valueStream().map(line -> line.asText()).toList());
+        assertTrue(text.contains("HTTP request callbacks: Mechanism#authenticate"), text);
+        assertTrue(text.contains("non-request entries: none found") && !text.contains("truncated"), text);
+    }
+
     @Test
     void theFieldIsComputedOnlyForQuestionsAboutScopeOrCallContext() {
         assertTrue(QuestionFocus.fields("Что изменится, если перевести X в request scope? Проверь контекст вызова вне HTTP-запроса.").contains("entry_contexts"));

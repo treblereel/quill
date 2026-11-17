@@ -54,11 +54,26 @@ final class EntryContexts {
                     "Incoming",
                     "Startup");
 
+    /**
+     * Supertypes whose methods the framework calls on each HTTP request (Quarkus authentication,
+     * servlet and JAX-RS filters, Spring interceptors), so they run on the request's thread.
+     */
+    private static final List<String> REQUEST_CALLBACKS =
+            List.of(
+                    "io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism",
+                    "jakarta.servlet.Filter",
+                    "javax.servlet.Filter",
+                    "org.springframework.web.filter.OncePerRequestFilter",
+                    "org.springframework.web.filter.GenericFilterBean",
+                    "jakarta.ws.rs.container.ContainerRequestFilter",
+                    "jakarta.ws.rs.container.ContainerResponseFilter",
+                    "org.springframework.web.servlet.HandlerInterceptor");
+
     private record Node(int classId, String className, String method, String descriptor) {}
 
     private EntryContexts() {}
 
-    /** Up to four lines, or null when nothing in production calls the class. */
+    /** Up to five lines, or null when nothing in production calls the class. */
     static ArrayNode of(ReadQueryContext db, ClassRecord target) {
         Set<String> http = httpHandlers(db);
         Map<Integer, List<Integer>> supertypes = new HashMap<>();
@@ -71,6 +86,7 @@ final class EntryContexts {
                         && !(owner != target.id() && caller.method().equals("<init>")))
                     enqueue(queue, depth, node(caller), 1);
         Set<String> handlers = new LinkedHashSet<>();
+        Set<String> callbacks = new LinkedHashSet<>();
         Set<String> expressions = new LinkedHashSet<>();
         Set<String> nonRequest = new LinkedHashSet<>();
         Set<String> uncalled = new LinkedHashSet<>();
@@ -88,6 +104,10 @@ final class EntryContexts {
                 handlers.add(label);
                 continue;
             }
+            if (requestCallback(db, node)) {
+                callbacks.add(label);
+                continue;
+            }
             String marker = nonRequestMarker(db, node);
             if (marker != null) {
                 nonRequest.add(label + " @" + marker);
@@ -99,7 +119,8 @@ final class EntryContexts {
                 else uncalled.add(label);
                 continue;
             }
-            int next = depth.get(node) + 1;
+            // A lambda's enclosing method is the same call, not a level further.
+            int next = depth.get(node) + (node.method().startsWith("lambda$") ? 0 : 1);
             if (next > DEPTH) {
                 truncated = true;
                 continue;
@@ -111,6 +132,11 @@ final class EntryContexts {
         ArrayNode lines = Json.MAPPER.createArrayNode();
         if (!handlers.isEmpty())
             lines.add("HTTP handlers: " + handlers.size() + " (" + shown(handlers) + ")");
+        if (!callbacks.isEmpty())
+            lines.add(
+                    "HTTP request callbacks: "
+                            + shown(callbacks)
+                            + " (called by the framework on each request, on its thread)");
         if (!expressions.isEmpty())
             lines.add(
                     "annotation expressions: "
@@ -175,6 +201,13 @@ final class EntryContexts {
                     });
                     return ids;
                 });
+    }
+
+    private static boolean requestCallback(ReadQueryContext db, Node node) {
+        var cls = db.symbols.findClassById(node.classId()).orElse(null);
+        if (cls == null || node.method().startsWith("lambda$") || node.method().startsWith("<")) return false;
+        return cls.interfaces().stream().anyMatch(REQUEST_CALLBACKS::contains)
+                || REQUEST_CALLBACKS.contains(cls.superclass());
     }
 
     private static String nonRequestMarker(ReadQueryContext db, Node node) {

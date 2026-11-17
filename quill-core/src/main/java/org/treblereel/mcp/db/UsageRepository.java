@@ -861,6 +861,34 @@ public final class UsageRepository {
                 .bind("id", classId).bind("name", method).mapTo(String.class).list();
     }
 
+    /** A production method calling into another, by its class id and name. */
+    public record CallerMethod(int classId, String className, String method, String descriptor) {}
+
+    /**
+     * Production methods calling {@code method} with {@code descriptor} on {@code toClassId}; a null
+     * method matches every method of the class.
+     */
+    public List<CallerMethod> findProductionCallerMethods(int toClassId, String method, String descriptor) {
+        return handle.createQuery(
+                        """
+                SELECT DISTINCT mc.from_class_id, fc.class_name, mc.from_method, mc.from_descriptor FROM method_calls mc
+                JOIN classes fc ON fc.id = mc.from_class_id
+                WHERE mc.to_class_id = :id AND (:method IS NULL OR mc.to_method = :method AND mc.to_descriptor = :descriptor)
+                  AND COALESCE(fc.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+                ORDER BY fc.class_name, mc.from_method, mc.from_descriptor""")
+                .bind("id", toClassId)
+                .bind("method", method)
+                .bind("descriptor", descriptor)
+                .map(
+                        (rs, ctx) ->
+                                new CallerMethod(
+                                        rs.getInt("from_class_id"),
+                                        rs.getString("class_name"),
+                                        rs.getString("from_method"),
+                                        rs.getString("from_descriptor")))
+                .list();
+    }
+
     /** Production methods calling {@code ownerClass#member}, each as "Class#method". */
     public List<String> findProductionCallers(String ownerClass, String member) {
         return handle.createQuery(

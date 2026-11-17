@@ -239,6 +239,14 @@ public final class PrefetchContext {
                             new SymbolToolQueries()
                                     .getSymbolDetails(db, cls.className(), false, null, 10, 0);
             ClassPrefetchRelations.append(db, fact, cls);
+            // A walk over the callers: only for questions about scope or call context.
+            if (QuestionFocus.fields(prompt).contains("entry_contexts")) {
+                var entries = EntryContexts.of(db, cls);
+                if (entries != null) {
+                    fact.set("entry_contexts", entries);
+                    fact.put("entry_contexts_basis", EntryContexts.BASIS);
+                }
+            }
             NameTargetPrefetch.appendGenerated(db, fact, cls.className(), root);
             fact.put("source_sha256", hash);
             facts.add(fact);

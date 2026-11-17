@@ -150,6 +150,22 @@ final class QuestionFocus {
                         "application_key_phase",
                         "framework_key_phases",
                         "reader_callers"));
+        // Apollo AQ-045, Cryostat CQ-045: what a narrower scope breaks outside a request.
+        FOCUS.put(
+                List.of(
+                        "request scope",
+                        "request-scope",
+                        "requestscope",
+                        "requestscoped",
+                        "session scope",
+                        "sessionscoped",
+                        "контекст вызова",
+                        "вне http",
+                        "вне запрос",
+                        "call context",
+                        "outside a request",
+                        "outside the request"),
+                List.of("entry_contexts"));
         FOCUS.put(
                 List.of("scope", "lifecycle", "жизненн", "состояни", "callback"),
                 List.of("instance_state", "lifecycle_callbacks", "bean", "produces"));

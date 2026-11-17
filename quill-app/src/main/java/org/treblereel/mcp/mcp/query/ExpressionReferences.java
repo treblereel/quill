@@ -52,7 +52,7 @@ public final class ExpressionReferences {
      * Annotation expressions calling {@code method} on one of the bean's names, or null when {@code
      * cls} is not a Spring bean (no expression can name it, so the list would only add noise).
      */
-    static ObjectNode find(ReadQueryContext db, ClassRecord cls, String method) {
+    public static ObjectNode find(ReadQueryContext db, ClassRecord cls, String method) {
         Set<String> names = beanNames(db, cls);
         if (names.isEmpty()) return null;
         List<ObjectNode> found = new ArrayList<>();

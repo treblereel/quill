@@ -258,7 +258,8 @@ final class ClassPrefetchRelations {
 
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         List<ClassInjection> injectionRows = db.beans.findClassInjections(cls.id());
-        lines(fact, "injects", injectionRows, row -> injects(db, row));
+        java.util.Set<String> lazy = lazyPoints(db, cls.className());
+        lines(fact, "injects", injectionRows, row -> injects(db, row) + lazyMark(lazy, row.kind(), row.fieldName(), row.targetType()));
         ambiguousCandidates(db, fact, cls);
         appendStateAndLifecycle(db, fact, cls);
         appendPropertiesRegistration(db, fact, cls);
@@ -277,7 +278,13 @@ final class ClassPrefetchRelations {
                 fact,
                 "injected_into",
                 db.beans.findInjectionPointsOf(cls.id(), cls.className()),
-                ClassPrefetchRelations::injectedInto);
+                row ->
+                        injectedInto(row)
+                                + lazyMark(
+                                        lazyPoints(db, String.valueOf(row.owner())),
+                                        row.kind(),
+                                        row.fieldName(),
+                                        row.targetType()));
         lines(
                 fact,
                 "decorators",
@@ -962,6 +969,39 @@ final class ClassPrefetchRelations {
      * read SsarAuthorizer about once per session to learn both before answering what a narrower
      * scope would change.
      */
+    private static final String LAZY = "org.springframework.context.annotation.Lazy";
+
+    /**
+     * The injection points of a class that Spring resolves lazily: "field:name" for an annotated
+     * field, "param:Type" for an annotated constructor or method parameter. Apollo AQ-030: the
+     * lines never said which edges were @Lazy, and every cycle there runs through one.
+     */
+    static java.util.Set<String> lazyPoints(ReadQueryContext db, String className) {
+        java.util.Set<String> points = new java.util.HashSet<>();
+        for (var member : db.symbols.findLazyMemberAnnotationDetails(className)) {
+            try {
+                for (JsonNode annotation : JSON.readTree(member.details())) {
+                    if (!LAZY.equals(annotation.path("annotationName").asText())) continue;
+                    if (annotation.path("values").path("value").asBoolean(true) == false) continue;
+                    if (annotation.path("parameterIndex").asInt(-1) >= 0)
+                        points.add("param:" + annotation.path("parameterType").asText());
+                    else if ("FIELD".equals(member.kind())) points.add("field:" + member.name());
+                }
+            } catch (Exception unreadable) {
+                org.treblereel.mcp.diagnostics.QuillLog.swallowed(unreadable);
+            }
+        }
+        return points;
+    }
+
+    private static String lazyMark(java.util.Set<String> lazy, Object kind, Object field, Object type) {
+        if (lazy.isEmpty()) return "";
+        boolean parameter = String.valueOf(kind).endsWith("_PARAM");
+        return lazy.contains(parameter ? "param:" + type : "field:" + field)
+                ? " @Lazy"
+                : "";
+    }
+
     private static String injectedInto(InjectingPoint row) {
         String owner = row.owner() + (row.ownerMember() == null ? "" : "#" + row.ownerMember());
         boolean decorator = "DECORATOR".equals(row.ownerKind());

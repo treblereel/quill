@@ -1066,6 +1066,19 @@ public final class SymbolRepository {
                 .bindList("annotations", annotations).bind("module", module).mapTo(String.class).list();
     }
 
+    /** A member's name and kind with its annotation details (JSON). */
+    public record MemberAnnotationDetails(String name, String kind, String details) {}
+
+    /** A class's members whose annotation details name {@code @Lazy}. */
+    public List<MemberAnnotationDetails> findLazyMemberAnnotationDetails(String className) {
+        return handle.createQuery("""
+                SELECT m.name, m.kind, m.annotation_details FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE c.class_name = :owner AND m.annotation_details LIKE '%.annotation.Lazy"%'""")
+                .bind("owner", className)
+                .map((rs, ctx) -> new MemberAnnotationDetails(rs.getString("name"), rs.getString("kind"), rs.getString("annotation_details")))
+                .list();
+    }
+
     /** Main source classes implementing any interface, by name. */
     public List<ClassInterfaces> findMainSourceClassInterfaces() {
         return handle.createQuery("SELECT class_name, interfaces FROM classes WHERE origin='source' AND source_set='main' AND interfaces IS NOT NULL ORDER BY class_name")

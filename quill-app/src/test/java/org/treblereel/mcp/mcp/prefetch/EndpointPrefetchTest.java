@@ -30,6 +30,14 @@ public class EndpointPrefetchTest {
             assertEquals(2,packet.path("facts").size(),packet.toString());
             assertEquals("GET /warehouse/items/{key}",packet.path("endpoint_anchor").asText());
             assertEquals("fetch",packet.path("facts").get(0).path("endpoint").path("method").asText());
+            // Apollo AQ-032: copies of class and source pushed the handler body out of the budget.
+            var endpoint=packet.path("facts").get(0).path("endpoint");
+            assertFalse(endpoint.has("declaring_class"),endpoint.toString());
+            assertFalse(endpoint.has("declaring_source"),endpoint.toString());
+            assertEquals("p.Fixture",endpoint.path("class").asText());
+            var handler=packet.path("facts").get(1).path("methods").get(0);
+            assertFalse(handler.path("injection").has("target"),handler.toString());
+            assertEquals("none: no direct owned-field or programmatic configuration reads",handler.path("configuration_references").asText(),handler.toString());
             assertEquals(2,packet.path("facts").get(1).path("methods").size());
             assertEquals("indexed_target_only",packet.path("facts").get(1).path("methods").get(1).path("source_evidence").path("status").asText());
             var follow=TestReads.read(db, readScope -> PrefetchContext.collect(readScope,root,"What dependencies does it use?",packet.path("endpoint_anchor").asText()));

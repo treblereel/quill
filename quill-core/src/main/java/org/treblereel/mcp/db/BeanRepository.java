@@ -1399,6 +1399,45 @@ public final class BeanRepository {
                 .list();
     }
 
+    /** Main-source beans of {@code module} whose bean types include {@code type}, by owner class then member. */
+    public List<TypeProvider> findModuleTypeProviders(String type, String module) {
+        return handle.createQuery(
+                        """
+                SELECT b.id, c.id AS cid, c.class_name, c.source_set, b.member_name, b.profiles
+                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE b.bean_types LIKE :type ESCAPE '!' AND c.module = :module AND c.source_set = 'main'
+                ORDER BY c.class_name, b.member_name""")
+                .bind("type", "%\"" + type.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "\"%")
+                .bind("module", module)
+                .map(
+                        (rs, ctx) ->
+                                new TypeProvider(
+                                        rs.getInt("id"),
+                                        rs.getInt("cid"),
+                                        rs.getString("class_name"),
+                                        rs.getString("source_set"),
+                                        rs.getString("member_name"),
+                                        rs.getString("profiles")))
+                .list();
+    }
+
+    /** A Spring bean reachable by name, with its owner class and producing member, if any. */
+    public record NamedBean(int beanId, String className, String memberName) {}
+
+    /** Spring beans named {@code name} (an explicit or default {@code @Qualifier} name), main source first. */
+    public List<NamedBean> findSpringBeansNamed(String name) {
+        return handle.createQuery(
+                        """
+                SELECT b.id, c.class_name, b.member_name FROM beans b
+                JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE b.framework = :spring AND b.qualifiers LIKE :qualifier ESCAPE '!'
+                ORDER BY CASE WHEN c.source_set = 'main' THEN 0 ELSE 1 END, c.class_name""")
+                .bind("spring", BeanRecord.SPRING)
+                .bind("qualifier", "%\"@Qualifier(\\\"" + name.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "\\\")\"%")
+                .map((rs, ctx) -> new NamedBean(rs.getInt("id"), rs.getString("class_name"), rs.getString("member_name")))
+                .list();
+    }
+
     /** A resolved injection between two different production-owned classes. */
     public record InjectionEdge(
             String fromClass, String fieldName, String kind, String toClass, String toScope) {}

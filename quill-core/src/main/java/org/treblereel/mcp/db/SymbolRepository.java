@@ -1037,6 +1037,35 @@ public final class SymbolRepository {
                 .bind("owner", className).bind("method", method).bind("descriptor", descriptor).mapTo(String.class).list();
     }
 
+    /** Annotation details (JSON, with values) of each method overload of any class named {@code className}; an empty descriptor matches all. */
+    public List<String> findMethodAnnotationDetails(String className, String method, String descriptor) {
+        return handle.createQuery("""
+                SELECT m.annotation_details FROM class_members m JOIN classes c ON c.id=m.class_id
+                WHERE c.class_name=:owner AND m.kind='METHOD' AND m.name=:method AND (:descriptor='' OR m.descriptor=:descriptor)
+                  AND m.annotation_details IS NOT NULL""")
+                .bind("owner", className).bind("method", method).bind("descriptor", descriptor).mapTo(String.class).list();
+    }
+
+    /** Main source classes of {@code module} that are servlet filters by their direct interface or Spring filter superclass. */
+    public List<String> findModuleServletFilters(String module) {
+        return handle.createQuery("""
+                SELECT class_name FROM classes WHERE origin='source' AND source_set='main' AND module=:module
+                  AND (interfaces LIKE '%"jakarta.servlet.Filter"%' OR interfaces LIKE '%"javax.servlet.Filter"%'
+                       OR superclass IN ('org.springframework.web.filter.OncePerRequestFilter',
+                                         'org.springframework.web.filter.GenericFilterBean'))
+                ORDER BY class_name""")
+                .bind("module", module).mapTo(String.class).list();
+    }
+
+    /** Main source classes of {@code module} directly annotated with one of {@code annotations}. */
+    public List<String> findModuleClassesAnnotated(String module, List<String> annotations) {
+        return handle.createQuery("""
+                SELECT DISTINCT c.class_name FROM class_annotations a JOIN classes c ON c.id=a.class_id
+                WHERE a.direct=1 AND a.annotation_name IN (<annotations>) AND c.origin='source' AND c.source_set='main'
+                  AND c.module=:module ORDER BY c.class_name""")
+                .bindList("annotations", annotations).bind("module", module).mapTo(String.class).list();
+    }
+
     /** Main source classes implementing any interface, by name. */
     public List<ClassInterfaces> findMainSourceClassInterfaces() {
         return handle.createQuery("SELECT class_name, interfaces FROM classes WHERE origin='source' AND source_set='main' AND interfaces IS NOT NULL ORDER BY class_name")

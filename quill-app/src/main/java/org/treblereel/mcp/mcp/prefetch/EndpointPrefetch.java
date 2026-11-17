@@ -98,7 +98,7 @@ public final class EndpointPrefetch {
                         endpoint.path("method").asText(),
                         endpoint.path("descriptor").asText());
         if (security != null && endpoint instanceof ObjectNode node) node.put("security", security);
-        facts.addObject().put("kind", "endpoint").set("endpoint", endpoint);
+        facts.addObject().put("kind", "endpoint").set("endpoint", withoutCopies(endpoint));
         var methods = JSON.createArrayNode();
         Set<String> seen = new HashSet<>();
         addMethod(
@@ -223,7 +223,8 @@ public final class EndpointPrefetch {
         var selected = node.putObject("injection");
         // resolution_context states the same rules for every bean; get_injection_points still has
         // it.
-        for (String key : List.of("target", "scope", "bean_kind", "error", "error_code"))
+        // The method node names the class already.
+        for (String key : List.of("scope", "bean_kind", "error", "error_code"))
             if (injection.has(key)) selected.set(key, injection.get(key));
         var points = selected.putArray("injection_points");
         for (var point : injection.path("injection_points"))
@@ -278,6 +279,15 @@ public final class EndpointPrefetch {
                 .put("candidate_count", config.path("total").asInt())
                 .put("showing", entries.size())
                 .put("method_scope_complete", uniqueMethod && !config.path("has_more").asBoolean());
+        // Apollo AQ-032: an empty result's bookkeeping cost the handler body its place.
+        if (entries.isEmpty()
+                && config.path("total").asInt() == 0
+                && references.path("method_scope_complete").asBoolean()
+                && !references.has("error")
+                && !references.has("error_code"))
+            node.put(
+                    "configuration_references",
+                    "none: no direct owned-field or programmatic configuration reads");
     }
 
     /**
@@ -317,4 +327,28 @@ public final class EndpointPrefetch {
     }
 
     private EndpointPrefetch() {}
+
+    /**
+     * The endpoint without fields that only repeat another: its declaring class and source when
+     * they are the handler's own, and the JVM descriptor of each mapping source. Apollo AQ-032: the
+     * copies pushed the handler body out of the budget once its security line was added.
+     */
+    private static JsonNode withoutCopies(JsonNode endpoint) {
+        if (!(endpoint instanceof ObjectNode original)) return endpoint;
+        ObjectNode node = original.deepCopy();
+        if (node.path("declaring_class").asText().equals(node.path("class").asText()))
+            node.remove("declaring_class");
+        if (node.path("declaring_source").asText().equals(node.path("source").asText()))
+            node.remove("declaring_source");
+        if (node.path("mapping_sources") instanceof ArrayNode sources) {
+            ArrayNode compact = JSON.createArrayNode();
+            for (JsonNode source : sources) {
+                String text = source.asText();
+                int descriptor = text.indexOf('(');
+                compact.add(descriptor < 0 ? text : text.substring(0, descriptor));
+            }
+            node.set("mapping_sources", compact);
+        }
+        return node;
+    }
 }

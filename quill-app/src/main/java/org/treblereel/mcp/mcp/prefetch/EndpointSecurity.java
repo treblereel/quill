@@ -33,6 +33,8 @@ final class EndpointSecurity {
 
     /** One line, or null when neither the handler nor its class carries a security annotation. */
     static String describe(ReadQueryContext db, String owner, String method, String descriptor) {
+        String spring = SpringEndpointSecurity.describe(db, owner, method, descriptor);
+        if (spring != null) return spring;
         List<String> annotations = new ArrayList<>(db.symbols.findMethodAnnotationNames(owner, method, descriptor == null ? "" : descriptor));
         // Order does not matter here: both lists are only searched.
         annotations.addAll(db.symbols.findDirectAnnotationNames(owner));

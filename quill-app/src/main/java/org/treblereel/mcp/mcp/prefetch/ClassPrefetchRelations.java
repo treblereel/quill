@@ -312,14 +312,7 @@ final class ClassPrefetchRelations {
         producerHosts(db, fact, cls);
         if ("INTERFACE".equals(cls.kind())) {
             var callers = db.usages.findContractCallers(cls.id(), cls.className());
-            lines(
-                    fact,
-                    "contract_callers",
-                    callers,
-                    row ->
-                            row.className()
-                                    + " calls "
-                                    + compactCalls(String.valueOf(row.methods())));
+            lines(fact, "contract_callers", groupedCallers(callers), String::valueOf);
             fact.put("contract_caller_classes", callers.size());
             var beans = db.beans.findCurrentBeansOfType(cls.className());
             lines(
@@ -327,7 +320,10 @@ final class ClassPrefetchRelations {
                     "contract_beans",
                     beans,
                     row ->
-                            row.className()
+                            (TEST_SOURCE_SETS.contains(String.valueOf(row.sourceSet()))
+                                            ? "test sources only: "
+                                            : "")
+                                    + row.className()
                                     + (row.memberName() == null ? "" : "#" + row.memberName())
                                     + " "
                                     + BeanTerms.kind((Object) row.framework(), row.kind())
@@ -901,6 +897,38 @@ final class ClassPrefetchRelations {
      * Called methods as name(ShortTypes), at about half the cost of descriptors; a selector
      * matching two overloads is rejected.
      */
+    private static final java.util.Set<String> TEST_SOURCE_SETS =
+            java.util.Set.of("test", "integration-test", "integrationTest");
+
+    /**
+     * One line per package and called methods: "pkg: A, B call m()". Apollo AQ-043: a line per
+     * class repeated both, so 12 of 25 callers fit and Codex fetched the rest with find_usages.
+     */
+    static List<String> groupedCallers(
+            List<org.treblereel.mcp.db.UsageRepository.ContractCaller> callers) {
+        java.util.Map<String, List<String>> groups = new java.util.LinkedHashMap<>();
+        for (var caller : callers) {
+            String name = caller.className();
+            int dot = name.lastIndexOf('.');
+            String key =
+                    (dot < 0 ? "" : name.substring(0, dot))
+                            + "\u0000"
+                            + compactCalls(String.valueOf(caller.methods()));
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(name.substring(dot + 1));
+        }
+        List<String> lines = new ArrayList<>();
+        groups.forEach(
+                (key, names) -> {
+                    String[] parts = key.split("\u0000", 2);
+                    lines.add(
+                            (parts[0].isEmpty() ? "" : parts[0] + ": ")
+                                    + String.join(", ", names)
+                                    + (names.size() == 1 ? " calls " : " call ")
+                                    + parts[1]);
+                });
+        return lines;
+    }
+
     static String compactCalls(String methods) {
         java.util.Set<String> calls = new java.util.LinkedHashSet<>();
         for (String call : methods.split(",")) calls.add(compactCall(call));

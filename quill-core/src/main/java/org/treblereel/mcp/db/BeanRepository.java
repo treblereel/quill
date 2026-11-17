@@ -693,7 +693,8 @@ public final class BeanRepository {
             String qualifiers,
             String profiles,
             Integer priority,
-            String framework) {}
+            String framework,
+            String sourceSet) {}
 
     /** An application bean offering a type, with its bean class for lookup conditions. */
     public record TypeCandidate(
@@ -819,10 +820,12 @@ public final class BeanRepository {
     public List<TypedBean> findCurrentBeansOfType(String type) {
         return handle.createQuery(
                         """
-                SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.profiles, b.priority, b.framework
+                SELECT c.class_name, b.kind, b.member_name, b.scope, b.qualifiers, b.profiles, b.priority, b.framework,
+                       c.source_set
                 FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
                 WHERE c.lifecycle = 'current' AND b.bean_types LIKE :type
-                ORDER BY c.class_name, b.member_name""")
+                ORDER BY CASE WHEN COALESCE(c.source_set, 'main') IN ('test', 'integration-test', 'integrationTest')
+                              THEN 1 ELSE 0 END, c.class_name, b.member_name""")
                 .bind("type", "%\"" + type + "\"%")
                 .map(
                         (rs, ctx) ->
@@ -834,7 +837,8 @@ public final class BeanRepository {
                                         rs.getString("qualifiers"),
                                         rs.getString("profiles"),
                                         nullableInt(rs, "priority"),
-                                        rs.getString("framework")))
+                                        rs.getString("framework"),
+                                        rs.getString("source_set")))
                 .list();
     }
 

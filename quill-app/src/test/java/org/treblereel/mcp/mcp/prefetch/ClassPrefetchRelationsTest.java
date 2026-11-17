@@ -76,18 +76,10 @@ class ClassPrefetchRelationsTest {
                 """);
         ObjectNode fact = relations(db, "x.Service");
         assertEquals(2, fact.path("contract_caller_classes").asInt(), fact.toString());
-        assertEquals(2, strings(fact, "contract_callers").size());
-        assertTrue(
-                strings(fact, "contract_callers").stream()
-                        .allMatch(line -> line.endsWith(" calls run()")),
-                fact.toString());
+        // Grouped by package and called methods: the self-calling implementation is a caller,
+        // the class calling an unrelated implementation method is not.
+        assertEquals(List.of("x: Consumer, Impl call run()"), strings(fact, "contract_callers"), fact.toString());
         assertEquals(0, fact.path("contract_application_producer_count").asInt(-1));
-        assertTrue(
-                strings(fact, "contract_callers").stream()
-                        .anyMatch(line -> line.startsWith("x.Impl ")));
-        assertTrue(
-                strings(fact, "contract_callers").stream()
-                        .noneMatch(line -> line.startsWith("x.Other ")));
     }
 
     @Test

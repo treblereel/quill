@@ -250,14 +250,7 @@ public final class ConfigurationReferenceQueries {
 
     /** Spring when the index holds Spring beans and no CDI ones. */
     static boolean springProject(org.treblereel.mcp.db.ReadQueryContext reader) {
-        return reader.jdbi()
-                .withHandle(
-                        h ->
-                                h.createQuery(
-                                                "SELECT SUM(framework = 'spring') > 0 AND SUM(framework = 'cdi') = 0 FROM beans")
-                                        .mapTo(Boolean.class)
-                                        .findOne()
-                                        .orElse(false));
+        return reader.beans.isSpringOnly();
     }
 
     private static final java.util.regex.Pattern FRAMEWORK_KEY =

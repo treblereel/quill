@@ -845,15 +845,7 @@ public final class MethodPrefetchRelations {
         // this
         // method's own are in producer_parameters.
         Set<String> producers =
-                new java.util.HashSet<>(
-                        db.jdbi()
-                                .withHandle(
-                                        handle ->
-                                                handle.createQuery(
-                                                                "SELECT DISTINCT member_name FROM beans WHERE declaring_class_id = :id AND member_name IS NOT NULL")
-                                                        .bind("id", classId)
-                                                        .mapTo(String.class)
-                                                        .list()));
+                new java.util.HashSet<>(db.beans.findDeclaredBeanMemberNames(classId));
         var points =
                 db.beans.findClassBeanInjectionPoints(classId, 200).stream()
                         .filter(
@@ -1061,61 +1053,18 @@ public final class MethodPrefetchRelations {
      */
     private static void delegateTests(
             ReadQueryContext db, ObjectNode fact, int classId, String name, String descriptor) {
-        var targets =
-                db.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                SELECT DISTINCT c.class_name FROM method_calls mc JOIN classes c ON c.id = mc.to_class_id
-                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
-                  AND mc.to_method = :name AND mc.to_class_id <> :id ORDER BY 1""")
-                                                .bind("id", classId)
-                                                .bind("name", name)
-                                                .bind(
-                                                        "descriptor",
-                                                        descriptor == null ? "" : descriptor)
-                                                .mapTo(String.class)
-                                                .list());
+        var targets = db.usages.findSameNamedCalleeClasses(classId, name, descriptor);
         if (targets.isEmpty()) return;
         List<String> lines = new ArrayList<>();
         for (String target : targets) {
-            var implementations =
-                    db.jdbi()
-                            .withHandle(
-                                    handle ->
-                                            handle.createQuery(
-                                                            """
-                    WITH direct AS (SELECT id, class_name FROM classes WHERE lifecycle = 'current'
-                                      AND COALESCE(source_set, 'main') <> 'test'
-                                      AND (interfaces LIKE :type OR superclass = :name))
-                    SELECT id, class_name FROM direct
-                    UNION SELECT c.id, c.class_name FROM classes c JOIN direct d ON c.superclass = d.class_name
-                    WHERE c.lifecycle = 'current' AND COALESCE(c.source_set, 'main') <> 'test' ORDER BY 2""")
-                                                    .bind("type", "%\"" + target + "\"%")
-                                                    .bind("name", target)
-                                                    .mapToMap()
-                                                    .list());
+            var implementations = db.symbols.findProductionImplementations(target);
             for (var implementation : implementations) {
                 if (lines.size() >= 6) break;
-                String impl = String.valueOf(implementation.get("class_name"));
+                String impl = implementation.className();
                 String own = impl.substring(impl.lastIndexOf('.') + 1) + "Test";
                 // One test class per implementation, its own <Impl>Test first.
                 List<String> tests =
-                        db
-                                .jdbi()
-                                .withHandle(
-                                        handle ->
-                                                handle.createQuery(
-                                                                """
-                        SELECT DISTINCT tc.class_name FROM dependencies d JOIN classes tc ON tc.id = d.from_class_id
-                        WHERE d.to_class_id = :id AND tc.source_set = 'test' ORDER BY 1""")
-                                                        .bind(
-                                                                "id",
-                                                                ((Number) implementation.get("id"))
-                                                                        .intValue())
-                                                        .mapTo(String.class)
-                                                        .list())
+                        db.usages.findTestClassesDependingOn(implementation.id())
                                 .stream()
                                 .filter(t -> t.matches(".*(Test|Tests|IT)$"))
                                 .sorted(
@@ -1181,102 +1130,32 @@ public final class MethodPrefetchRelations {
         List<String> test = new ArrayList<>();
         Set<Integer> seen = new java.util.HashSet<>(self);
         for (String type : types) {
-            db.jdbi()
-                    .useHandle(
-                            handle ->
-                                    handle.createQuery(
-                                                    """
-                    SELECT b.id, c.id AS cid, c.class_name, c.source_set, b.member_name, b.kind, b.profiles
-                    FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
-                    WHERE b.bean_types LIKE :type ESCAPE '!' ORDER BY c.class_name, b.member_name""")
-                                            .bind(
-                                                    "type",
-                                                    "%\""
-                                                            + type.replace("!", "!!")
-                                                                    .replace("%", "!%")
-                                                                    .replace("_", "!_")
-                                                            + "\"%")
-                                            .mapToMap()
-                                            .forEach(
-                                                    row -> {
-                                                        if (!seen.add(
-                                                                ((Number) row.get("id"))
-                                                                        .intValue())) return;
-                                                        String owner =
-                                                                row.get("class_name")
-                                                                        + (row.get("member_name")
-                                                                                        == null
-                                                                                ? ""
-                                                                                : "#"
-                                                                                        + row.get(
-                                                                                                "member_name"));
-                                                        if ("test".equals(row.get("source_set"))) {
-                                                            test.add(owner);
-                                                            return;
-                                                        }
-                                                        StringBuilder line =
-                                                                new StringBuilder(owner);
-                                                        Object profiles = row.get("profiles");
-                                                        if (profiles != null
-                                                                && !String.valueOf(profiles)
-                                                                        .equals("[]")
-                                                                && !String.valueOf(profiles)
-                                                                        .isBlank())
-                                                            line.append(" profiles ")
-                                                                    .append(
-                                                                            String.valueOf(profiles)
-                                                                                    .replace(
-                                                                                            "\"",
-                                                                                            "")
-                                                                                    .replace(
-                                                                                            ",",
-                                                                                            ", "));
-                                                        List<String> conditions =
-                                                                classConditions(
-                                                                                db,
-                                                                                ((Number)
-                                                                                                row
-                                                                                                        .get(
-                                                                                                                "cid"))
-                                                                                        .intValue())
-                                                                        .stream()
-                                                                        .filter(
-                                                                                c ->
-                                                                                        !c
-                                                                                                .startsWith(
-                                                                                                        "@Profile("))
-                                                                        .toList();
-                                                        if (!conditions.isEmpty())
-                                                            line.append(" class ")
-                                                                    .append(
-                                                                            String.join(
-                                                                                    ", ",
-                                                                                    conditions));
-                                                        if (row.get("member_name") != null) {
-                                                            List<String> method =
-                                                                    memberConditions(
-                                                                            db,
-                                                                            ((Number)
-                                                                                            row.get(
-                                                                                                    "cid"))
-                                                                                    .intValue(),
-                                                                            String.valueOf(
-                                                                                    row.get(
-                                                                                            "member_name")));
-                                                            if (!method.isEmpty())
-                                                                line.append(" method ")
-                                                                        .append(
-                                                                                String.join(
-                                                                                        ", ",
-                                                                                        method));
-                                                        }
-                                                        if (profiles == null
-                                                                && conditions.isEmpty()
-                                                                && !line.toString()
-                                                                        .contains(" method "))
-                                                            line.append(" unconditional");
-                                                        main.add(line.toString());
-                                                    }));
+            for (var provider : db.beans.findTypeProviders(type)) {
+                if (!seen.add(provider.beanId())) continue;
+                String owner =
+                        provider.className()
+                                + (provider.memberName() == null ? "" : "#" + provider.memberName());
+                if ("test".equals(provider.sourceSet())) {
+                    test.add(owner);
+                    continue;
+                }
+                StringBuilder line = new StringBuilder(owner);
+                String profiles = provider.profiles();
+                if (profiles != null && !profiles.equals("[]") && !profiles.isBlank())
+                    line.append(" profiles ").append(profiles.replace("\"", "").replace(",", ", "));
+                List<String> conditions =
+                        classConditions(db, provider.classId()).stream()
+                                .filter(c -> !c.startsWith("@Profile("))
+                                .toList();
+                if (!conditions.isEmpty()) line.append(" class ").append(String.join(", ", conditions));
+                if (provider.memberName() != null) {
+                    List<String> method = memberConditions(db, provider.classId(), provider.memberName());
+                    if (!method.isEmpty()) line.append(" method ").append(String.join(", ", method));
+                }
+                if (profiles == null && conditions.isEmpty() && !line.toString().contains(" method "))
+                    line.append(" unconditional");
+                main.add(line.toString());
+            }
         }
         if (main.isEmpty() && test.isEmpty()) return;
         ArrayNode lines = fact.putArray("same_type_providers");
@@ -1312,60 +1191,31 @@ public final class MethodPrefetchRelations {
     }
 
     private static List<String> classConditions(ReadQueryContext db, int classId) {
-        return db
-                .jdbi()
-                .withHandle(
-                        handle ->
-                                handle.createQuery(
-                                                """
-                SELECT annotation_name, annotation_values FROM class_annotations
-                WHERE class_id = :id AND direct = 1 ORDER BY annotation_name""")
-                                        .bind("id", classId)
-                                        .mapToMap()
-                                        .list())
-                .stream()
-                .filter(row -> isCondition(String.valueOf(row.get("annotation_name"))))
+        return db.symbols.findDirectClassAnnotationsByName(classId).stream()
+                .filter(row -> isCondition(row.annotationName()))
                 .map(
                         row ->
                                 "@"
-                                        + simple(String.valueOf(row.get("annotation_name")))
+                                        + simple(row.annotationName())
                                         + "("
-                                        + values(row.get("annotation_values"))
+                                        + values(row.annotationValues())
                                         + ")")
                 .toList();
     }
 
     private static List<String> memberConditions(ReadQueryContext db, int classId, String member) {
         List<String> found = new ArrayList<>();
-        db.jdbi()
-                .useHandle(
-                        handle ->
-                                handle.createQuery(
-                                                "SELECT annotations FROM class_members WHERE class_id = :id AND name = :name AND kind = 'METHOD'")
-                                        .bind("id", classId)
-                                        .bind("name", member)
-                                        .mapTo(String.class)
-                                        .forEach(
-                                                json -> {
-                                                    try {
-                                                        for (var name : JSON.readTree(json))
-                                                            if (isCondition(name.asText())
-                                                                    && !found.contains(
-                                                                            "@"
-                                                                                    + simple(
-                                                                                            name
-                                                                                                    .asText())))
-                                                                found.add(
-                                                                        "@"
-                                                                                + simple(
-                                                                                        name
-                                                                                                .asText()));
-                                                    } catch (Exception unreadable) {
-                                                        // Annotations are written by the indexer;
-                                                        // an unreadable row only drops its
-                                                        // conditions.
-                                                    }
-                                                }));
+        for (String json : db.symbols.findMethodAnnotationNames(classId, member)) {
+            try {
+                for (var name : JSON.readTree(json)) {
+                    String condition = "@" + simple(name.asText());
+                    if (isCondition(name.asText()) && !found.contains(condition)) found.add(condition);
+                }
+            } catch (Exception unreadable) {
+                // Annotations are written by the indexer; an unreadable row only drops its
+                // conditions.
+            }
+        }
         return found;
     }
 

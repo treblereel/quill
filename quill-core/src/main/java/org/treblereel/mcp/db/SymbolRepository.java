@@ -1240,4 +1240,82 @@ public final class SymbolRepository {
                                         rs.getString("class_name")))
                 .list();
     }
+
+    /** A current class, by id and name. */
+    public record ClassRef(int id, String className) {}
+
+    /**
+     * Current production classes implementing or extending {@code type}, and their direct
+     * subclasses, by name.
+     */
+    public List<ClassRef> findProductionImplementations(String type) {
+        return handle.createQuery(
+                        """
+                WITH direct AS (SELECT id, class_name FROM classes WHERE lifecycle = 'current'
+                                  AND COALESCE(source_set, 'main') <> 'test'
+                                  AND (interfaces LIKE :type OR superclass = :name))
+                SELECT id, class_name FROM direct
+                UNION SELECT c.id, c.class_name FROM classes c JOIN direct d ON c.superclass = d.class_name
+                WHERE c.lifecycle = 'current' AND COALESCE(c.source_set, 'main') <> 'test' ORDER BY 2""")
+                .bind("type", "%\"" + type + "\"%")
+                .bind("name", type)
+                .map((rs, ctx) -> new ClassRef(rs.getInt("id"), rs.getString("class_name")))
+                .list();
+    }
+
+    /** The annotation names (JSON arrays) of each method overload named {@code name}. */
+    public List<String> findMethodAnnotationNames(int classId, String name) {
+        return handle.createQuery(
+                        "SELECT annotations FROM class_members WHERE class_id = :id AND name = :name AND kind = 'METHOD'")
+                .bind("id", classId)
+                .bind("name", name)
+                .mapTo(String.class)
+                .list();
+    }
+
+    /** A class carrying an annotation, with its source set. */
+    public record AnnotatedClass(int id, String className, String sourceSet) {}
+
+    /**
+     * Classes annotated directly with {@code annotation} whose values name {@code type} as a quoted
+     * string, production first.
+     */
+    public List<AnnotatedClass> findClassesAnnotatedNaming(String annotation, String type) {
+        return handle.createQuery(
+                        """
+                SELECT c.id, c.class_name, c.source_set FROM class_annotations a JOIN classes c ON c.id = a.class_id
+                WHERE a.direct = 1 AND a.annotation_name = :name AND a.annotation_values LIKE :type
+                ORDER BY c.source_set, c.class_name""")
+                .bind("name", annotation)
+                .bind("type", "%\"" + type + "\"%")
+                .map(
+                        (rs, ctx) ->
+                                new AnnotatedClass(
+                                        rs.getInt("id"), rs.getString("class_name"), rs.getString("source_set")))
+                .list();
+    }
+
+    /** Up to six production static ThreadLocal fields, as {@code Class.field type}. */
+    public List<String> findStaticThreadLocalFields() {
+        return handle.createQuery(
+                        """
+                SELECT c.class_name || '.' || m.name || ' ' || m.type_name FROM class_members m JOIN classes c ON c.id = m.class_id
+                WHERE m.kind = 'FIELD' AND (' ' || m.modifiers || ' ') LIKE '% static %' AND c.lifecycle = 'current'
+                  AND COALESCE(c.source_set, 'main') <> 'test' AND (m.type_name LIKE 'java.lang.ThreadLocal%'
+                  OR m.type_name LIKE 'java.lang.InheritableThreadLocal%') ORDER BY 1 LIMIT 6""")
+                .mapTo(String.class)
+                .list();
+    }
+
+    /** Whether any current class lives in {@code packageName} or below it. */
+    public boolean hasCurrentClassUnder(String packageName) {
+        return handle.createQuery(
+                        """
+                SELECT count(*) FROM classes WHERE lifecycle = 'current'
+                  AND substr(class_name, 1, length(:prefix)) = :prefix""")
+                .bind("prefix", packageName + ".")
+                .mapTo(Integer.class)
+                .one()
+                > 0;
+    }
 }

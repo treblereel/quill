@@ -1362,4 +1362,74 @@ public final class BeanRepository {
                                         rs.getString("resolution_candidates")))
                 .list();
     }
+
+    /** Names of the bean methods a class declares (producer or {@code @Bean} methods). */
+    public List<String> findDeclaredBeanMemberNames(int classId) {
+        return handle.createQuery(
+                        "SELECT DISTINCT member_name FROM beans WHERE declaring_class_id = :id AND member_name IS NOT NULL")
+                .bind("id", classId)
+                .mapTo(String.class)
+                .list();
+    }
+
+    /** A bean offering a type, with its owner class, source set, member and profiles (JSON, may be null). */
+    public record TypeProvider(
+            int beanId, int classId, String className, String sourceSet, String memberName, String profiles) {}
+
+    /** Application beans whose bean types include {@code type}, by owner class then member. */
+    public List<TypeProvider> findTypeProviders(String type) {
+        return handle.createQuery(
+                        """
+                SELECT b.id, c.id AS cid, c.class_name, c.source_set, b.member_name, b.profiles
+                FROM beans b JOIN classes c ON c.id = COALESCE(b.declaring_class_id, b.class_id)
+                WHERE b.bean_types LIKE :type ESCAPE '!' ORDER BY c.class_name, b.member_name""")
+                .bind("type", "%\"" + type.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "\"%")
+                .map(
+                        (rs, ctx) ->
+                                new TypeProvider(
+                                        rs.getInt("id"),
+                                        rs.getInt("cid"),
+                                        rs.getString("class_name"),
+                                        rs.getString("source_set"),
+                                        rs.getString("member_name"),
+                                        rs.getString("profiles")))
+                .list();
+    }
+
+    /** A resolved injection between two different production-owned classes. */
+    public record InjectionEdge(
+            String fromClass, String fieldName, String kind, String toClass, String toScope) {}
+
+    /** Resolved injection points whose owner is production code and differs from the resolved bean's class. */
+    public List<InjectionEdge> findResolvedInjectionEdges() {
+        return handle.createQuery(
+                        """
+                SELECT oc.class_name AS from_class, ip.field_name, ip.kind,
+                       rc.class_name AS to_class, rb.scope AS to_scope
+                FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                JOIN beans rb ON rb.id = ip.resolved_bean_id
+                JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
+                JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
+                WHERE oc.id <> rc.id AND COALESCE(oc.source_set, 'main') <> 'test'
+                ORDER BY oc.class_name, ip.field_name""")
+                .map(
+                        (rs, ctx) ->
+                                new InjectionEdge(
+                                        rs.getString("from_class"),
+                                        rs.getString("field_name"),
+                                        rs.getString("kind"),
+                                        rs.getString("to_class"),
+                                        rs.getString("to_scope")))
+                .list();
+    }
+
+    /** Whether the index holds Spring beans and no CDI beans. */
+    public boolean isSpringOnly() {
+        return handle.createQuery(
+                        "SELECT SUM(framework = 'spring') > 0 AND SUM(framework = 'cdi') = 0 FROM beans")
+                .mapTo(Boolean.class)
+                .findOne()
+                .orElse(false);
+    }
 }

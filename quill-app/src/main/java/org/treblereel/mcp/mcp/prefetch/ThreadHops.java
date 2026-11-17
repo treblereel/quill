@@ -165,18 +165,7 @@ final class ThreadHops {
         // is empty after the
         // switch; agents grepped for it in every session.
         List<String> bound =
-                new ArrayList<>(
-                        db.jdbi()
-                                .withHandle(
-                                        handle ->
-                                                handle.createQuery(
-                                                                """
-                SELECT c.class_name || '.' || m.name || ' ' || m.type_name FROM class_members m JOIN classes c ON c.id = m.class_id
-                WHERE m.kind = 'FIELD' AND (' ' || m.modifiers || ' ') LIKE '% static %' AND c.lifecycle = 'current'
-                  AND COALESCE(c.source_set, 'main') <> 'test' AND (m.type_name LIKE 'java.lang.ThreadLocal%'
-                  OR m.type_name LIKE 'java.lang.InheritableThreadLocal%') ORDER BY 1 LIMIT 6""")
-                                                        .mapTo(String.class)
-                                                        .list()));
+                new ArrayList<>(db.symbols.findStaticThreadLocalFields());
         List<Path> jarNames = root == null ? List.of() : jars(db, root);
         if (root != null) {
             String propagation = propagation(jarNames);

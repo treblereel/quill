@@ -81,16 +81,7 @@ public final class CycleQueries {
 
     private static boolean isPackage(ReadQueryContext reader, String name) {
         if (!name.contains(".") || name.contains("#")) return false;
-        return reader.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        "SELECT count(*) FROM classes WHERE lifecycle = 'current'"
-                                                                + " AND substr(class_name, 1, length(:prefix)) = :prefix")
-                                                .bind("prefix", name + ".")
-                                                .mapTo(Integer.class)
-                                                .one())
-                > 0;
+        return reader.symbols.hasCurrentClassUnder(name);
     }
 
     /**
@@ -99,41 +90,25 @@ public final class CycleQueries {
      * {@code @Dependent} or {@code @Singleton} beans recurses at creation.
      */
     private ObjectNode findCdiCycles(ReadQueryContext reader, int limit, int offset) {
-        List<Map<String, Object>> rows =
-                reader.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                                                        SELECT oc.class_name AS from_class, ip.field_name, ip.kind,
-                                                               rc.class_name AS to_class, rb.scope AS to_scope
-                                                        FROM injection_points ip
-                                                        JOIN beans ob ON ob.id = ip.bean_id
-                                                        JOIN beans rb ON rb.id = ip.resolved_bean_id
-                                                        JOIN classes oc ON oc.id = COALESCE(ob.declaring_class_id, ob.class_id)
-                                                        JOIN classes rc ON rc.id = COALESCE(rb.declaring_class_id, rb.class_id)
-                                                        WHERE oc.id <> rc.id AND COALESCE(oc.source_set, 'main') <> 'test'
-                                                        ORDER BY oc.class_name, ip.field_name""")
-                                                .mapToMap()
-                                                .list());
+        var rows = reader.beans.findResolvedInjectionEdges();
         List<Pair<String>> edges = new ArrayList<>();
         Map<Pair<String>, List<String>> labels = new LinkedHashMap<>();
         Set<Pair<String>> direct = new LinkedHashSet<>();
-        for (Map<String, Object> row : rows) {
+        for (var row : rows) {
             Pair<String> edge =
                     new Pair<>(
-                            String.valueOf(row.get("from_class")),
-                            String.valueOf(row.get("to_class")));
+                            row.fromClass(),
+                            row.toClass());
             String scope =
-                    row.get("to_scope") == null
+                    row.toScope() == null
                             ? "@Dependent"
-                            : String.valueOf(row.get("to_scope"));
+                            : row.toScope();
             boolean proxied = NORMAL_SCOPES.contains(scope);
             if (!labels.containsKey(edge)) edges.add(edge);
             String member =
-                    row.get("field_name") == null
-                            ? String.valueOf(row.get("kind")).toLowerCase(Locale.ROOT)
-                            : String.valueOf(row.get("field_name"));
+                    row.fieldName() == null
+                            ? String.valueOf(row.kind()).toLowerCase(Locale.ROOT)
+                            : row.fieldName();
             labels.computeIfAbsent(edge, ignored -> new ArrayList<>())
                     .add(
                             edge.from()

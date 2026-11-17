@@ -178,16 +178,10 @@ final class ClassPrefetchRelations {
     static void appendPropertiesRegistration(
             ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         var rows =
-                db.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                SELECT annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1 AND annotation_name = :name""")
-                                                .bind("id", cls.id())
-                                                .bind("name", CONFIGURATION_PROPERTIES)
-                                                .mapTo(String.class)
-                                                .list());
+                db.symbols.findDirectClassAnnotations(cls.id()).stream()
+                        .filter(a -> CONFIGURATION_PROPERTIES.equals(a.annotationName()))
+                        .map(a -> a.annotationValues())
+                        .toList();
         if (rows.isEmpty()) return;
         String prefix = "";
         try {
@@ -201,93 +195,34 @@ final class ClassPrefetchRelations {
             // name.
         }
         List<String> lines = new ArrayList<>();
-        db.jdbi()
-                .useHandle(
-                        handle ->
-                                handle.createQuery(
-                                                """
-                SELECT c.id, c.class_name, c.source_set FROM class_annotations a JOIN classes c ON c.id = a.class_id
-                WHERE a.direct = 1 AND a.annotation_name = :name AND a.annotation_values LIKE :type ORDER BY c.source_set, c.class_name""")
-                                        .bind("name", ENABLE_CONFIGURATION_PROPERTIES)
-                                        .bind("type", "%\"" + cls.className() + "\"%")
-                                        .mapToMap()
-                                        .forEach(
-                                                row -> {
-                                                    if (lines.size() >= 4) return;
-                                                    List<String> conditions =
-                                                            handle
-                                                                    .createQuery(
-                                                                            """
-                            SELECT annotation_name, annotation_values FROM class_annotations
-                            WHERE class_id = :id AND direct = 1 ORDER BY annotation_name""")
-                                                                    .bind(
-                                                                            "id",
-                                                                            ((Number) row.get("id"))
-                                                                                    .intValue())
-                                                                    .mapToMap()
-                                                                    .list()
-                                                                    .stream()
-                                                                    .filter(
-                                                                            a -> {
-                                                                                String simple =
-                                                                                        String
-                                                                                                .valueOf(
-                                                                                                        a
-                                                                                                                .get(
-                                                                                                                        "annotation_name"));
-                                                                                simple =
-                                                                                        simple
-                                                                                                .substring(
-                                                                                                        simple
-                                                                                                                        .lastIndexOf(
-                                                                                                                                '.')
-                                                                                                                + 1);
-                                                                                return simple
-                                                                                                .startsWith(
-                                                                                                        "Conditional")
-                                                                                        || simple
-                                                                                                .equals(
-                                                                                                        "Profile");
-                                                                            })
-                                                                    .map(
-                                                                            a -> {
-                                                                                String name =
-                                                                                        String
-                                                                                                .valueOf(
-                                                                                                        a
-                                                                                                                .get(
-                                                                                                                        "annotation_name"));
-                                                                                return "@"
-                                                                                        + name
-                                                                                                .substring(
-                                                                                                        name
-                                                                                                                        .lastIndexOf(
-                                                                                                                                '.')
-                                                                                                                + 1)
-                                                                                        + "("
-                                                                                        + compactValues(
-                                                                                                a
-                                                                                                        .get(
-                                                                                                                "annotation_values"))
-                                                                                        + ")";
-                                                                            })
-                                                                    .toList();
-                                                    lines.add(
-                                                            row.get("class_name")
-                                                                    + ("test"
-                                                                                    .equals(
-                                                                                            row.get(
-                                                                                                    "source_set"))
-                                                                            ? " (test)"
-                                                                            : "")
-                                                                    + " via @EnableConfigurationProperties"
-                                                                    + (conditions.isEmpty()
-                                                                            ? "; unconditional"
-                                                                            : "; "
-                                                                                    + String.join(
-                                                                                            ", ",
-                                                                                            conditions)));
-                                                }));
+        for (var registrar :
+                db.symbols.findClassesAnnotatedNaming(
+                        ENABLE_CONFIGURATION_PROPERTIES, cls.className())) {
+            if (lines.size() >= 4) break;
+            List<String> conditions =
+                    db.symbols.findDirectClassAnnotationsByName(registrar.id()).stream()
+                            .filter(
+                                    a -> {
+                                        String simple = lastSegment(a.annotationName());
+                                        return simple.startsWith("Conditional")
+                                                || simple.equals("Profile");
+                                    })
+                            .map(
+                                    a ->
+                                            "@"
+                                                    + lastSegment(a.annotationName())
+                                                    + "("
+                                                    + compactValues(a.annotationValues())
+                                                    + ")")
+                            .toList();
+            lines.add(
+                    registrar.className()
+                            + ("test".equals(registrar.sourceSet()) ? " (test)" : "")
+                            + " via @EnableConfigurationProperties"
+                            + (conditions.isEmpty()
+                                    ? "; unconditional"
+                                    : "; " + String.join(", ", conditions)));
+        }
         if (lines.isEmpty()) return;
         fact.set("registered_by", JSON.valueToTree(lines));
         if (!prefix.isBlank()) fact.put("properties_bean_name", prefix + "-" + cls.className());
@@ -1144,6 +1079,10 @@ final class ClassPrefetchRelations {
         for (var row : rows)
             hosts.add(source(String.valueOf(row.className())) + " (" + row.total() + ")");
         strings(fact, "application_producer_hosts", hosts);
+    }
+
+    private static String lastSegment(String name) {
+        return name.substring(name.lastIndexOf('.') + 1);
     }
 
     static String simpleName(String className) {

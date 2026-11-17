@@ -947,4 +947,32 @@ public final class UsageRepository {
                                         rs.getString("caller_external_calls")))
                 .list();
     }
+
+    /**
+     * Classes other than the caller on which a method calls a method of its own name: the types it
+     * delegates to. A null descriptor matches calls recorded without one.
+     */
+    public List<String> findSameNamedCalleeClasses(int classId, String name, String descriptor) {
+        return handle.createQuery(
+                        """
+                SELECT DISTINCT c.class_name FROM method_calls mc JOIN classes c ON c.id = mc.to_class_id
+                WHERE mc.from_class_id = :id AND mc.from_method = :name AND mc.from_descriptor = :descriptor
+                  AND mc.to_method = :name AND mc.to_class_id <> :id ORDER BY 1""")
+                .bind("id", classId)
+                .bind("name", name)
+                .bind("descriptor", descriptor == null ? "" : descriptor)
+                .mapTo(String.class)
+                .list();
+    }
+
+    /** Names of the test classes that depend on the class. */
+    public List<String> findTestClassesDependingOn(int classId) {
+        return handle.createQuery(
+                        """
+                SELECT DISTINCT tc.class_name FROM dependencies d JOIN classes tc ON tc.id = d.from_class_id
+                WHERE d.to_class_id = :id AND tc.source_set = 'test' ORDER BY 1""")
+                .bind("id", classId)
+                .mapTo(String.class)
+                .list();
+    }
 }

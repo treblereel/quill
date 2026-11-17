@@ -293,7 +293,7 @@ class ClassPrefetchRelationsTest {
 
         assertEquals(
                 List.of(
-                        "x.Consumer#service (FIELD x.Service) [\"@Default\"] [RESOLVED] owner @Singleton, uses it in audit, handle",
+                        "x.Consumer#service (FIELD) [\"@Default\"] [RESOLVED] owner @Singleton, uses it in audit, handle",
                         "x.Consumer#services (FIELD jakarta.enterprise.inject.Instance<x.Service>) [UNKNOWN] owner @Singleton, uses it in audit, handle"),
                 strings(service, "injected_into"));
         assertEquals(List.of("src/test/java/x/ServiceTest.java"), strings(service, "test_classes"));
@@ -1008,7 +1008,7 @@ class ClassPrefetchRelationsTest {
                 strings(service, "decorators"));
         assertEquals(
                 List.of(
-                        "x.Caching#delegate (FIELD x.Service) [\"@Any\"] [UNKNOWN] in a decorator: a delegate point resolves to the decorated bean"),
+                        "x.Caching#delegate (FIELD) [\"@Any\"] [UNKNOWN] in a decorator: a delegate point resolves to the decorated bean"),
                 strings(service, "injected_into"));
         assertEquals(
                 List.of(

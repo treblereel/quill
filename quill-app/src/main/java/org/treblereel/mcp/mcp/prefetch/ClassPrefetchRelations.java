@@ -279,7 +279,7 @@ final class ClassPrefetchRelations {
                 "injected_into",
                 db.beans.findInjectionPointsOf(cls.id(), cls.className()),
                 row ->
-                        injectedInto(row)
+                        injectedInto(row, cls.className())
                                 + lazyMark(
                                         lazyPoints(db, String.valueOf(row.owner())),
                                         row.kind(),
@@ -1002,7 +1002,15 @@ final class ClassPrefetchRelations {
                 : "";
     }
 
-    private static String injectedInto(InjectingPoint row) {
+    /** Methods named per injection point; the rest are counted. */
+    private static final int USED_IN = 3;
+
+    /**
+     * One line per injection point: the injected type only when it is not the class itself, and
+     * at most three using methods. Apollo AQ-003/AQ-043/AQ-044, Cryostat CQ-007: lines repeating the
+     * class and listing every using method kept 3 to 6 of 15 to 26 consumers.
+     */
+    private static String injectedInto(InjectingPoint row, String className) {
         String owner = row.owner() + (row.ownerMember() == null ? "" : "#" + row.ownerMember());
         boolean decorator = "DECORATOR".equals(row.ownerKind());
         Object scope = row.ownerScope();
@@ -1019,8 +1027,9 @@ final class ClassPrefetchRelations {
                 + row.fieldName()
                 + " ("
                 + row.kind()
-                + " "
-                + source(row.targetType())
+                + (className.equals(String.valueOf(row.targetType()))
+                        ? ""
+                        : " " + source(row.targetType()))
                 + ")"
                 + qualifiers(row.ownerFramework(), row.qualifiers())
                 + " ["
@@ -1029,7 +1038,14 @@ final class ClassPrefetchRelations {
                 + (!decorator && scope != null
                         ? " owner " + BeanTerms.scope((Object) row.ownerFramework(), scope)
                         : "")
-                + (methods.isEmpty() ? "" : ", uses it in " + String.join(", ", methods))
+                + (methods.isEmpty()
+                        ? ""
+                        : ", uses it in "
+                                + String.join(
+                                        ", ", new ArrayList<>(methods).subList(0, Math.min(USED_IN, methods.size())))
+                                + (methods.size() > USED_IN
+                                        ? " (+" + (methods.size() - USED_IN) + " more)"
+                                        : ""))
                 + (decorator
                         ? " in a decorator: a delegate point resolves to the decorated bean"
                         : "");

@@ -117,13 +117,18 @@ public final class PrefetchCommand implements Callable<Integer> {
                                     org.treblereel.mcp.mcp.prefetch.PrefetchRestatements
                                             .instructions(fresh));
                 PrefetchContext.boundContext(data, hook.path("prompt").asText(""));
-                for (JsonNode fact : fresh) {
-                    ObjectNode identity = ((ObjectNode) fact).deepCopy();
-                    identity.remove("_meta");
-                    delivered.put(digest(data.path("index_id").asText() + identity), true);
-                }
-                // An omitted context was not acknowledged: do not suppress it on a follow-up.
-                if (data.path("context_truncated").asBoolean()) {
+                // An omitted context was not acknowledged: a prompt naming the same target gets it
+                // again. The session and its operation anchor go on, though (Apollo AQ-050: a reset
+                // after a packet lost only its descriptor sent the next step the project overview
+                // and the later steps nothing).
+                boolean truncated = data.path("context_truncated").asBoolean();
+                if (!truncated)
+                    for (JsonNode fact : fresh) {
+                        ObjectNode identity = ((ObjectNode) fact).deepCopy();
+                        identity.remove("_meta");
+                        delivered.put(digest(data.path("index_id").asText() + identity), true);
+                    }
+                if (truncated && data.path("facts").isEmpty()) {
                     delivered.remove("_index_id");
                     delivered.remove("_endpoint");
                 }

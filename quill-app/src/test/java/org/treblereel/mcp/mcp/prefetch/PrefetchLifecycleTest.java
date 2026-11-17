@@ -53,6 +53,28 @@ class PrefetchLifecycleTest {
             try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertTrue(state.isEmpty(),state.toString());}
         }
     }
+    /**
+     * Apollo AQ-050 (Claude): the operation packet lost only its descriptor to the budget, and the
+     * reset that followed dropped the anchor; the next untargeted step got the project overview
+     * (4.3 KB, nothing about the operation) and the later steps nothing.
+     */
+    @Test void aTruncatedOperationPacketKeepsItsAnchorAndGetsNoProjectOverviewNext() throws Exception {
+        StringBuilder body=new StringBuilder();
+        for(int i=0;i<90;i++)body.append("int quiteLongLocalVariableName").append(i).append(" = ").append(i).append("; ");
+        var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int fetch(){"+body+"return 1;}}");
+        EndpointPrefetchTest.routes(db,"GET");
+        Files.createDirectories(root.resolve(".quill"));Files.copy(root.resolve("index.db"),root.resolve(".quill/fixture.db"));
+        Files.writeString(root.resolve(".quill/refs.json"),"{\"@worktree\":\"fixture\"}");
+        var first=hook("UserPromptSubmit","long","GET /warehouse/items/{key}");
+        assertTrue(first.contains("context_truncated"),first);
+        var next=hook("UserPromptSubmit","long","What configuration does it use?");
+        assertFalse(next.contains("\\\"kind\\\":\\\"project\\\""),next);
+        assertEquals("",next,"the operation packet was delivered once; the step repeats nothing");
+        var mapper=new ObjectMapper();
+        try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertEquals("GET /warehouse/items/{key}",state.path("_endpoint").asText(),state.toString());}
+        // Not acknowledged, the packet comes again when the prompt names the route again.
+        assertTrue(hook("UserPromptSubmit","long","GET /warehouse/items/{key}").contains("endpoint_anchor"));
+    }
     @Test void operationAnchorSurvivesFollowUpsButNotResetOrAnExplicitUnknownRoute() throws Exception {
         var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int fetch(){return 1;}}");
         EndpointPrefetchTest.routes(db,"GET");

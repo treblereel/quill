@@ -66,4 +66,47 @@ class DependencyDeclarationsTest {
         assertEquals(List.of("pom.xml:26"), declarations.get("org.other:lib").declaredAt());
         assertEquals("version property lib.version=2.1 at pom.xml:6", declarations.get("org.other:lib").versionSource());
     }
+
+    /** Apollo AQ-001: Claude read pom.xml twice for the Spring Boot and Spring Cloud BOMs. */
+    @Test void importedBomsStateTheirCoordinatesLineAndVersionProperty() throws Exception {
+        Path project = temp.resolve("boms");
+        Files.createDirectories(project.resolve("web"));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId><artifactId>app</artifactId><version>1</version>
+                  <properties>
+                    <cloud.version>2025.1</cloud.version>
+                  </properties>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.springframework.cloud</groupId>
+                        <artifactId>spring-cloud-dependencies</artifactId>
+                        <version>${cloud.version}</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.other</groupId>
+                        <artifactId>managed</artifactId>
+                        <version>3</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        Files.writeString(project.resolve("web/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>test</groupId><artifactId>app</artifactId><version>1</version></parent>
+                  <artifactId>web</artifactId>
+                </project>
+                """);
+
+        assertEquals(List.of("org.springframework.cloud:spring-cloud-dependencies:2025.1 at pom.xml:11 (version property cloud.version at pom.xml:5)"),
+                DependencyDeclarations.importedBoms(project, "."));
+        // A module inherits its parent's imports.
+        assertEquals(DependencyDeclarations.importedBoms(project, "."), DependencyDeclarations.importedBoms(project, "web"));
+    }
 }

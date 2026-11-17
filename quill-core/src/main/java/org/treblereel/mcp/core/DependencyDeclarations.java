@@ -43,11 +43,15 @@ public final class DependencyDeclarations {
     private DependencyDeclarations() {
     }
 
-    public static Map<String, Declaration> locate(Path root, String module, Path repository) {
+    /** A module's POM chain with its interpolated properties, managed versions and imported BOMs. */
+    private record Resolved(Path root, List<Pom> chain, Properties properties, Map<String, String> propertyLocations,
+            Map<String, String> managed, List<String[]> imports) {}
+
+    private static Resolved resolve(Path root, String module) {
         Path normalizedRoot = root.toAbsolutePath().normalize();
         Path start = (module == null || module.equals(".") ? normalizedRoot : normalizedRoot.resolve(module)).resolve("pom.xml");
         List<Pom> chain = chain(start);
-        if (chain.isEmpty()) return Map.of();
+        if (chain.isEmpty()) return null;
         Properties properties = new Properties();
         Map<String, String> propertyLocations = new LinkedHashMap<>();
         for (int i = chain.size() - 1; i >= 0; i--) {
@@ -74,6 +78,32 @@ public final class DependencyDeclarations {
                 } else managed.putIfAbsent(ga, versionOf(dependency, pom, normalizedRoot, properties, propertyLocations, "managed in "));
             }
         }
+        return new Resolved(normalizedRoot, chain, properties, propertyLocations, managed, imports);
+    }
+
+    /**
+     * BOMs a module imports through dependencyManagement, its own and its parents', as
+     * {@code group:artifact:version at file:line}, with the version property's location when one
+     * property sets it.
+     */
+    public static List<String> importedBoms(Path root, String module) {
+        Resolved resolved = resolve(root, module);
+        if (resolved == null) return List.of();
+        List<String> result = new ArrayList<>();
+        for (String[] imported : resolved.imports())
+            result.add(imported[0] + " at " + imported[1] + (imported[2] == null ? "" : " (" + imported[2] + ")"));
+        return result;
+    }
+
+    public static Map<String, Declaration> locate(Path root, String module, Path repository) {
+        Resolved resolved = resolve(root, module);
+        if (resolved == null) return Map.of();
+        Path normalizedRoot = resolved.root();
+        List<Pom> chain = resolved.chain();
+        Properties properties = resolved.properties();
+        Map<String, String> propertyLocations = resolved.propertyLocations();
+        Map<String, String> managed = resolved.managed();
+        List<String[]> imports = resolved.imports();
         Map<String, List<String>> declared = new LinkedHashMap<>();
         Map<String, String> versions = new LinkedHashMap<>();
         for (Pom pom : chain) {

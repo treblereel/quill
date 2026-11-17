@@ -270,7 +270,42 @@ public final class NameTargetPrefetch {
             fact.putObject("direct_dependencies_truncated")
                     .put("shown", direct.size())
                     .put("total", dependencies.path("total").asInt());
+        if (root != null) {
+            List<String> buildFiles = new java.util.ArrayList<>();
+            builds.forEach(file -> buildFiles.add(file.asText()));
+            appendBuildDeclarations(fact, root, buildFiles);
+        }
         return fact;
+    }
+
+    private static final int MAX_STARTER_MODULES = 10;
+
+    /**
+     * The BOMs the root POM imports and the starters each module's own POM declares. Apollo AQ-001:
+     * asked which dependencies bring Spring Boot and Spring Cloud, the direct dependencies showed only
+     * test starters; Claude read pom.xml twice and queried dependencies five times.
+     */
+    static void appendBuildDeclarations(
+            ObjectNode fact, java.nio.file.Path root, List<String> buildFiles) {
+        if (!java.nio.file.Files.isRegularFile(root.resolve("pom.xml"))) return;
+        List<String> boms = org.treblereel.mcp.core.DependencyDeclarations.importedBoms(root, ".");
+        if (!boms.isEmpty()) fact.set("imported_boms", JSON.valueToTree(boms));
+        ArrayNode starters = JSON.createArrayNode();
+        for (String file : buildFiles) {
+            if (!file.endsWith("/pom.xml") || starters.size() >= MAX_STARTER_MODULES) continue;
+            String module = file.substring(0, file.length() - "/pom.xml".length());
+            List<String> own = new java.util.ArrayList<>();
+            org.treblereel.mcp.core.DependencyDeclarations.locate(root, module, null)
+                    .forEach(
+                            (ga, declaration) -> {
+                                if (ga.substring(ga.indexOf(':') + 1).contains("starter")
+                                        && declaration.declaredAt().stream()
+                                                .anyMatch(at -> at.startsWith(file + ":")))
+                                    own.add(ga);
+                            });
+            if (!own.isEmpty()) starters.add(module + ": " + String.join(", ", own));
+        }
+        if (!starters.isEmpty()) fact.set("module_starters", starters);
     }
 
     /**

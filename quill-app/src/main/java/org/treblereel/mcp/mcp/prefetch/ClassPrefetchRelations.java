@@ -799,10 +799,19 @@ final class ClassPrefetchRelations {
      * conditions; ProfileActivation marks them under the prompt's profiles. Apollo AQ-006: the
      * injects line said only "not resolved [AMBIGUOUS]".
      */
-    private static void ambiguousCandidates(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
-        var points = db.beans.findAmbiguousClassInjectionPoints(cls.id(), 4);
+    static void ambiguousCandidates(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
+        ambiguousCandidates(db, fact, cls, null);
+    }
+
+    /**
+     * {@code member} keeps only the points of that @Bean method (its parameters); null keeps all.
+     */
+    static void ambiguousCandidates(
+            ReadQueryContext db, ObjectNode fact, ClassRecord cls, String member) {
+        var points = db.beans.findAmbiguousClassInjectionPoints(cls.id(), member == null ? 4 : 50);
         ObjectNode result = JSON.createObjectNode();
         for (var point : points) {
+            if (member != null && !member.equals(point.fieldName())) continue;
             List<Integer> ids = new java.util.ArrayList<>();
             try {
                 for (var candidate : JSON.readTree(String.valueOf(point.candidates())))
@@ -825,6 +834,12 @@ final class ClassPrefetchRelations {
                                         + (bean.memberName() == null
                                                 ? ""
                                                 : "#" + bean.memberName()));
+                // Apollo AQ-018: a candidate visible only through an assembly module is not this
+                // module's own.
+                if (owner.module() != null
+                        && cls.module() != null
+                        && !owner.module().equals(cls.module()))
+                    line.append(" module ").append(owner.module());
                 if (bean.profiles() != null && !bean.profiles().isEmpty())
                     line.append(" profiles ").append(bean.profiles().toString());
                 List<String> conditions =

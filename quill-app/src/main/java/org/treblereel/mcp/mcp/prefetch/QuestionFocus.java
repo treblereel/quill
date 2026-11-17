@@ -74,7 +74,7 @@ final class QuestionFocus {
         // Apollo AQ-018: "какие зависимости нужны ... покажи параметры @Bean-метода".
         FOCUS.put(
                 List.of("зависимост", "dependenc", "параметр", "parameter", "depends-on"),
-                List.of("producer_parameters", "declaring_class_injects"));
+                List.of("producer_parameters", "declaring_class_injects", "ambiguous_candidates"));
         FOCUS.put(
                 List.of("косвенн", "indirect", "транзитив", "transitive"),
                 List.of("indirect_production"));

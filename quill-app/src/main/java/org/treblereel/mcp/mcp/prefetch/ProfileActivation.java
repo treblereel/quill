@@ -20,6 +20,8 @@ final class ProfileActivation {
     private static final Pattern ACTIVE =
             Pattern.compile("spring\\.profiles\\.active\\s*=\\s*([A-Za-z0-9_,\\-]+)");
     private static final Pattern PROFILES = Pattern.compile("profiles \\[([^\\]]*)\\]");
+    private static final Pattern OTHER_MODULE = Pattern.compile("#\\S+ module \\S+");
+
     private static final Pattern MISSING_PROFILE =
             Pattern.compile("ConditionalOnMissingProfile\\(\\[([^\\]]*)\\]\\)");
 
@@ -37,17 +39,27 @@ final class ProfileActivation {
                 if (!(candidates instanceof ArrayNode lines)) continue;
                 for (int i = 0; i < lines.size(); i++) {
                     String line = lines.get(i).asText();
-                    lines.set(
-                            i,
-                            TextNode.valueOf(
-                                    line
-                                            + " - "
-                                            + (active(line, active) ? "active" : "inactive")
+                    String status =
+                            OTHER_MODULE.matcher(line).find()
+                                    ? "other module: in an application assembling both, not in this module's own context"
+                                    : (active(line, active) ? "active" : "inactive")
                                             + " under "
-                                            + label));
+                                            + label;
+                    lines.set(i, TextNode.valueOf(line + " - " + status));
                 }
+                // Active candidates first: the budget halves lists from the end (Apollo AQ-018).
+                java.util.List<JsonNode> sorted = new java.util.ArrayList<>();
+                lines.forEach(sorted::add);
+                sorted.sort(java.util.Comparator.comparingInt(ProfileActivation::rank));
+                lines.removeAll();
+                sorted.forEach(lines::add);
             }
         }
+    }
+
+    private static int rank(JsonNode line) {
+        String text = line.asText();
+        return text.contains(" - active under ") ? 0 : text.contains(" - inactive under ") ? 1 : 2;
     }
 
     private static boolean active(String line, Set<String> active) {

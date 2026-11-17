@@ -987,6 +987,11 @@ public final class MethodPrefetchRelations {
                                             db, classId, name, fact.path("descriptor").asText("")));
                         });
         if (!parameters.isEmpty()) fact.set("producer_parameters", parameters);
+        // Apollo AQ-018: an ambiguous parameter said only "not resolved [AMBIGUOUS]".
+        db.symbols
+                .findClassById(classId)
+                .ifPresent(
+                        owner -> ClassPrefetchRelations.ambiguousCandidates(db, fact, owner, name));
         if (!injectedInto.isEmpty()) fact.set("produced_bean_injected_into", injectedInto);
         sameTypeProviders(db, fact, classId, beans);
         frameworkLookups(db, root, fact, beans);

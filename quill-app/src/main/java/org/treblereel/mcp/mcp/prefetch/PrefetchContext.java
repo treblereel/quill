@@ -130,6 +130,7 @@ public final class PrefetchContext {
                     impact.put("source_sha256", hash);
                     selected.add(impact);
                 } while (method.find());
+            ProfileActivation.annotate(result, prompt);
             return restated(result).put("status", "ready");
         }
         Map<String, List<ClassRecord>> names = new HashMap<>();

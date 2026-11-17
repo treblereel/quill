@@ -267,6 +267,53 @@ class InheritedInjectionAndSyntheticBeansTest {
         assertEquals("http://localhost", endpoint.configurationDefault());
     }
 
+    /**
+     * Apollo AQ-014/AQ-023: SpringSecurityUserInfoHolder takes an ObjectProvider<UserService>;
+     * the index kept only "ObjectProvider", resolved nothing, and never said which bean the lazy
+     * lookup returns.
+     */
+    @Test
+    void aLazySpringProviderResolvesAgainstItsTypeArgument() throws Exception {
+        Map<String, String> sources = new java.util.LinkedHashMap<>();
+        sources.put("org/springframework/stereotype/Component.java", """
+                package org.springframework.stereotype;
+                import java.lang.annotation.*;
+                @Retention(RetentionPolicy.RUNTIME)
+                @Target(ElementType.TYPE)
+                public @interface Component {}
+                """);
+        sources.put("org/springframework/beans/factory/annotation/Autowired.java", """
+                package org.springframework.beans.factory.annotation;
+                import java.lang.annotation.*;
+                @Retention(RetentionPolicy.RUNTIME)
+                @Target({ElementType.FIELD, ElementType.CONSTRUCTOR, ElementType.METHOD})
+                public @interface Autowired {}
+                """);
+        sources.put("org/springframework/beans/factory/ObjectProvider.java",
+                "package org.springframework.beans.factory; public interface ObjectProvider<T> { T getObject(); }");
+        sources.put("app/Repo.java", "package app; @org.springframework.stereotype.Component public class Repo {}");
+        sources.put("app/Holder.java", """
+                package app;
+                import org.springframework.beans.factory.ObjectProvider;
+                import org.springframework.beans.factory.annotation.Autowired;
+                @org.springframework.stereotype.Component
+                public class Holder {
+                    @Autowired ObjectProvider<Repo> field;
+                    @Autowired Holder(ObjectProvider<Repo> repo) {}
+                }
+                """);
+
+        var result = SpringResolver.resolve(index(sources));
+        var points = result.injectionPoints().stream()
+                .filter(point -> point.targetType().startsWith("org.springframework.beans.factory.ObjectProvider"))
+                .toList();
+        assertEquals(2, points.size(), result.injectionPoints().toString());
+        for (var point : points) {
+            assertEquals("org.springframework.beans.factory.ObjectProvider<app.Repo>", point.targetType());
+            assertNotNull(point.resolvedBeanId(), point.toString());
+        }
+    }
+
     private static List<String> membersOf(BeanResolver.ResolutionResult result, String className) {
         int beanId = beanId(result, className);
         return result.injectionPoints().stream().filter(point -> point.beanId() == beanId)

@@ -105,7 +105,7 @@ public final class ApplicationContextResolver {
         List<BeanRecord> candidates =
                 beans.stream()
                         .filter(bean -> spring || BeanResolver.injectionCandidate(bean))
-                        .filter(bean -> BeanResolver.hasBeanType(bean, point.targetType()))
+                        .filter(bean -> BeanResolver.hasBeanType(bean, SpringResolver.lookupType(point.targetType())))
                         .filter(
                                 bean ->
                                         modulesByClass
@@ -188,7 +188,7 @@ public final class ApplicationContextResolver {
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         List<ResolutionCandidate> traceCandidates =
                 beans.stream()
-                        .filter(bean -> BeanResolver.hasBeanType(bean, point.targetType()))
+                        .filter(bean -> BeanResolver.hasBeanType(bean, SpringResolver.lookupType(point.targetType())))
                         .map(
                                 bean ->
                                         new ResolutionCandidate(

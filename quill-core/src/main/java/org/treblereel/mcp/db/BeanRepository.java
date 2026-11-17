@@ -1301,6 +1301,7 @@ public final class BeanRepository {
                 SELECT b.class_id, ip.field_name, ip.kind FROM injection_points ip
                 JOIN beans b ON b.id = ip.bean_id
                 WHERE ip.target_type = :name OR ip.target_type = :simple
+                   OR ip.target_type LIKE '%<' || :name || '>'
                 ORDER BY b.class_id, ip.field_name""")
                 .bind("name", type)
                 .bind("simple", simpleName)

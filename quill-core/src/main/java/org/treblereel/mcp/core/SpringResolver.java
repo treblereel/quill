@@ -197,9 +197,10 @@ public final class SpringResolver {
         if (injectConstructor != null) {
             for (int i = 0; i < injectConstructor.parametersCount(); i++) {
                 int ipId = ipIdSeq++;
-                String targetType = injectConstructor.parameterType(i).name().toString();
+                InjectedType injected = injectedType(injectConstructor.parameterType(i));
+                String targetType = injected.declared();
                 List<String> ipQualifiers = extractParamQualifiers(injectConstructor, i, index);
-                Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+                Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
 
                 ipRecords.add(InjectionPointRecord.staticAnalysis(
                         ipId, beanId, "CONSTRUCTOR_PARAM", targetType, ipQualifiers,
@@ -252,9 +253,10 @@ public final class SpringResolver {
             if (!isInjectionField(field) || java.lang.reflect.Modifier.isStatic(field.flags())) continue;
 
             int ipId = ipIdSeq++;
-            String targetType = field.type().name().toString();
+            InjectedType injected = injectedType(field.type());
+            String targetType = injected.declared();
             List<String> ipQualifiers = extractFieldQualifiers(field, index);
-            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+            Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
             String member = declaring == null ? field.name()
                     : InjectionHierarchy.inheritedMember(declaring, field.name());
 
@@ -276,9 +278,10 @@ public final class SpringResolver {
             int ipIdSeq) {
         for (int i = 0; i < method.parametersCount(); i++) {
             int ipId = ipIdSeq++;
-            String targetType = method.parameterType(i).name().toString();
+            InjectedType injected = injectedType(method.parameterType(i));
+            String targetType = injected.declared();
             List<String> ipQualifiers = extractParamQualifiers(method, i, index);
-            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+            Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
 
             ipRecords.add(InjectionPointRecord.staticAnalysis(
                     ipId, beanId, "METHOD_PARAM", targetType, ipQualifiers,
@@ -298,9 +301,10 @@ public final class SpringResolver {
             int ipIdSeq) {
         for (int i = 0; i < method.parametersCount(); i++) {
             int ipId = ipIdSeq++;
-            String targetType = method.parameterType(i).name().toString();
+            InjectedType injected = injectedType(method.parameterType(i));
+            String targetType = injected.declared();
             List<String> ipQualifiers = extractParamQualifiers(method, i, index);
-            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+            Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
 
             ipRecords.add(InjectionPointRecord.staticAnalysis(
                     ipId, configBeanId, "METHOD_PARAM", targetType, ipQualifiers,
@@ -312,6 +316,43 @@ public final class SpringResolver {
             }
         }
         return ipIdSeq;
+    }
+
+    /**
+     * Lazy Spring lookups resolve against their type argument. Apollo AQ-014/AQ-023:
+     * SpringSecurityUserInfoHolder takes an ObjectProvider<UserService>, and the index kept only
+     * "ObjectProvider", resolved nothing and never said which bean the lookup returns.
+     */
+    private static final Set<String> LAZY_WRAPPERS = Set.of(
+            "org.springframework.beans.factory.ObjectProvider",
+            "org.springframework.beans.factory.ObjectFactory",
+            "jakarta.inject.Provider",
+            "javax.inject.Provider",
+            "java.util.Optional");
+
+    /** The declared type as written (wrapper with its argument) and the type a bean must have. */
+    record InjectedType(String declared, String lookup) {}
+
+    /** The bean type a stored injection target needs: the argument of a lazy wrapper, else itself. */
+    static String lookupType(String declared) {
+        int open = declared.indexOf('<');
+        if (open < 0 || !declared.endsWith(">") || !LAZY_WRAPPERS.contains(declared.substring(0, open)))
+            return declared;
+        return declared.substring(open + 1, declared.length() - 1);
+    }
+
+    static InjectedType injectedType(org.jboss.jandex.Type type) {
+        String raw = type.name().toString();
+        if (LAZY_WRAPPERS.contains(raw)
+                && type.kind() == org.jboss.jandex.Type.Kind.PARAMETERIZED_TYPE
+                && type.asParameterizedType().arguments().size() == 1) {
+            org.jboss.jandex.Type argument = type.asParameterizedType().arguments().getFirst();
+            if (argument.kind() == org.jboss.jandex.Type.Kind.WILDCARD_TYPE)
+                argument = argument.asWildcardType().extendsBound();
+            String inner = argument.name().toString();
+            return new InjectedType(raw + "<" + inner + ">", inner);
+        }
+        return new InjectedType(raw, raw);
     }
 
     static Resolution resolveByType(String targetType, List<String> qualifiers,

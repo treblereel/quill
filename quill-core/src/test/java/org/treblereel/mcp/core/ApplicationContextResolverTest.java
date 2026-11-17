@@ -396,6 +396,26 @@ class ApplicationContextResolverTest {
         assertEquals(2, refined.get(1).resolvedBeanId());
     }
 
+    /** A lazy provider point keeps resolving against its type argument in each application context. */
+    @Test
+    void aLazyProviderPointResolvesAgainstItsTypeArgumentInContext() {
+        List<ClassRecord> classes = List.of(
+                cls("example.Consumer", "app"),
+                cls("example.ServiceImpl", "app"));
+        List<BeanRecord> beans = List.of(
+                bean(1, 1, "example.Consumer", false),
+                bean(2, 2, "example.Service", false));
+        InjectionPointRecord point = InjectionPointRecord.staticAnalysis(1, 1, "FIELD",
+                "org.springframework.beans.factory.ObjectProvider<example.Service>", List.of(), "service", 2, false,
+                InjectionPointRecord.STATIC_SPRING);
+
+        InjectionPointRecord refined = ApplicationContextResolver.refine(
+                List.of(point), beans, classes, List.of(), List.of(context("app", "app", 0))).getFirst();
+
+        assertEquals(ResolutionStatus.RESOLVED, refined.resolutionStatus(), refined.toString());
+        assertEquals(2, refined.resolvedBeanId());
+    }
+
     private static ClassRecord testCls(String name, String module) {
         return new ClassRecord(
                 0,

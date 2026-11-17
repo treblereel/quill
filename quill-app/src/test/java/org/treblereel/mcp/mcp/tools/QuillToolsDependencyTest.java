@@ -66,6 +66,23 @@ class QuillToolsDependencyTest extends QuillToolsTestBase {
         assertEquals("[\"paymentService (FIELD)\"]", usages.get(0).path("injected_at").toString());
     }
 
+    /** Apollo AQ-023: an ObjectProvider<UserService> point is an injection of UserService. */
+    @Test
+    void aLazyProviderPointCountsAsAnInjectionOfItsArgument() throws Exception {
+        jdbi.useHandle(
+                handle ->
+                        handle.execute(
+                                "INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolution_status, resolution_strategy, "
+                                        + "resolution_reason, resolution_confidence) VALUES (3, 'FIELD', "
+                                        + "'org.springframework.beans.factory.ObjectProvider<org.acme.PaymentService>', '[]', 'payments', 'RESOLVED', "
+                                        + "'STATIC_SPRING', 'UNIQUE_CONTEXT_CANDIDATE', 'HIGH')"));
+        JsonNode usages =
+                JDBI_READS
+                        .findUsages(jdbi, "PaymentService", "injection", null, 10, 0)
+                        .path("usages");
+        assertTrue(usages.toString().contains("payments (FIELD)"), usages.toString());
+    }
+
     @Test
     void classUsagesExposeInvokedMembersWithoutMixingOverloadsOrCallbacks() throws Exception {
         jdbi.useHandle(

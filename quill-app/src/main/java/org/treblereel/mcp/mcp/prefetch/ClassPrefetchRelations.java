@@ -102,29 +102,17 @@ final class ClassPrefetchRelations {
                                 // No scheduling evidence.
                             }
                         });
-        db.jdbi()
-                .withHandle(
-                        handle ->
-                                handle.createQuery(
-                                                """
-                SELECT DISTINCT cu.key, cu.class_name, cu.member FROM method_calls mc
-                JOIN configuration_usages cu ON cu.class_id = mc.to_class_id AND cu.member = mc.to_method
-                WHERE mc.from_class_id = :id AND mc.from_method = :method AND mc.from_descriptor = :descriptor
-                  AND cu.kind = 'config_key' ORDER BY cu.key LIMIT 4""")
-                                        .bind("id", classId)
-                                        .bind("method", method)
-                                        .bind("descriptor", descriptor)
-                                        .mapToMap()
-                                        .list())
+        db.usages
+                .findConfigKeysReadByCallees(classId, method, descriptor, 4)
                 .forEach(
                         row ->
                                 parts.add(
                                         "reads "
-                                                + row.get("key")
+                                                + row.key()
                                                 + " via "
-                                                + row.get("class_name")
+                                                + row.className()
                                                 + "#"
-                                                + row.get("member")));
+                                                + row.member()));
         return parts.isEmpty() ? "" : "; " + String.join("; ", parts);
     }
 
@@ -812,25 +800,12 @@ final class ClassPrefetchRelations {
      * injects line said only "not resolved [AMBIGUOUS]".
      */
     private static void ambiguousCandidates(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
-        var points =
-                db.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                SELECT ip.kind, ip.field_name, ip.target_type, ip.resolution_candidates FROM injection_points ip
-                JOIN beans ob ON ob.id = ip.bean_id
-                WHERE ob.class_id = :id AND ob.member_name IS NULL AND ip.resolution_status = 'AMBIGUOUS'
-                ORDER BY ip.id LIMIT 4""")
-                                                .bind("id", cls.id())
-                                                .mapToMap()
-                                                .list());
+        var points = db.beans.findAmbiguousClassInjectionPoints(cls.id(), 4);
         ObjectNode result = JSON.createObjectNode();
         for (var point : points) {
             List<Integer> ids = new java.util.ArrayList<>();
             try {
-                for (var candidate :
-                        JSON.readTree(String.valueOf(point.get("resolution_candidates"))))
+                for (var candidate : JSON.readTree(String.valueOf(point.candidates())))
                     // Excluded candidates (another module, test sources) are not candidates here.
                     if (candidate.path("beanId").isInt()
                             && !"EXCLUDED".equals(candidate.path("disposition").asText()))
@@ -861,12 +836,7 @@ final class ClassPrefetchRelations {
             }
             if (!lines.isEmpty())
                 result.set(
-                        point.get("kind")
-                                + " "
-                                + point.get("field_name")
-                                + ": "
-                                + point.get("target_type"),
-                        lines);
+                        point.kind() + " " + point.fieldName() + ": " + point.targetType(), lines);
         }
         if (!result.isEmpty()) fact.set("ambiguous_candidates", result);
     }

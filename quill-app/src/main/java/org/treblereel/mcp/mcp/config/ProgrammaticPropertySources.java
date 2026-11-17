@@ -3,7 +3,6 @@ package org.treblereel.mcp.mcp.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.treblereel.mcp.core.Json;
 import org.treblereel.mcp.db.ReadQueryContext;
@@ -28,28 +27,18 @@ public final class ProgrammaticPropertySources {
      * empty.
      */
     public static List<String> describe(ReadQueryContext reader, Set<String> modules) {
-        List<Map<String, Object>> rows =
-                reader.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                SELECT c.class_name, c.module, e.from_method, e.caller_external_calls
-                FROM method_evidence e JOIN classes c ON c.id = e.from_class_id
-                WHERE e.caller_external_calls LIKE '%org.springframework.core.env.MutablePropertySources|%'
-                  AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
-                ORDER BY c.class_name, e.from_method""")
-                                                .mapToMap()
-                                                .list());
+        var rows =
+                reader.usages.findProductionMethodsCallingExternal(
+                        "org.springframework.core.env.MutablePropertySources");
         List<String> lines = new ArrayList<>();
         for (var row : rows) {
             if (lines.size() == MAX_LINES) break;
-            String module = row.get("module") == null ? null : String.valueOf(row.get("module"));
+            String module = row.module();
             if (!modules.isEmpty() && module != null && !modules.contains(module)) continue;
             List<String> adds = new ArrayList<>();
             List<String> schedules = new ArrayList<>();
             try {
-                for (var call : JSON.readTree(String.valueOf(row.get("caller_external_calls")))) {
+                for (var call : JSON.readTree(row.externalCalls())) {
                     String[] parts = call.asText().split("\\|", -1);
                     if (parts.length < 4) continue;
                     String owner = parts[2].substring(parts[2].lastIndexOf('.') + 1);
@@ -63,9 +52,9 @@ public final class ProgrammaticPropertySources {
             }
             if (adds.isEmpty()) continue;
             String line =
-                    row.get("class_name")
+                    row.className()
                             + "#"
-                            + row.get("from_method")
+                            + row.method()
                             + " adds property sources ("
                             + String.join(", ", adds)
                             + ")";

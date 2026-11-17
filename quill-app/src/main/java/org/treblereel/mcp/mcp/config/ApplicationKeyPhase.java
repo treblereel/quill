@@ -102,20 +102,7 @@ final class ApplicationKeyPhase {
             if (!String.valueOf(consumer.annotation()).contains("#") || consumer.member() == null)
                 continue;
             List<String> callers =
-                    reader.jdbi()
-                            .withHandle(
-                                    handle ->
-                                            handle.createQuery(
-                                                            """
-                SELECT DISTINCT fc.class_name || '#' || mc.from_method FROM method_calls mc
-                JOIN classes tc ON tc.id = mc.to_class_id JOIN classes fc ON fc.id = mc.from_class_id
-                WHERE tc.class_name = :owner AND mc.to_method = :member
-                  AND COALESCE(fc.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
-                ORDER BY 1""")
-                                                    .bind("owner", consumer.className())
-                                                    .bind("member", consumer.member())
-                                                    .mapTo(String.class)
-                                                    .list());
+                    reader.usages.findProductionCallers(consumer.className(), consumer.member());
             if (callers.isEmpty()) continue;
             // One line per reader: the budget halves lists, and the reader repeated on every caller
             // made Apollo AQ-036 lose three of its six (Apollo AQ-036).

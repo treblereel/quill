@@ -99,67 +99,24 @@ public final class SpringDataRepositories {
     /** "@EnableJpaRepositories on p.JpaConfig" (pattern) or class names carrying the annotation. */
     /** Modules on the repository module's classpath; empty when the index records none. */
     private static List<String> visibleModules(ReadQueryContext reader, String module) {
-        if (module == null) return List.of();
-        return reader.jdbi()
-                .withHandle(
-                        handle ->
-                                handle.createQuery(
-                                                "SELECT visible_module FROM module_classpath WHERE application_module = :module")
-                                        .bind("module", module)
-                                        .mapTo(String.class)
-                                        .list());
+        return module == null ? List.of() : List.copyOf(reader.index.findVisibleModules(module));
     }
-
-    /**
-     * Fixed statements: LIKE matches an annotation-name pattern, = an exact name; the module filter
-     * applies only when {@code :all_modules} is false.
-     */
-    private static final String ANNOTATED_LIKE =
-            """
-            SELECT DISTINCT a.annotation_name, c.class_name FROM class_annotations a
-            JOIN classes c ON c.id = a.class_id
-            WHERE a.annotation_name LIKE :name AND c.kind <> 'ANNOTATION'
-              AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
-              AND (:all_modules OR c.module IN (<modules>))
-            ORDER BY c.class_name LIMIT :limit""";
-
-    private static final String ANNOTATED_EXACT =
-            """
-            SELECT DISTINCT a.annotation_name, c.class_name FROM class_annotations a
-            JOIN classes c ON c.id = a.class_id
-            WHERE a.annotation_name = :name AND c.kind <> 'ANNOTATION'
-              AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
-              AND (:all_modules OR c.module IN (<modules>))
-            ORDER BY c.class_name LIMIT :limit""";
 
     private static List<String> annotated(
             ReadQueryContext reader, String annotation, boolean pattern, List<String> modules) {
         return reader
-                .jdbi()
-                .withHandle(
-                        handle ->
-                                handle.createQuery(pattern ? ANNOTATED_LIKE : ANNOTATED_EXACT)
-                                        .bind("name", annotation)
-                                        .bind("all_modules", modules.isEmpty())
-                                        // An IN list needs one element; all_modules ignores it
-                                        // then.
-                                        .bindList(
-                                                "modules",
-                                                modules.isEmpty() ? List.of("") : modules)
-                                        .bind("limit", MAX_CLASSES)
-                                        .mapToMap()
-                                        .list())
+                .symbols
+                .findProductionClassesAnnotated(annotation, pattern, modules, MAX_CLASSES)
                 .stream()
                 .map(
-                        row -> {
-                            String name = String.valueOf(row.get("annotation_name"));
-                            String owner = String.valueOf(row.get("class_name"));
+                        found -> {
+                            String name = found.annotationName();
                             return pattern
                                     ? "@"
                                             + name.substring(name.lastIndexOf('.') + 1)
                                             + " on "
-                                            + owner
-                                    : owner;
+                                            + found.className()
+                                    : found.className();
                         })
                 .toList();
     }

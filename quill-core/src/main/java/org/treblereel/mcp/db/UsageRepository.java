@@ -867,4 +867,84 @@ public final class UsageRepository {
                 UNION SELECT to_descriptor FROM method_calls WHERE to_class_id = :id AND to_method = :name""")
                 .bind("id", classId).bind("name", method).mapTo(String.class).list();
     }
+
+    /** Production methods calling {@code ownerClass#member}, each as "Class#method". */
+    public List<String> findProductionCallers(String ownerClass, String member) {
+        return handle.createQuery(
+                        """
+                SELECT DISTINCT fc.class_name || '#' || mc.from_method FROM method_calls mc
+                JOIN classes tc ON tc.id = mc.to_class_id JOIN classes fc ON fc.id = mc.from_class_id
+                WHERE tc.class_name = :owner AND mc.to_method = :member
+                  AND COALESCE(fc.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+                ORDER BY 1""")
+                .bind("owner", ownerClass)
+                .bind("member", member)
+                .mapTo(String.class)
+                .list();
+    }
+
+    /** Calls from a method to the same-named, same-descriptor method of {@code toClassId}. */
+    public int countCallsToSameMethod(
+            int fromClassId, String method, String descriptor, int toClassId) {
+        return handle.createQuery(
+                        """
+                SELECT COUNT(*) FROM method_calls
+                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor
+                  AND to_method = :name AND to_descriptor = :descriptor AND to_class_id = :target""")
+                .bind("id", fromClassId)
+                .bind("name", method)
+                .bind("descriptor", descriptor)
+                .bind("target", toClassId)
+                .mapTo(Integer.class)
+                .one();
+    }
+
+    /** A configuration key read by a method the selected method calls. */
+    public record CalleeKeyRead(String key, String className, String member) {}
+
+    public List<CalleeKeyRead> findConfigKeysReadByCallees(
+            int classId, String method, String descriptor, int limit) {
+        return handle.createQuery(
+                        """
+                SELECT DISTINCT cu.key, cu.class_name, cu.member FROM method_calls mc
+                JOIN configuration_usages cu ON cu.class_id = mc.to_class_id AND cu.member = mc.to_method
+                WHERE mc.from_class_id = :id AND mc.from_method = :method AND mc.from_descriptor = :descriptor
+                  AND cu.kind = 'config_key' ORDER BY cu.key LIMIT :limit""")
+                .bind("id", classId)
+                .bind("method", method)
+                .bind("descriptor", descriptor)
+                .bind("limit", limit)
+                .map(
+                        (rs, ctx) ->
+                                new CalleeKeyRead(
+                                        rs.getString("key"),
+                                        rs.getString("class_name"),
+                                        rs.getString("member")))
+                .list();
+    }
+
+    /**
+     * A production method whose external calls include a type, with its raw external-call evidence.
+     */
+    public record ExternalCallingMethod(
+            String className, String module, String method, String externalCalls) {}
+
+    public List<ExternalCallingMethod> findProductionMethodsCallingExternal(String externalOwner) {
+        return handle.createQuery(
+                        """
+                SELECT c.class_name, c.module, e.from_method, e.caller_external_calls
+                FROM method_evidence e JOIN classes c ON c.id = e.from_class_id
+                WHERE e.caller_external_calls LIKE '%' || :owner || '|%'
+                  AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+                ORDER BY c.class_name, e.from_method""")
+                .bind("owner", externalOwner)
+                .map(
+                        (rs, ctx) ->
+                                new ExternalCallingMethod(
+                                        rs.getString("class_name"),
+                                        rs.getString("module"),
+                                        rs.getString("from_method"),
+                                        rs.getString("caller_external_calls")))
+                .list();
+    }
 }

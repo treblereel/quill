@@ -1080,34 +1080,15 @@ public final class StructureToolQueries {
      */
     public static void appendCreatingBeanMethods(
             ReadQueryContext reader, ObjectNode root, ClassRecord cls) {
-        var rows =
-                reader.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                SELECT DISTINCT c.id AS class_id, c.class_name, b.member_name, b.profiles, b.bean_types, b.scope, b.framework
-                FROM method_calls mc
-                JOIN beans b ON b.declaring_class_id = mc.from_class_id AND b.member_name = mc.from_method
-                JOIN classes c ON c.id = mc.from_class_id
-                WHERE mc.to_class_id = :id AND mc.to_method = '<init>'
-                ORDER BY c.class_name, b.member_name LIMIT 6""")
-                                                .bind("id", cls.id())
-                                                .mapToMap()
-                                                .list());
+        var rows = reader.beans.findBeanMethodsConstructing(cls.id(), 6);
         if (rows.isEmpty()) return;
         ArrayNode created = root.putArray("created_by_bean_methods");
         for (var row : rows) {
-            int classId = ((Number) row.get("class_id")).intValue();
-            String member = String.valueOf(row.get("member_name"));
+            int classId = row.classId();
+            String member = row.memberName();
             StringBuilder line =
-                    new StringBuilder(
-                            row.get("class_name")
-                                    + "#"
-                                    + member
-                                    + " types "
-                                    + row.get("bean_types"));
-            Object profiles = row.get("profiles");
+                    new StringBuilder(row.className() + "#" + member + " types " + row.beanTypes());
+            String profiles = row.profiles();
             if (profiles != null
                     && !String.valueOf(profiles).isBlank()
                     && !"[]".equals(String.valueOf(profiles)))

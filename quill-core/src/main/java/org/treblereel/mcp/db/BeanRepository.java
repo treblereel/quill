@@ -1287,4 +1287,78 @@ public final class BeanRepository {
                 .map((rs, ctx) -> new BeanKindScope(rs.getString("kind"), rs.getString("scope")))
                 .findOne();
     }
+
+    /** An injection point declaring a type, with the class of the bean that owns it. */
+    public record DeclaredInjectionPoint(int ownerClassId, String fieldName, String kind) {}
+
+    /**
+     * Injection points whose declared type is {@code type} (or its simple name), resolved or not.
+     */
+    public List<DeclaredInjectionPoint> findInjectionPointsDeclaring(
+            String type, String simpleName) {
+        return handle.createQuery(
+                        """
+                SELECT b.class_id, ip.field_name, ip.kind FROM injection_points ip
+                JOIN beans b ON b.id = ip.bean_id
+                WHERE ip.target_type = :name OR ip.target_type = :simple
+                ORDER BY b.class_id, ip.field_name""")
+                .bind("name", type)
+                .bind("simple", simpleName)
+                .map(
+                        (rs, ctx) ->
+                                new DeclaredInjectionPoint(
+                                        rs.getInt("class_id"),
+                                        rs.getString("field_name"),
+                                        rs.getString("kind")))
+                .list();
+    }
+
+    /** A @Bean method whose body constructs a class. */
+    public record ConstructingBeanMethod(
+            int classId, String className, String memberName, String profiles, String beanTypes) {}
+
+    public List<ConstructingBeanMethod> findBeanMethodsConstructing(int classId, int limit) {
+        return handle.createQuery(
+                        """
+                SELECT DISTINCT c.id AS class_id, c.class_name, b.member_name, b.profiles, b.bean_types
+                FROM method_calls mc
+                JOIN beans b ON b.declaring_class_id = mc.from_class_id AND b.member_name = mc.from_method
+                JOIN classes c ON c.id = mc.from_class_id
+                WHERE mc.to_class_id = :id AND mc.to_method = '<init>'
+                ORDER BY c.class_name, b.member_name LIMIT :limit""")
+                .bind("id", classId)
+                .bind("limit", limit)
+                .map(
+                        (rs, ctx) ->
+                                new ConstructingBeanMethod(
+                                        rs.getInt("class_id"),
+                                        rs.getString("class_name"),
+                                        rs.getString("member_name"),
+                                        rs.getString("profiles"),
+                                        rs.getString("bean_types")))
+                .list();
+    }
+
+    /** An ambiguous injection point of a class bean, with its raw resolution candidates. */
+    public record AmbiguousClassPoint(
+            String kind, String fieldName, String targetType, String candidates) {}
+
+    public List<AmbiguousClassPoint> findAmbiguousClassInjectionPoints(int classId, int limit) {
+        return handle.createQuery(
+                        """
+                SELECT ip.kind, ip.field_name, ip.target_type, ip.resolution_candidates FROM injection_points ip
+                JOIN beans ob ON ob.id = ip.bean_id
+                WHERE ob.class_id = :id AND ob.member_name IS NULL AND ip.resolution_status = 'AMBIGUOUS'
+                ORDER BY ip.id LIMIT :limit""")
+                .bind("id", classId)
+                .bind("limit", limit)
+                .map(
+                        (rs, ctx) ->
+                                new AmbiguousClassPoint(
+                                        rs.getString("kind"),
+                                        rs.getString("field_name"),
+                                        rs.getString("target_type"),
+                                        rs.getString("resolution_candidates")))
+                .list();
+    }
 }

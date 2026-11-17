@@ -88,28 +88,21 @@ final class CallInterception {
     }
 
     private static List<String> memberAnnotations(ReadQueryContext reader, Endpoint endpoint) {
-        List<String> details =
-                reader.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        "SELECT annotation_details FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor")
-                                                .bind("id", endpoint.classId())
-                                                .bind("name", endpoint.method())
-                                                .bind("descriptor", endpoint.descriptor())
-                                                .mapTo(String.class)
-                                                .list());
         List<String> result = new ArrayList<>();
-        for (String json : details) {
-            try {
-                for (JsonNode annotation : JSON.readTree(json)) {
-                    if (!"METHOD".equals(annotation.path("targetKind").asText("METHOD"))) continue;
-                    String name = annotation.path("annotationName").asText();
-                    if (intercepting(name)) result.add(render(name, annotation.path("values"), ""));
-                }
-            } catch (Exception unreadable) {
-                // Unreadable details state nothing.
+        String json =
+                reader.symbols
+                        .findMemberAnnotationDetails(
+                                endpoint.classId(), endpoint.method(), endpoint.descriptor())
+                        .orElse(null);
+        if (json == null) return result;
+        try {
+            for (JsonNode annotation : JSON.readTree(json)) {
+                if (!"METHOD".equals(annotation.path("targetKind").asText("METHOD"))) continue;
+                String name = annotation.path("annotationName").asText();
+                if (intercepting(name)) result.add(render(name, annotation.path("values"), ""));
             }
+        } catch (Exception unreadable) {
+            // Unreadable details state nothing.
         }
         return result;
     }
@@ -146,21 +139,15 @@ final class CallInterception {
 
     private static List<String> classAnnotations(ReadQueryContext reader, int classId) {
         List<String> result = new ArrayList<>();
-        for (var row :
-                reader.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        "SELECT annotation_name, annotation_values FROM class_annotations WHERE class_id = :id AND direct = 1 ORDER BY annotation_name")
-                                                .bind("id", classId)
-                                                .mapToMap()
-                                                .list())) {
-            String name = String.valueOf(row.get("annotation_name"));
+        for (var annotation : reader.symbols.findDirectClassAnnotations(classId)) {
+            String name = annotation.annotationName();
             if (!intercepting(name)) continue;
             JsonNode values;
             try {
-                Object raw = row.get("annotation_values");
-                values = raw == null ? JSON.createObjectNode() : JSON.readTree(raw.toString());
+                values =
+                        annotation.annotationValues() == null
+                                ? JSON.createObjectNode()
+                                : JSON.readTree(annotation.annotationValues());
             } catch (Exception unreadable) {
                 values = JSON.createObjectNode();
             }

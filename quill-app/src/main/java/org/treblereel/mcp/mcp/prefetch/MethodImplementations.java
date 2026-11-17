@@ -97,30 +97,21 @@ final class MethodImplementations {
         return false;
     }
 
-    private static List<Map<String, Object>> members(
+    private static List<String> modifiers(
             ReadQueryContext db, int classId, String name, String descriptor) {
-        return db.jdbi()
-                .withHandle(
-                        handle ->
-                                handle.createQuery(
-                                                "SELECT modifiers FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor")
-                                        .bind("id", classId)
-                                        .bind("name", name)
-                                        .bind("descriptor", descriptor)
-                                        .mapToMap()
-                                        .list());
+        return db.symbols.findMemberModifiers(classId, name, descriptor);
     }
 
     private static boolean isAbstract(
             ReadQueryContext db, int classId, String name, String descriptor) {
-        return members(db, classId, name, descriptor).stream()
-                .anyMatch(row -> String.valueOf(row.get("modifiers")).contains("abstract"));
+        return modifiers(db, classId, name, descriptor).stream()
+                .anyMatch(value -> String.valueOf(value).contains("abstract"));
     }
 
     private static boolean declares(
             ReadQueryContext db, int classId, String name, String descriptor) {
-        return members(db, classId, name, descriptor).stream()
-                .anyMatch(row -> !String.valueOf(row.get("modifiers")).contains("abstract"));
+        return modifiers(db, classId, name, descriptor).stream()
+                .anyMatch(value -> !String.valueOf(value).contains("abstract"));
     }
 
     private static ClassRecord declaringAncestor(
@@ -145,37 +136,14 @@ final class MethodImplementations {
             String name,
             String descriptor,
             Map<String, ClassRecord> byName) {
-        if (cls.superclass() == null || byName.get(cls.superclass()) == null) return false;
-        int superId = byName.get(cls.superclass()).id();
-        return db.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                SELECT COUNT(*) FROM method_calls
-                WHERE from_class_id = :id AND from_method = :name AND from_descriptor = :descriptor
-                  AND to_method = :name AND to_descriptor = :descriptor AND to_class_id = :super""")
-                                                .bind("id", cls.id())
-                                                .bind("name", name)
-                                                .bind("descriptor", descriptor)
-                                                .bind("super", superId)
-                                                .mapTo(Integer.class)
-                                                .one())
-                > 0;
+        ClassRecord parent = cls.superclass() == null ? null : byName.get(cls.superclass());
+        return parent != null
+                && db.usages.countCallsToSameMethod(cls.id(), name, descriptor, parent.id()) > 0;
     }
 
     /** ACC_ABSTRACT from the captured class file, else any abstract member. */
     private static boolean abstractClass(ReadQueryContext db, int classId) {
-        String evidence =
-                db.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        "SELECT evidence FROM jvm_api WHERE class_id = :id")
-                                                .bind("id", classId)
-                                                .mapTo(String.class)
-                                                .findOne()
-                                                .orElse(null));
+        String evidence = db.symbols.findJvmApiEvidence(classId).orElse(null);
         if (evidence != null) {
             try {
                 var flags = JSON.readTree(evidence).path("access_flags");
@@ -184,15 +152,7 @@ final class MethodImplementations {
                 // Fall back to the members.
             }
         }
-        return db.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        "SELECT COUNT(*) FROM class_members WHERE class_id = :id AND modifiers LIKE '%abstract%'")
-                                                .bind("id", classId)
-                                                .mapTo(Integer.class)
-                                                .one())
-                > 0;
+        return db.symbols.countAbstractMembers(classId) > 0;
     }
 
     private static String beanText(ReadQueryContext db, ClassRecord cls) {

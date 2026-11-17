@@ -1180,4 +1180,64 @@ public final class SymbolRepository {
                 .map((rs, ctx) -> new KeyConstant(rs.getString("class_name"), rs.getString("source_file"),
                         rs.getString("source_set"), rs.getString("field"), rs.getString("key"))).list();
     }
+
+    /** Modifiers of a member, one per matching declaration. */
+    public List<String> findMemberModifiers(int classId, String name, String descriptor) {
+        return handle.createQuery(
+                        "SELECT modifiers FROM class_members WHERE class_id = :id AND name = :name AND descriptor = :descriptor")
+                .bind("id", classId)
+                .bind("name", name)
+                .bind("descriptor", descriptor)
+                .mapTo(String.class)
+                .list();
+    }
+
+    public int countAbstractMembers(int classId) {
+        return handle.createQuery(
+                        "SELECT COUNT(*) FROM class_members WHERE class_id = :id AND modifiers LIKE '%abstract%'")
+                .bind("id", classId)
+                .mapTo(Integer.class)
+                .one();
+    }
+
+    /** A production class carrying an annotation. */
+    public record AnnotatedProductionClass(String annotationName, String className) {}
+
+    private static final String PRODUCTION_ANNOTATED_LIKE =
+            """
+            SELECT DISTINCT a.annotation_name, c.class_name FROM class_annotations a
+            JOIN classes c ON c.id = a.class_id
+            WHERE a.annotation_name LIKE :name AND c.kind <> 'ANNOTATION'
+              AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+              AND (:all_modules OR c.module IN (<modules>))
+            ORDER BY c.class_name LIMIT :limit""";
+
+    private static final String PRODUCTION_ANNOTATED_EXACT =
+            """
+            SELECT DISTINCT a.annotation_name, c.class_name FROM class_annotations a
+            JOIN classes c ON c.id = a.class_id
+            WHERE a.annotation_name = :name AND c.kind <> 'ANNOTATION'
+              AND COALESCE(c.source_set, 'main') NOT IN ('test', 'integration-test', 'integrationTest')
+              AND (:all_modules OR c.module IN (<modules>))
+            ORDER BY c.class_name LIMIT :limit""";
+
+    /**
+     * Production classes carrying {@code annotation} (a LIKE pattern when {@code pattern}), within
+     * {@code modules} unless that is empty.
+     */
+    public List<AnnotatedProductionClass> findProductionClassesAnnotated(
+            String annotation, boolean pattern, java.util.Collection<String> modules, int limit) {
+        return handle.createQuery(pattern ? PRODUCTION_ANNOTATED_LIKE : PRODUCTION_ANNOTATED_EXACT)
+                .bind("name", annotation)
+                .bind("all_modules", modules.isEmpty())
+                // An IN list needs one element; all_modules ignores it then.
+                .bindList("modules", modules.isEmpty() ? List.of("") : List.copyOf(modules))
+                .bind("limit", limit)
+                .map(
+                        (rs, ctx) ->
+                                new AnnotatedProductionClass(
+                                        rs.getString("annotation_name"),
+                                        rs.getString("class_name")))
+                .list();
+    }
 }

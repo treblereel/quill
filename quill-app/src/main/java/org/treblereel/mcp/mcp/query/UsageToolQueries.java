@@ -248,26 +248,12 @@ public final class UsageToolQueries {
     private static void injectionPoints(
             ReadQueryContext reader, ClassRecord target, Map<UsageKey, Usage> result) {
         String simple = target.className().substring(target.className().lastIndexOf('.') + 1);
-        List<Map<String, Object>> owners =
-                reader.jdbi()
-                        .withHandle(
-                                handle ->
-                                        handle.createQuery(
-                                                        """
-                SELECT b.class_id, ip.field_name, ip.kind FROM injection_points ip
-                JOIN beans b ON b.id = ip.bean_id
-                WHERE ip.target_type = :name OR ip.target_type = :simple
-                ORDER BY b.class_id, ip.field_name""")
-                                                .bind("name", target.className())
-                                                .bind("simple", simple)
-                                                .mapToMap()
-                                                .list());
+        var owners = reader.beans.findInjectionPointsDeclaring(target.className(), simple);
         if (owners.isEmpty()) return;
         Map<Integer, List<String>> points = new LinkedHashMap<>();
-        for (Map<String, Object> row : owners)
-            points.computeIfAbsent(
-                            ((Number) row.get("class_id")).intValue(), id -> new ArrayList<>())
-                    .add(row.get("field_name") + " (" + row.get("kind") + ")");
+        for (var point : owners)
+            points.computeIfAbsent(point.ownerClassId(), id -> new ArrayList<>())
+                    .add(point.fieldName() + " (" + point.kind() + ")");
         Map<Integer, ClassRecord> classes =
                 reader.symbols.findClassesByIds(List.copyOf(points.keySet()));
         // AQ-043 (Claude): naming the class only hid

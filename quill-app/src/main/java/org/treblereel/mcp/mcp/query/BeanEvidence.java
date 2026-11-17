@@ -77,6 +77,20 @@ public final class BeanEvidence {
                     "jakarta.ws.rs.Path",
                     "io.quarkus.scheduler.Scheduled");
 
+    /** Supertypes whose beans a Quarkus extension keeps as roots, with the extension's role. */
+    private static final java.util.Map<String, String> FRAMEWORK_ROOTS =
+            java.util.Map.of(
+                    "io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism",
+                    "Quarkus security root: HttpAuthenticationMechanism",
+                    "io.quarkus.security.identity.IdentityProvider",
+                    "Quarkus security root: IdentityProvider",
+                    "io.quarkus.security.identity.SecurityIdentityAugmentor",
+                    "Quarkus security root: SecurityIdentityAugmentor",
+                    "io.quarkus.vertx.http.runtime.security.HttpSecurityPolicy",
+                    "Quarkus security root: HttpSecurityPolicy");
+
+    private static final int CHAIN = 4;
+
     private BeanEvidence() {}
 
     /**
@@ -160,6 +174,8 @@ public final class BeanEvidence {
                 .filter(ROOT_ANNOTATIONS::contains)
                 .distinct()
                 .forEach(name -> kept.add("@" + name.substring(name.lastIndexOf('.') + 1)));
+        String chain = owners.isEmpty() ? null : injectorChain(db, bean);
+        if (chain != null) kept.add("injector chain: " + chain);
         List<String> setting = db.references.findArcRemoveUnusedBeansDeclarations();
         String text =
                 (kept.isEmpty()
@@ -189,6 +205,63 @@ public final class BeanEvidence {
                                     + " in the last indexed Quarkus build output";
         }
         return text;
+    }
+
+    /**
+     * The injectors above a bean, followed until one is kept for its own sake: "A <- B (why)", or
+     * the last one nothing keeps. Cryostat CQ-005: "injected into SsarAuthorizer" left open whether
+     * the injector survives, and Codex read deployment processor bytecode to find out.
+     */
+    private static String injectorChain(org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean) {
+        List<String> path = new ArrayList<>();
+        java.util.Set<Integer> seen = new java.util.HashSet<>(List.of(bean.id()));
+        BeanRecord current = bean;
+        for (int step = 0; step < CHAIN; step++) {
+            List<String> owners = db.beans.findInjectionPointOwners(current.id());
+            BeanRecord next = null;
+            String nextName = null;
+            for (String owner : owners) {
+                String className = owner.contains("#") ? owner.substring(0, owner.indexOf('#')) : owner;
+                var cls = db.symbols.findClassByName(className).orElse(null);
+                var ownerBean = cls == null ? null : db.beans.findBeanByClassId(cls.id()).orElse(null);
+                if (ownerBean == null || !seen.add(ownerBean.id())) continue;
+                String reason = ownRoot(db, ownerBean, cls);
+                if (reason != null) {
+                    path.add(simple(className));
+                    return String.join(" <- ", path) + " (" + reason + ")";
+                }
+                if (next == null) {
+                    next = ownerBean;
+                    nextName = className;
+                }
+            }
+            if (next == null)
+                return path.isEmpty() ? null
+                        : String.join(" <- ", path) + ", which no indexed injector or root keeps";
+            path.add(simple(nextName));
+            current = next;
+        }
+        return String.join(" <- ", path) + " (no root within " + CHAIN + " injectors)";
+    }
+
+    /** Why ArC keeps a bean without any injector, or null. */
+    private static String ownRoot(
+            org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean, org.treblereel.mcp.model.ClassRecord cls) {
+        for (String type : cls.interfaces()) if (FRAMEWORK_ROOTS.containsKey(type)) return FRAMEWORK_ROOTS.get(type);
+        if (FRAMEWORK_ROOTS.containsKey(cls.superclass())) return FRAMEWORK_ROOTS.get(cls.superclass());
+        for (var annotation : db.symbols.findClassAnnotations(cls.id())) {
+            String name = annotation.annotationName();
+            if (name.equals(UNREMOVABLE) || ROOT_ANNOTATIONS.contains(name))
+                return "@" + name.substring(name.lastIndexOf('.') + 1);
+        }
+        if (bean.qualifiers() != null && bean.qualifiers().stream().anyMatch(q -> q.startsWith("@Named"))) return "@Named";
+        for (var member : db.symbols.findObserverAndProducerMembers(cls.id()))
+            if (String.valueOf(member.annotations()).contains(".event.Observes")) return "observer method " + member.name();
+        return null;
+    }
+
+    private static String simple(String className) {
+        return className.substring(className.lastIndexOf('.') + 1);
     }
 
     /**

@@ -1107,7 +1107,8 @@ public final class StructureToolQueries {
                                             parameter.targetType()
                                                     + " ["
                                                     + parameter.resolutionStatus()
-                                                    + "]"));
+                                                    + "]"
+                                                    + lazyLookup(parameter.targetType())));
             if (!parameters.isEmpty())
                 line.append(" parameters ").append(String.join(", ", parameters));
             created.add(line.toString());
@@ -1115,6 +1116,20 @@ public final class StructureToolQueries {
         root.put(
                 "created_by_basis",
                 "the bean is the @Bean method's, registered under its return type; list_injection_points on the declaring class shows that method's parameters");
+    }
+
+    /** Lazy wrappers SpringResolver resolves against their type argument, by the call that looks up. */
+    private static final java.util.Map<String, String> LAZY_LOOKUPS =
+            java.util.Map.of(
+                    "org.springframework.beans.factory.ObjectProvider", "getObject()",
+                    "org.springframework.beans.factory.ObjectFactory", "getObject()",
+                    "jakarta.inject.Provider", "get()",
+                    "javax.inject.Provider", "get()");
+
+    private static String lazyLookup(String type) {
+        int generic = type == null ? -1 : type.indexOf('<');
+        String call = generic < 0 ? null : LAZY_LOOKUPS.get(type.substring(0, generic));
+        return call == null ? "" : " lazy: looked up when " + call + " runs";
     }
 
     private static void addRelatedBean(

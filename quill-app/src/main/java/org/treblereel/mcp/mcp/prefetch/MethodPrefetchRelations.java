@@ -175,6 +175,7 @@ public final class MethodPrefetchRelations {
         if (hops != null) fact.set("thread_hops", hops);
         sameEventObservers(db, fact, classId, name, descriptor);
         producer(db, root, fact, classId, name);
+        createdByBeanMethods(db, fact, classId);
         if (root == null) return;
         boolean lambdaGap = missingLambdaEvidence(db, classId, name, descriptor);
         if (lambdaGap) fact.put("lambda_evidence_gap", true);
@@ -1042,6 +1043,31 @@ public final class MethodPrefetchRelations {
                         + String.join(", ", artifacts)
                         + ") passing the type's class literal to a bean lookup: framework consumers no injection "
                         + "point lists; whether they run depends on configuration");
+    }
+
+    /**
+     * The @Bean methods constructing a class that is no bean itself. Apollo AQ-023: the fact on
+     * SpringSecurityUserInfoHolder#getUser() named only its Supplier field, and Claude read
+     * AuthConfiguration whole to find the ObjectProvider the holder is built from.
+     */
+    private static void createdByBeanMethods(ReadQueryContext db, ObjectNode fact, int classId) {
+        if (db.beans.findBeanByClassId(classId).isPresent()) return;
+        var cls = db.symbols.findClassById(classId).orElse(null);
+        if (cls == null) return;
+        ObjectNode created = JSON.createObjectNode();
+        org.treblereel.mcp.mcp.query.StructureToolQueries.appendCreatingBeanMethods(db, created, cls);
+        if (!created.has("created_by_bean_methods")) return;
+        fact.set("created_by_bean_methods", created.get("created_by_bean_methods"));
+        // The first creator's ambiguous parameters (an ObjectProvider looks up among these), marked
+        // under the prompt's profiles later.
+        var first = db.beans.findBeanMethodsConstructing(classId, 1);
+        if (!first.isEmpty() && !fact.has("ambiguous_candidates"))
+            db.symbols
+                    .findClassById(first.getFirst().classId())
+                    .ifPresent(
+                            config ->
+                                    ClassPrefetchRelations.ambiguousCandidates(
+                                            db, fact, config, first.getFirst().memberName()));
     }
 
     /**

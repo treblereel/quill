@@ -150,7 +150,11 @@ final class QuestionFocus {
                 List.of("scope", "lifecycle", "жизненн", "состояни", "callback"),
                 List.of("instance_state", "lifecycle_callbacks", "bean", "produces"));
         // Apollo AQ-016: "что создаёт X#y, какие type, имя, qualifiers и scope".
-        FOCUS.put(List.of("создаёт", "создает", "produce", "creates"), List.of("produces"));
+        FOCUS.put(
+                List.of(
+                        "создаёт", "создает", "produce", "creates", "создаётся", "создается",
+                        "created by", "кто создаёт", "who creates"),
+                List.of("produces", "created_by_bean_methods"));
     }
 
     private QuestionFocus() {}

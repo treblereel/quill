@@ -450,6 +450,9 @@ public final class PrefetchContext {
                     "declaration_basis",
                     "configuration_resources",
                     "key_constants",
+                    // Apollo AQ-035: the creating @Bean methods of a method's non-bean class went
+                    // whole, marking the packet partial; questions about creation ask for them.
+                    "created_by_bean_methods",
                     // Apollo AQ-013: how Spring picks among candidates matters only to questions
                     // about that choice; AQ-004/AQ-007 lost the bean fact to it.
                     "spring_candidate_selection",

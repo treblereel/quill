@@ -371,9 +371,51 @@ final class ThreadHops {
             return "no context-propagation artifact on the classpath (of "
                     + jars.size()
                     + " jars): request/session context is not carried to the other thread";
+        String mechanism = mechanism(jars);
         return "on the classpath: "
                 + String.join(", ", found)
-                + "; with them Quarkus carries the CDI request context active when the pipeline is built to the executor thread";
+                + "; with them Quarkus carries the CDI request context active when the pipeline is built to the executor thread"
+                + (mechanism.isEmpty() ? "" : "; " + mechanism);
+    }
+
+    /** Services that decorate Mutiny callbacks, read from the captured jars. */
+    private static final List<String> DECORATOR_SERVICES =
+            List.of(
+                    "META-INF/services/io.smallrye.mutiny.infrastructure.CallbackDecorator",
+                    "META-INF/services/io.smallrye.mutiny.infrastructure.UniInterceptor");
+
+    private static final String ARC_PROVIDER = "io.quarkus.arc.runtime.context.ArcContextProvider";
+
+    /**
+     * The registered decorator that wraps Uni callbacks and the provider that captures the CDI
+     * context, as the jars declare them. Cryostat CQ-025: told only that the artifacts were present,
+     * Codex opened the libraries to find both (7 of 11 calls).
+     */
+    private static String mechanism(List<Path> jars) {
+        Set<String> decorators = new LinkedHashSet<>();
+        boolean arcProvider = false;
+        for (Path jar : jars) {
+            if (!Files.isRegularFile(jar)) continue;
+            try (var zip = new java.util.zip.ZipFile(jar.toFile())) {
+                for (String service : DECORATOR_SERVICES) {
+                    var entry = zip.getEntry(service);
+                    if (entry == null) continue;
+                    String text = new String(zip.getInputStream(entry).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    text.lines()
+                            .map(line -> line.replaceFirst("#.*", "").strip())
+                            .filter(line -> !line.isEmpty())
+                            .forEach(decorators::add);
+                }
+                if (zip.getEntry(ARC_PROVIDER.replace('.', '/') + ".class") != null) arcProvider = true;
+            } catch (Exception unreadable) {
+                QuillLog.swallowed(unreadable);
+            }
+        }
+        List<String> parts = new ArrayList<>();
+        if (!decorators.isEmpty())
+            parts.add("Uni callbacks decorated by " + String.join(", ", decorators) + " (registered service)");
+        if (arcProvider) parts.add("CDI context captured by " + ARC_PROVIDER);
+        return String.join("; ", parts);
     }
 
     private static String coordinates(Path jar) {

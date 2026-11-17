@@ -136,7 +136,11 @@ public final class PrefetchRestatements {
             framework |= fact.has("framework_contract");
             configuration |= "configuration".equals(fact.path("kind").asText());
         }
-        String text = "These are completed Quill reads for this index; reuse them without repeating. Query or read source only for missing, stale, ambiguous or truncated evidence.";
+        // Facts, not commands: hook context framed as instructions can read as an injected order
+        // (Claude Code hooks reference), and emphatic orders make agents over-search.
+        // A cut that does not say where the rest is sends the agent searching for it (Anthropic,
+        // "Writing tools for agents": steer on truncation).
+        String text = "Quill already ran these reads on the current index, so repeating them returns the same facts. Fields named in context_omitted_fields and lists with a _truncated count were cut to fit; get_context or find_usages on the same target returns them.";
         if (framework) text += " framework_contract is documented framework behaviour that dependency jars do not add to.";
         if (framework || configuration) text += " Source declarations do not prove deployed values.";
         return text;

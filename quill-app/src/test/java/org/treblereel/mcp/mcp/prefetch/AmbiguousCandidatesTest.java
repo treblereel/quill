@@ -16,6 +16,9 @@ import org.treblereel.mcp.mcp.TestReads;
  * [AMBIGUOUS]", with no candidates and no word on which the given profiles activate.
  */
 class AmbiguousCandidatesTest {
+
+    /** These packets are sized for this budget; the default limit may differ. */
+    private static final int LEGACY_BUDGET = 5000;
     @TempDir Path root;
 
     @Test
@@ -178,7 +181,7 @@ class AmbiguousCandidatesTest {
         fact.put("superclass", "y".repeat(600));
         fact.put("spring_candidate_selection", "s".repeat(700));
         ObjectNode unasked = packet.deepCopy();
-        PrefetchContext.boundContext(unasked, "What will be injected into X?");
+        PrefetchContext.boundContext(unasked, "What will be injected into X?", LEGACY_BUDGET);
         assertTrue(
                 !unasked.path("facts").get(0).has("spring_candidate_selection")
                         && unasked.path("facts").get(0).has("superclass")
@@ -189,7 +192,7 @@ class AmbiguousCandidatesTest {
                 !unasked.path("context_omitted_fields").toString().contains("spring_candidate_selection"),
                 unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "Explain how @Primary and @Qualifier decide which X is used.");
+        PrefetchContext.boundContext(asked, "Explain how @Primary and @Qualifier decide which X is used.", LEGACY_BUDGET);
         assertTrue(asked.path("facts").get(0).has("spring_candidate_selection"), asked.toString());
     }
 
@@ -201,13 +204,13 @@ class AmbiguousCandidatesTest {
         ObjectNode fact = packet.putArray("facts").addObject().put("kind", "CLASS");
         fact.putObject("ambiguous_candidates").putArray("p").add("x".repeat(3000));
         fact.put("superclass", "y".repeat(2500));
-        PrefetchContext.boundContext(packet.deepCopy(), "What is the visibility of X?");
+        PrefetchContext.boundContext(packet.deepCopy(), "What is the visibility of X?", LEGACY_BUDGET);
         ObjectNode unasked = packet.deepCopy();
-        PrefetchContext.boundContext(unasked, "What is the visibility of X?");
+        PrefetchContext.boundContext(unasked, "What is the visibility of X?", LEGACY_BUDGET);
         assertTrue(!unasked.path("facts").get(0).has("ambiguous_candidates"), unasked.toString());
         assertTrue(unasked.path("facts").get(0).has("superclass"), unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "What will be injected into X?");
+        PrefetchContext.boundContext(asked, "What will be injected into X?", LEGACY_BUDGET);
         assertTrue(asked.path("facts").get(0).has("ambiguous_candidates"), asked.toString());
     }
 

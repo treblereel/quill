@@ -28,7 +28,7 @@ class PrefetchLifecycleTest {
         var context=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","one")).path("hookSpecificOutput").path("additionalContext").asText());
         assertEquals("quill.prefetch",context.path("producer").asText());
         assertEquals("ready",context.path("status").asText());
-        assertTrue(context.path("instructions").asText().contains("missing, stale, ambiguous or truncated"));
+        assertTrue(context.path("instructions").asText().contains("were cut to fit"));
         assertFalse(context.path("instructions").asText().contains("do not prove deployed values"), "No configuration fact");
         assertFalse(context.path("instructions").asText().contains("dependency jars do not add to"), "No framework contract");
         assertEquals("",hook("UserPromptSubmit","one"));
@@ -47,7 +47,7 @@ class PrefetchLifecycleTest {
             var data=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","oversized")).path("hookSpecificOutput").path("additionalContext").asText());
             assertEquals("partial",data.path("status").asText(),data.toString());assertTrue(data.path("facts").isEmpty());
             assertEquals("prefetch_context_limit",data.path("unavailable").get(0).path("status").asText());
-            assertTrue(data.path("instructions").asText().contains("completed Quill reads"),data.toString());
+            assertTrue(data.path("instructions").asText().contains("Quill already ran these reads"),data.toString());
             assertTrue(data.path("instructions").asText().length()<300,"Every packet carries this text");
             assertTrue(data.toString().getBytes(StandardCharsets.UTF_8).length<=org.treblereel.mcp.mcp.prefetch.PrefetchContext.CONTEXT_LIMIT_BYTES);
             try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertTrue(state.isEmpty(),state.toString());}
@@ -59,9 +59,11 @@ class PrefetchLifecycleTest {
      * (4.3 KB, nothing about the operation) and the later steps nothing.
      */
     @Test void aTruncatedOperationPacketKeepsItsAnchorAndGetsNoProjectOverviewNext() throws Exception {
-        StringBuilder body=new StringBuilder();
-        for(int i=0;i<90;i++)body.append("int quiteLongLocalVariableName").append(i).append(" = ").append(i).append("; ");
-        var db=JavaEvidenceFixture.index(root,"package p; class Fixture {int fetch(){"+body+"return 1;}}");
+        // A handler body near the source limit plus its calls to long-named methods overflow the budget.
+        StringBuilder methods=new StringBuilder(),body=new StringBuilder();
+        String longName="aVeryLongMethodNameThatTakesRoomInThePacketAndInTheBody".repeat(2);
+        for(int i=0;i<30;i++){methods.append("static void ").append(longName).append(i).append("(){} ");body.append("K.").append(longName).append(i).append("(); ");}
+        var db=JavaEvidenceFixture.index(root,"package p; class K {"+methods+"} class Fixture {int fetch(){"+body+"return 1;}}");
         EndpointPrefetchTest.routes(db,"GET");
         Files.createDirectories(root.resolve(".quill"));Files.copy(root.resolve("index.db"),root.resolve(".quill/fixture.db"));
         Files.writeString(root.resolve(".quill/refs.json"),"{\"@worktree\":\"fixture\"}");
@@ -85,7 +87,7 @@ class PrefetchLifecycleTest {
         var mapper=new ObjectMapper();
         try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertEquals("GET /warehouse/items/{key}",state.path("_endpoint").asText());}
         var missing=hook("UserPromptSubmit","route","GET /missing");assertTrue(missing.contains("endpoint_not_found"));
-        assertFalse(missing.contains("completed Quill reads"));
+        assertFalse(missing.contains("Quill already ran these reads"));
         assertEquals("",hook("UserPromptSubmit","route","What configuration does it use?"));
         assertEquals("",hook("SessionStart","route"));
         // A reset drops the anchor; the new session's first untargeted prompt only gets the project shape.

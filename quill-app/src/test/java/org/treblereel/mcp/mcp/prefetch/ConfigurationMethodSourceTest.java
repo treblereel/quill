@@ -16,6 +16,9 @@ import org.treblereel.mcp.mcp.config.ConfigurationReadSnippets;
 import org.treblereel.mcp.mcp.semantic.JavaSemanticQueries;
 
 class ConfigurationMethodSourceTest {
+
+    /** These packets are sized for this budget; the default limit may differ. */
+    private static final int LEGACY_BUDGET = 5000;
     @TempDir Path root;
     Jdbi db;
     final ObjectMapper json = new ObjectMapper();
@@ -230,7 +233,7 @@ class ConfigurationMethodSourceTest {
         var evidence = fact.putObject("evidence");
         evidence.put("key", "warehouse.enabled");
         evidence.putObject("field_read_source").put("source", "x".repeat(6000));
-        PrefetchContext.boundContext(data);
+        PrefetchContext.boundContext(data, null, LEGACY_BUDGET);
         assertEquals(1, facts.size());
         assertEquals("warehouse.enabled", fact.path("evidence").path("key").asText());
         assertFalse(fact.path("evidence").has("field_read_source"));

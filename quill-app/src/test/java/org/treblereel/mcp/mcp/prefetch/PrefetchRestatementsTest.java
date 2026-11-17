@@ -171,7 +171,11 @@ class PrefetchRestatementsTest {
         var framework = JSON.readTree("[{\"kind\":\"direct_method_impact\",\"framework_contract\":{\"x\":1}}]");
         assertFalse(PrefetchRestatements.instructions(plain).contains("framework_contract"));
         assertTrue(PrefetchRestatements.instructions(framework).contains("framework_contract"));
-        assertTrue(PrefetchRestatements.instructions(plain).contains("reuse them without repeating"));
+        assertTrue(PrefetchRestatements.instructions(plain).contains("repeating them returns the same facts"));
+        // Facts with a pointer to the rest, not orders: a cut that does not say where the rest is
+        // sends the agent searching, and imperative hook text can read as an injected command.
+        assertTrue(PrefetchRestatements.instructions(plain).contains("get_context or find_usages on the same target returns them"));
+        assertFalse(PrefetchRestatements.instructions(plain).matches(".*\\b(must|never|always|do not|only)\\b.*"));
         assertFalse(PrefetchRestatements.instructions(plain).contains("deployed values"));
         assertTrue(PrefetchRestatements.instructions(JSON.readTree("[{\"kind\":\"configuration\"}]")).contains("deployed values"));
     }

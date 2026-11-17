@@ -16,6 +16,9 @@ import org.treblereel.mcp.mcp.TestReads;
  * and read AuthConfiguration whole to find the ObjectProvider it is built from.
  */
 class MethodCreatedByBeanMethodTest {
+
+    /** These packets are sized for this budget; the default limit may differ. */
+    private static final int LEGACY_BUDGET = 5000;
     @TempDir Path root;
 
     @Test
@@ -110,14 +113,14 @@ class MethodCreatedByBeanMethodTest {
         fact.putArray("created_by_bean_methods").add("x".repeat(1200));
         fact.put("superclass", "y".repeat(900));
         ObjectNode unasked = packet.deepCopy();
-        PrefetchContext.boundContext(unasked, "What does X#run do at startup?");
+        PrefetchContext.boundContext(unasked, "What does X#run do at startup?", LEGACY_BUDGET);
         assertTrue(
                 !unasked.path("facts").get(0).has("created_by_bean_methods")
                         && unasked.path("facts").get(0).has("superclass")
                         && !"partial".equals(unasked.path("status").asText()),
                 unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "Who creates X and with which parameters?");
+        PrefetchContext.boundContext(asked, "Who creates X and with which parameters?", LEGACY_BUDGET);
         assertTrue(asked.path("facts").get(0).has("created_by_bean_methods"), asked.toString());
     }
 }

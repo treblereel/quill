@@ -18,6 +18,9 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.InjectionPointRecord;
 
 class PrefetchContextTest {
+
+    /** These packets are sized for this budget; the default limit may differ. */
+    private static final int LEGACY_BUDGET = 5000;
     @TempDir Path root;
 
     @Test
@@ -81,7 +84,7 @@ class PrefetchContextTest {
                         .put("target", "a.B#m")
                         .put("answer", "keep");
         fact.putArray("dispatches").addObject().put("text", "x".repeat(6000));
-        PrefetchContext.boundContext(packet);
+        PrefetchContext.boundContext(packet, null, LEGACY_BUDGET);
         assertTrue(
                 packet.toString().length() <= PrefetchContext.CONTEXT_LIMIT_BYTES,
                 packet.toString());
@@ -114,7 +117,7 @@ class PrefetchContextTest {
         // A small overrun: the body is then the smallest single field that covers it.
         fact.putObject("dependency_interceptors").put("text", "i".repeat(1500));
         fact.put("padding", "p".repeat(2000));
-        PrefetchContext.boundContext(packet);
+        PrefetchContext.boundContext(packet, null, LEGACY_BUDGET);
         assertTrue(
                 packet.toString().length() <= PrefetchContext.CONTEXT_LIMIT_BYTES,
                 packet.toString());
@@ -169,7 +172,7 @@ class PrefetchContextTest {
                         .put("target", "a.B#m")
                         .put("answer", "keep");
         fact.putObject("selected_method_source").put("source", "b".repeat(6000));
-        PrefetchContext.boundContext(packet);
+        PrefetchContext.boundContext(packet, null, LEGACY_BUDGET);
         assertEquals(
                 "keep", packet.path("facts").get(0).path("answer").asText(), packet.toString());
         assertFalse(packet.path("facts").get(0).has("selected_method_source"));
@@ -183,7 +186,7 @@ class PrefetchContextTest {
                 .addObject()
                 .put("kind", "direct_method_impact")
                 .put("target", "x".repeat(6000));
-        PrefetchContext.boundContext(packet);
+        PrefetchContext.boundContext(packet, null, LEGACY_BUDGET);
         assertEquals(0, packet.path("facts").size());
         assertEquals(
                 "prefetch_context_limit",
@@ -215,7 +218,7 @@ class PrefetchContextTest {
         var fact = packet.putArray("facts").addObject().put("kind", "CLASS").put("answer", "keep");
         fact.put("generated_classes_basis", "why these classes were generated");
         fact.putArray("generated_classes").add("g".repeat(3000)).add("g".repeat(3000));
-        PrefetchContext.boundContext(packet);
+        PrefetchContext.boundContext(packet, null, LEGACY_BUDGET);
         assertFalse(packet.path("facts").get(0).has("generated_classes"), packet.toString());
         assertFalse(packet.path("facts").get(0).has("generated_classes_basis"), packet.toString());
     }
@@ -312,7 +315,7 @@ class PrefetchContextTest {
                 .putArray("dispatches")
                 .add("x".repeat(6000))
                 .add("y".repeat(6000));
-        PrefetchContext.boundContext(packet);
+        PrefetchContext.boundContext(packet, null, LEGACY_BUDGET);
         assertEquals(0, packet.path("facts").size(), packet.toString());
         assertEquals(
                 "a.B#m",

@@ -427,8 +427,13 @@ public final class PrefetchContext {
         return i < prompt.length() && prompt.charAt(i) == '=';
     }
 
-    /** Every session pays for this context once; replays of recorded packets chose the limit. */
-    static final int CONTEXT_LIMIT_BYTES = 5000;
+    /**
+     * Every session pays for this context once. The hosts cap hook context at about twice this:
+     * Claude Code at 10,000 characters (beyond it only a 2,000-character preview), Codex at about
+     * 2,500 tokens. At 5,000 bytes half of 88 recorded benchmark contexts were cut; at 7,500 under a
+     * third are, for about 840 bytes more per session on average.
+     */
+    static final int CONTEXT_LIMIT_BYTES = 7500;
 
     /**
      * In removal order, at any depth; these hold little that an answer needs. Limits and coverage
@@ -577,16 +582,24 @@ public final class PrefetchContext {
 
     /** Budget plan item 13: the fields the question asks about are cut last. */
     public static void boundContext(ObjectNode data, String prompt) {
+        boundContext(data, prompt, CONTEXT_LIMIT_BYTES);
+    }
+
+    /** With an explicit budget: tests of the cutting order state the budget they are sized for. */
+    static void boundContext(ObjectNode data, String prompt, int limit) {
         ASKED.set(QuestionFocus.fields(prompt));
         try {
-            boundContext(data);
+            bound(data, limit);
         } finally {
             ASKED.remove();
         }
     }
 
     public static void boundContext(ObjectNode data) {
-        final int limit = CONTEXT_LIMIT_BYTES;
+        bound(data, CONTEXT_LIMIT_BYTES);
+    }
+
+    private static void bound(ObjectNode data, final int limit) {
         if (!(data.path("facts") instanceof ArrayNode facts)) return;
         // Direct evidence takes precedence over navigation and index diagnostics.
         for (String field : OPTIONAL_FIELDS) {

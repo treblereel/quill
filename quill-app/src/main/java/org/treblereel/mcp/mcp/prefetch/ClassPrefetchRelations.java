@@ -831,7 +831,10 @@ final class ClassPrefetchRelations {
             try {
                 for (var candidate :
                         JSON.readTree(String.valueOf(point.get("resolution_candidates"))))
-                    if (candidate.path("beanId").isInt()) ids.add(candidate.path("beanId").asInt());
+                    // Excluded candidates (another module, test sources) are not candidates here.
+                    if (candidate.path("beanId").isInt()
+                            && !"EXCLUDED".equals(candidate.path("disposition").asText()))
+                        ids.add(candidate.path("beanId").asInt());
             } catch (Exception unreadable) {
                 continue;
             }

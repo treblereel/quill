@@ -46,7 +46,7 @@ class AmbiguousCandidatesTest {
                                     + "'com.acme.condition.ConditionalOnMissingProfile', 1, '{\"value\":[\"auth\",\"ldap\"]}' FROM classes WHERE class_name = 'p.DefaultConfig'");
                     String candidates =
                             handle.createQuery(
-                                            "SELECT '[' || group_concat('{\"beanId\":' || b.id || ',\"disposition\":\"ELIGIBLE\"}') || ']' FROM beans b WHERE b.member_name = 'holder'")
+                                            "SELECT '[' || group_concat('{\"beanId\":' || b.id || ',\"disposition\":\"ELIGIBLE\"}') || ',{\"beanId\":1,\"disposition\":\"EXCLUDED\"}]' FROM beans b WHERE b.member_name = 'holder'")
                                     .mapTo(String.class)
                                     .one();
                     handle.execute(
@@ -68,6 +68,8 @@ class AmbiguousCandidatesTest {
                 });
         String listed = fact.path("ambiguous_candidates").toString();
         assertTrue(listed.contains("AuthConfig#holder profiles [auth]"), fact.toString());
+        // An EXCLUDED trace entry (bean 1, the controller's own CLASS bean) is no candidate.
+        assertTrue(!listed.contains("Controller"), listed);
         assertTrue(
                 listed.contains("DefaultConfig#holder")
                         && listed.contains("ConditionalOnMissingProfile"),

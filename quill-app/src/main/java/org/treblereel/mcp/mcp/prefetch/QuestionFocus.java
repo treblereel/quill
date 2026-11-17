@@ -84,7 +84,7 @@ final class QuestionFocus {
                 List.of("created_by_bean_methods", "ambiguous_candidates", "contract_beans"));
         // Apollo AQ-006/AQ-013: why one candidate wins (see also the choice rule in fields()).
         FOCUS.put(
-                List.of("qualifier", "primary", "parameter name", "precedence"),
+                List.of("qualifier", "primary", "parameter name"),
                 List.of("spring_candidate_selection", "ambiguous_candidates"));
         FOCUS.put(List.of("bean name"), List.of("bean_name_expressions", "bean"));
         FOCUS.put(
@@ -98,11 +98,13 @@ final class QuestionFocus {
                         "programmatic_property_sources",
                         "source_precedence",
                         "application_key_phase"));
+        // Apollo AQ-038: a source added in code (addFirst/addLast) decides which value wins.
         FOCUS.put(
-                List.of("config", "propert"),
+                List.of("config", "propert", "precedence", "priority", "property source"),
                 List.of(
                         "references",
                         "source_precedence",
+                        "programmatic_property_sources",
                         "application_key_phase",
                         "framework_key_phases",
                         "reader_callers"));

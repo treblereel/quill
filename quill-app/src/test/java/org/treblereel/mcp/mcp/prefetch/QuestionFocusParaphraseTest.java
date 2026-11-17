@@ -33,7 +33,10 @@ class QuestionFocusParaphraseTest {
                     new Case("created_by_bean_methods", true, "What does provider.getIfUnique() return in Holder#get()?"),
                     new Case("created_by_bean_methods", true, "Who constructs SpringHolder and with what arguments?"),
                     new Case("created_by_bean_methods", true, "Where is SpringHolder instantiated and which arguments does it get?"),
-                    new Case("created_by_bean_methods", false, "Rename SpringHolder#get to fetch and update the callers."));
+                    new Case("created_by_bean_methods", false, "Rename SpringHolder#get to fetch and update the callers."),
+                    new Case("programmatic_property_sources", true, "Which value of app.timeout does OrderService see, and which property source takes precedence?"),
+                    new Case("programmatic_property_sources", true, "In what priority are the property sources applied for feature.flags?"),
+                    new Case("spring_candidate_selection", false, "Which property source takes precedence for app.timeout?"));
 
     @Test
     void stemsAnswerParaphrasesOutsideTheBenchmarks() {

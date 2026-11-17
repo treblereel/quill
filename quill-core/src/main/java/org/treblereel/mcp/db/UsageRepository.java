@@ -332,29 +332,22 @@ public final class UsageRepository {
     }
 
     public List<DependencyRecord> findCurrentDependencyGraph(String module, boolean includeGenerated, boolean includeTests) {
-        StringBuilder sql = new StringBuilder("""
+        var query = handle.createQuery("""
                 SELECT d.* FROM dependencies d
                 JOIN classes source ON source.id = d.from_class_id
                 JOIN classes target ON target.id = d.to_class_id
                 WHERE source.lifecycle = 'current' AND source.origin != 'orphan_output'
                   AND target.lifecycle = 'current' AND target.origin != 'orphan_output'
                   AND source.id != target.id
-                """);
-        if (module != null && !module.isBlank()) {
-            sql.append(" AND source.module = :module AND target.module = :module");
-        }
-        if (!includeGenerated) {
-            sql.append(" AND source.origin != 'generated' AND target.origin != 'generated'");
-        }
-        if (!includeTests) {
-            sql.append(" AND COALESCE(source.source_set, 'main') NOT IN (<testSourceSets>)");
-            sql.append(" AND COALESCE(target.source_set, 'main') NOT IN (<testSourceSets>)");
-        }
-        sql.append(" ORDER BY d.from_class_id, d.to_class_id, d.kind");
-        
-            var query = handle.createQuery(sql.toString());
-            if (!includeTests) query.bindList("testSourceSets", ClassRecord.TEST_SOURCE_SETS);
-            if (module != null && !module.isBlank()) query.bind("module", module);
+                  AND (:module IS NULL OR source.module = :module AND target.module = :module)
+                  AND (:includeGenerated OR source.origin != 'generated' AND target.origin != 'generated')
+                  AND (:includeTests OR COALESCE(source.source_set, 'main') NOT IN (<testSourceSets>)
+                       AND COALESCE(target.source_set, 'main') NOT IN (<testSourceSets>))
+                ORDER BY d.from_class_id, d.to_class_id, d.kind""")
+                .bind("module", module == null || module.isBlank() ? null : module)
+                .bind("includeGenerated", includeGenerated)
+                .bind("includeTests", includeTests)
+                .bindList("testSourceSets", ClassRecord.TEST_SOURCE_SETS);
             return query.map((rs, ctx) -> new DependencyRecord(
                             rs.getInt("from_class_id"), rs.getInt("to_class_id"),
                             rs.getString("kind"),

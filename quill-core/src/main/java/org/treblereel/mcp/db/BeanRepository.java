@@ -81,30 +81,25 @@ public final class BeanRepository {
     }
 
     public List<ExternalBeanRecord> findExternalBeans(Map<String, String> filter) {
-        StringBuilder sql = new StringBuilder("SELECT * FROM external_beans WHERE 1=1");
-        if (filter != null) {
-            if (filter.containsKey("class_name")) {
-                String name = filter.get("class_name");
-                if (name.contains("*")) sql.append(" AND class_name LIKE :className");
-                else if (name.contains(".")) sql.append(" AND class_name = :className");
-                else
-                    sql.append(
-                            " AND (class_name = :className OR substr(class_name, -length(:className)-1) IN ('.' || :className, '$' || :className))");
-            }
-            if (filter.containsKey("scope")) sql.append(" AND scope = :scope");
-            if (filter.containsKey("kind")) sql.append(" AND kind = :kind");
-        }
-        sql.append(" ORDER BY class_name, framework, kind, member_name");
-        var query = handle.createQuery(sql.toString());
-        if (filter != null) {
-            if (filter.containsKey("class_name")) {
-                String value = filter.get("class_name");
-                String pattern = value.replace('*', '%');
-                query.bind("className", pattern);
-            }
-            if (filter.containsKey("scope")) query.bind("scope", filter.get("scope"));
-            if (filter.containsKey("kind")) query.bind("kind", filter.get("kind"));
-        }
+        String name = filter == null ? null : filter.get("class_name");
+        String nameMode =
+                name == null ? "any" : name.contains("*") ? "like" : name.contains(".") ? "exact" : "simple";
+        var query =
+                handle.createQuery(
+                                """
+                SELECT * FROM external_beans
+                WHERE (:nameMode = 'any'
+                       OR :nameMode = 'like' AND class_name LIKE :className
+                       OR :nameMode = 'exact' AND class_name = :className
+                       OR :nameMode = 'simple' AND (class_name = :className
+                          OR substr(class_name, -length(:className)-1) IN ('.' || :className, '$' || :className)))
+                  AND (:scope IS NULL OR scope = :scope)
+                  AND (:kind IS NULL OR kind = :kind)
+                ORDER BY class_name, framework, kind, member_name""")
+                        .bind("nameMode", nameMode)
+                        .bind("className", name == null ? "" : name.replace('*', '%'))
+                        .bind("scope", filter == null ? null : filter.get("scope"))
+                        .bind("kind", filter == null ? null : filter.get("kind"));
         var beans =
                 query.map(
                                 (rs, ctx) ->

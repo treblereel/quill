@@ -172,9 +172,10 @@ class PrefetchRestatementsTest {
         assertFalse(PrefetchRestatements.instructions(plain).contains("framework_contract"));
         assertTrue(PrefetchRestatements.instructions(framework).contains("framework_contract"));
         assertTrue(PrefetchRestatements.instructions(plain).contains("repeating them returns the same facts"));
-        // Facts with a pointer to the rest, not orders: a cut that does not say where the rest is
-        // sends the agent searching, and imperative hook text can read as an injected command.
-        assertTrue(PrefetchRestatements.instructions(plain).contains("get_context or find_usages on the same target returns them"));
+        // The pointer to the rest belongs to a cut packet only: in every packet it sent Codex to
+        // get_context on the target it had just been given whole (Cryostat CQ-028: 0 calls and 33k
+        // tokens became 6 calls and 73k).
+        assertFalse(PrefetchRestatements.instructions(plain).contains("get_context"));
         assertFalse(PrefetchRestatements.instructions(plain).matches(".*\\b(must|never|always|do not|only)\\b.*"));
         assertFalse(PrefetchRestatements.instructions(plain).contains("deployed values"));
         assertTrue(PrefetchRestatements.instructions(JSON.readTree("[{\"kind\":\"configuration\"}]")).contains("deployed values"));

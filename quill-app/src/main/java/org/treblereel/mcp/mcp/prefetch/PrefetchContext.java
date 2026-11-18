@@ -634,6 +634,13 @@ public final class PrefetchContext {
             for (String key : List.of("kind", "tool", "target", "arguments"))
                 if (omitted.has(key)) missing.set(key, omitted.get(key));
         }
+        // A cut packet says where the rest is; the sentence may itself need room (Cryostat CQ-028).
+        if (data.path("context_truncated").asBoolean()
+                && data.path("instructions").isTextual()
+                && !data.path("instructions").asText().endsWith(PrefetchRestatements.CUT_POINTER)) {
+            data.put("instructions", data.path("instructions").asText() + PrefetchRestatements.CUT_POINTER);
+            if (size(data) > limit) bound(data, limit);
+        }
     }
 
     /** After {@link #boundContext}: a pointer to a field the budget removed would dangle. */
@@ -721,7 +728,7 @@ public final class PrefetchContext {
                                         pool.stream()
                                                 .max(Comparator.comparingInt(Cut::frees))
                                                 .orElseThrow());
-        if (cut.list()) halve(cut.owner(), cut.field());
+        if (cut.list()) trim(data, cut.owner(), cut.field(), limit);
         else {
             cut.owner().remove(cut.field());
             removeCompanions(cut.owner(), cut.field());
@@ -821,14 +828,20 @@ public final class PrefetchContext {
             for (JsonNode child : list) collectLists(child, cuts, insideLastResort);
     }
 
-    /** Keeps half of a list and records shown/total next to it. */
-    private static void halve(ObjectNode owner, String field) {
+    /**
+     * Drops a list's last items until the packet fits, at most half of them, and records
+     * shown/total next to it. Halving outright for a small overrun left Apollo AQ-043 with 13 of 26
+     * consumers and a thousand bytes unused.
+     */
+    private static void trim(ObjectNode data, ObjectNode owner, String field, int limit) {
         ArrayNode list = (ArrayNode) owner.get(field);
         String marker = field + "_truncated";
         int total = owner.path(marker).path("total").asInt(list.size());
         int keep = list.size() / 2;
-        while (list.size() > keep) list.remove(list.size() - 1);
-        owner.putObject(marker).put("shown", keep).put("total", total);
+        do {
+            list.remove(list.size() - 1);
+            owner.putObject(marker).put("shown", list.size()).put("total", total);
+        } while (list.size() > keep && size(data) > limit);
     }
 
     private PrefetchContext() {}

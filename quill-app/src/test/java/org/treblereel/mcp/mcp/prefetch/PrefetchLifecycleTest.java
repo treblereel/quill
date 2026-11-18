@@ -28,7 +28,7 @@ class PrefetchLifecycleTest {
         var context=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","one")).path("hookSpecificOutput").path("additionalContext").asText());
         assertEquals("quill.prefetch",context.path("producer").asText());
         assertEquals("ready",context.path("status").asText());
-        assertTrue(context.path("instructions").asText().contains("were cut to fit"));
+        assertFalse(context.path("instructions").asText().contains("were cut to fit"), "A whole packet points to no rest");
         assertFalse(context.path("instructions").asText().contains("do not prove deployed values"), "No configuration fact");
         assertFalse(context.path("instructions").asText().contains("dependency jars do not add to"), "No framework contract");
         assertEquals("",hook("UserPromptSubmit","one"));

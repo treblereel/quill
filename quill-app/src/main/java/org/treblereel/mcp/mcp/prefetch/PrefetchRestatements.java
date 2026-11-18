@@ -129,6 +129,15 @@ public final class PrefetchRestatements {
         for (String field : fields) if (node.path(field).isArray() && node.path(field).isEmpty()) node.remove(field);
     }
 
+    /**
+     * Added to the instructions of a packet the budget cut. A cut that does not say where the rest is
+     * sends the agent searching for it (Anthropic, "Writing tools for agents": steer on truncation);
+     * in every packet the same sentence sent Codex to get_context on a target it had whole (Cryostat
+     * CQ-028: 0 calls and 33k tokens became 6 calls and 73k).
+     */
+    static final String CUT_POINTER =
+            " Fields named in context_omitted_fields and lists with a _truncated count were cut to fit; get_context or find_usages on the same target returns them.";
+
     /** The packet's reading rules; caveats appear only when a fact they qualify is in the packet. */
     public static String instructions(JsonNode facts) {
         boolean framework = false, configuration = false;
@@ -138,9 +147,8 @@ public final class PrefetchRestatements {
         }
         // Facts, not commands: hook context framed as instructions can read as an injected order
         // (Claude Code hooks reference), and emphatic orders make agents over-search.
-        // A cut that does not say where the rest is sends the agent searching for it (Anthropic,
-        // "Writing tools for agents": steer on truncation).
-        String text = "Quill already ran these reads on the current index, so repeating them returns the same facts. Fields named in context_omitted_fields and lists with a _truncated count were cut to fit; get_context or find_usages on the same target returns them.";
+        // Where the rest of a cut is goes in only when the budget cuts (PrefetchContext): CUT_POINTER.
+        String text = "Quill already ran these reads on the current index, so repeating them returns the same facts.";
         if (framework) text += " framework_contract is documented framework behaviour that dependency jars do not add to.";
         if (framework || configuration) text += " Source declarations do not prove deployed values.";
         return text;

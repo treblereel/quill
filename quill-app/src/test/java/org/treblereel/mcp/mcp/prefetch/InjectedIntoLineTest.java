@@ -41,4 +41,32 @@ class InjectedIntoLineTest {
         assertEquals("p.Web#holder (FIELD) [RESOLVED] owner singleton, uses it in a, b, c (+2 more)",
                 fact.path("injected_into").get(0).asText(), fact.toString());
     }
+
+    /**
+     * Apollo AQ-043: a consumer that never calls the bean (a configuration checking its type) sorted
+     * after every caller, so the budget cut it while contract_callers already named the callers.
+     */
+    @Test
+    void consumersThatNeverCallTheBeanComeBeforeCallers() throws Exception {
+        Jdbi db = JavaEvidenceFixture.index(root, "package p; interface Holder { String user(); } "
+                + "class Alpha { Holder holder; String a() { return holder.user(); } } "
+                + "class Zeta { Holder holder; boolean plain() { return holder instanceof Object; } }");
+        db.useHandle(h -> {
+            h.execute("UPDATE classes SET source_set = 'main', module = 'app'");
+            for (String bean : new String[] {"p.Holder", "p.Alpha", "p.Zeta"})
+                h.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, framework) SELECT id, 'CLASS', 'singleton', "
+                        + "'[\"@Default\"]', json_array(class_name), 'spring' FROM classes WHERE class_name = ?", bean);
+            for (String owner : new String[] {"p.Alpha", "p.Zeta"})
+                h.execute("INSERT INTO injection_points(bean_id, kind, target_type, qualifiers, field_name, resolved_bean_id, resolution_status, "
+                        + "resolution_strategy, resolution_reason, resolution_confidence) SELECT o.id, 'FIELD', 'p.Holder', '[\"@Default\"]', 'holder', "
+                        + "t.id, 'RESOLVED', 'STATIC_SPRING', 'UNIQUE_ELIGIBLE_CANDIDATE', 'HIGH' FROM beans o JOIN classes oc ON oc.id = o.class_id, "
+                        + "beans t JOIN classes tc ON tc.id = t.class_id WHERE oc.class_name = ? AND tc.class_name = 'p.Holder'", owner);
+        });
+        ObjectNode fact = new ObjectMapper().createObjectNode();
+        TestReads.read(db, reader -> {
+            ClassPrefetchRelations.append(reader, fact, reader.symbols.findClassByName("p.Holder").orElseThrow());
+            return null;
+        });
+        assertEquals("p.Zeta#holder (FIELD) [RESOLVED] owner singleton", fact.path("injected_into").get(0).asText(), fact.toString());
+    }
 }

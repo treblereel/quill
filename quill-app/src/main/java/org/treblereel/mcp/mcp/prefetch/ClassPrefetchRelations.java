@@ -274,10 +274,16 @@ final class ClassPrefetchRelations {
                 && fact.remove("injects")
                         instanceof com.fasterxml.jackson.databind.node.ArrayNode injects)
             bean.set("injects", injects);
+        // A consumer that never calls the bean (it checks the type or hands the bean on) is what
+        // the callers' lines cannot show, so it leads where the budget keeps a list's head (Apollo
+        // AQ-043 lost AuthConfiguration's validator behind 13 calling controllers).
+        List<InjectingPoint> consumers =
+                new ArrayList<>(db.beans.findInjectionPointsOf(cls.id(), cls.className()));
+        consumers.sort(java.util.Comparator.comparing(row -> row.usedIn() != null));
         lines(
                 fact,
                 "injected_into",
-                db.beans.findInjectionPointsOf(cls.id(), cls.className()),
+                consumers,
                 row ->
                         injectedInto(row, cls.className())
                                 + lazyMark(

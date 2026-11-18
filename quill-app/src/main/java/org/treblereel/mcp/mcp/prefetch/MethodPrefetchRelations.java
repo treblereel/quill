@@ -1224,9 +1224,35 @@ public final class MethodPrefetchRelations {
                                 "@"
                                         + simple(row.annotationName())
                                         + "("
-                                        + values(row.annotationValues())
+                                        + ("ConditionalOnProperty"
+                                                        .equals(simple(row.annotationName()))
+                                                ? propertyCondition(row.annotationValues())
+                                                : values(row.annotationValues()))
                                         + ")")
                 .toList();
+    }
+
+    /**
+     * Spring Boot's rule for @ConditionalOnProperty with the property names joined to the prefix:
+     * without havingValue it matches a present value other than {@code false}. Apollo AQ-035: the
+     * raw attributes left the name to assemble, and answers named it in one run of three.
+     */
+    static String propertyCondition(Object raw) {
+        try {
+            var node = JSON.readTree(String.valueOf(raw));
+            String prefix = node.path("prefix").asText("");
+            List<String> names = new ArrayList<>();
+            for (String attribute : List.of("name", "value"))
+                for (var name : node.path(attribute))
+                    names.add(prefix.isBlank() ? name.asText() : prefix + "." + name.asText());
+            if (names.isEmpty()) return values(raw);
+            String having = node.path("havingValue").asText("");
+            return String.join(", ", names)
+                    + (having.isEmpty() ? " present and not false" : " = " + having)
+                    + (node.path("matchIfMissing").asBoolean(false) ? ", or missing" : "");
+        } catch (Exception unreadable) {
+            return values(raw);
+        }
     }
 
     private static List<String> memberConditions(ReadQueryContext db, int classId, String member) {

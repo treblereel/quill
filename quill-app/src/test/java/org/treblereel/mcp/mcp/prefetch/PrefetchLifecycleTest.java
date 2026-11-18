@@ -28,7 +28,7 @@ class PrefetchLifecycleTest {
         var context=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","one")).path("hookSpecificOutput").path("additionalContext").asText());
         assertEquals("quill.prefetch",context.path("producer").asText());
         assertEquals("ready",context.path("status").asText());
-        assertFalse(context.path("instructions").asText().contains("were cut to fit"), "A whole packet points to no rest");
+        assertFalse(context.path("instructions").asText().contains("get_context"), "A whole packet points to no rest");
         assertFalse(context.path("instructions").asText().contains("do not prove deployed values"), "No configuration fact");
         assertFalse(context.path("instructions").asText().contains("dependency jars do not add to"), "No framework contract");
         assertEquals("",hook("UserPromptSubmit","one"));
@@ -47,7 +47,7 @@ class PrefetchLifecycleTest {
             var data=mapper.readTree(mapper.readTree(hook("UserPromptSubmit","oversized")).path("hookSpecificOutput").path("additionalContext").asText());
             assertEquals("partial",data.path("status").asText(),data.toString());assertTrue(data.path("facts").isEmpty());
             assertEquals("prefetch_context_limit",data.path("unavailable").get(0).path("status").asText());
-            assertTrue(data.path("instructions").asText().contains("Quill already ran these reads"),data.toString());
+            assertTrue(data.path("instructions").asText().contains("completed Quill reads"),data.toString());
             assertTrue(data.path("instructions").asText().length()<300,"Every packet carries this text");
             assertTrue(data.toString().getBytes(StandardCharsets.UTF_8).length<=org.treblereel.mcp.mcp.prefetch.PrefetchContext.CONTEXT_LIMIT_BYTES);
             try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertTrue(state.isEmpty(),state.toString());}
@@ -87,7 +87,7 @@ class PrefetchLifecycleTest {
         var mapper=new ObjectMapper();
         try(var files=Files.list(root.resolve(".quill/prefetch"))){var state=mapper.readTree(files.filter(p->p.toString().endsWith(".json")).findFirst().orElseThrow().toFile());assertEquals("GET /warehouse/items/{key}",state.path("_endpoint").asText());}
         var missing=hook("UserPromptSubmit","route","GET /missing");assertTrue(missing.contains("endpoint_not_found"));
-        assertFalse(missing.contains("Quill already ran these reads"));
+        assertFalse(missing.contains("completed Quill reads"));
         assertEquals("",hook("UserPromptSubmit","route","What configuration does it use?"));
         assertEquals("",hook("SessionStart","route"));
         // A reset drops the anchor; the new session's first untargeted prompt only gets the project shape.

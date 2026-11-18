@@ -171,12 +171,15 @@ class PrefetchRestatementsTest {
         var framework = JSON.readTree("[{\"kind\":\"direct_method_impact\",\"framework_contract\":{\"x\":1}}]");
         assertFalse(PrefetchRestatements.instructions(plain).contains("framework_contract"));
         assertTrue(PrefetchRestatements.instructions(framework).contains("framework_contract"));
-        assertTrue(PrefetchRestatements.instructions(plain).contains("repeating them returns the same facts"));
+        // The sentence that tells the agent to reuse the packet is what limits re-checking: stated as a
+        // bare fact ("repeating them returns the same facts") it cost Codex 12% more tokens and half
+        // again as many Quill calls on the 20 Cryostat cases whose packet was otherwise identical.
+        assertTrue(PrefetchRestatements.instructions(plain).contains("reuse them without repeating"));
+        assertTrue(PrefetchRestatements.instructions(plain).contains("only for missing, stale, ambiguous or truncated evidence"));
         // The pointer to the rest belongs to a cut packet only: in every packet it sent Codex to
         // get_context on the target it had just been given whole (Cryostat CQ-028: 0 calls and 33k
         // tokens became 6 calls and 73k).
         assertFalse(PrefetchRestatements.instructions(plain).contains("get_context"));
-        assertFalse(PrefetchRestatements.instructions(plain).matches(".*\\b(must|never|always|do not|only)\\b.*"));
         assertFalse(PrefetchRestatements.instructions(plain).contains("deployed values"));
         assertTrue(PrefetchRestatements.instructions(JSON.readTree("[{\"kind\":\"configuration\"}]")).contains("deployed values"));
     }

@@ -136,7 +136,7 @@ public final class PrefetchRestatements {
      * CQ-028: 0 calls and 33k tokens became 6 calls and 73k).
      */
     static final String CUT_POINTER =
-            " Fields named in context_omitted_fields and lists with a _truncated count were cut to fit; get_context or find_usages on the same target returns them.";
+            " For fields in context_omitted_fields and lists with a _truncated count, get_context or find_usages on the same target returns them.";
 
     /** The packet's reading rules; caveats appear only when a fact they qualify is in the packet. */
     public static String instructions(JsonNode facts) {
@@ -145,10 +145,13 @@ public final class PrefetchRestatements {
             framework |= fact.has("framework_contract");
             configuration |= "configuration".equals(fact.path("kind").asText());
         }
-        // Facts, not commands: hook context framed as instructions can read as an injected order
-        // (Claude Code hooks reference), and emphatic orders make agents over-search.
-        // Where the rest of a cut is goes in only when the budget cuts (PrefetchContext): CUT_POINTER.
-        String text = "Quill already ran these reads on the current index, so repeating them returns the same facts.";
+        // The directive wording is deliberate. Rewritten as a bare fact ("repeating them returns the
+        // same facts", after the Claude Code hooks advice to state context as facts) it stopped
+        // limiting re-checks: on the 20 Cryostat cases whose packet was otherwise byte-identical
+        // Codex spent 12% more input tokens and made 129 Quill calls instead of 87, and Claude went
+        // from answering CQ-035 off the packet to five more reads. Where the rest of a cut is goes in
+        // only when the budget cuts (PrefetchContext): CUT_POINTER.
+        String text = "These are completed Quill reads for this index; reuse them without repeating. Query or read source only for missing, stale, ambiguous or truncated evidence.";
         if (framework) text += " framework_contract is documented framework behaviour that dependency jars do not add to.";
         if (framework || configuration) text += " Source declarations do not prove deployed values.";
         return text;

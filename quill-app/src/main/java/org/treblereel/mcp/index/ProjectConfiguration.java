@@ -35,13 +35,13 @@ public final class ProjectConfiguration {
             """;
     private static final String QUILL_AGENTS_MD_TEMPLATE = """
             <!-- quill:managed:start -->
-            <!-- quill:instructions:v9 -->
+            <!-- quill:instructions:v10 -->
             ## Quill MCP
 
             Prefer Quill over broad search for symbols, usages, hierarchies, DI, endpoints, affected
-            tests, build problems, history and change risk. Use `rg` and source reads for exact
-            literals and known files, and to verify evidence Quill reports as stale, partial or
-            unknown.
+            tests, build problems, history and change risk. Use `rg` and source reads only for what
+            the Quill facts you already have do not state, such as exact literals and method bodies,
+            and to verify evidence Quill reports as stale, partial or unknown.
 
             Query the relevant tool directly. Make independent queries in one script turn
             (`tools.mcp__quill__*` calls awaited together). Search the catalog by exact

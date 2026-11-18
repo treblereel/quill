@@ -134,9 +134,21 @@ class ProjectConfigurationTest {
         assertEquals(ProjectConfiguration.InstructionsState.CURRENT,
                 ProjectConfiguration.inspectAgentsMd(root));
         assertTrue(refreshed.contains("# User instructions"));
-        assertTrue(refreshed.contains("<!-- quill:instructions:v9 -->"));
+        assertTrue(refreshed.contains("<!-- quill:instructions:v10 -->"));
         assertTrue(refreshed.contains("`list_beans({class_name?"), refreshed);
         assertFalse(refreshed.contains("Old guidance."));
+    }
+
+    /**
+     * Cryostat full-20261118: "source reads for ... known files" sent Codex to read whole files a
+     * prefetch packet had just described (sed -n '1,240p' on the packet's target), 21% of its steps.
+     */
+    @Test
+    void agentsInstructionsLimitSourceReadsToWhatQuillFactsDoNotState() throws Exception {
+        ProjectConfiguration.ensureAgentsMd(root);
+        String text = Files.readString(root.resolve("AGENTS.md")).replaceAll("\\s+", " ");
+        assertFalse(text.contains("known files"), text);
+        assertTrue(text.contains("only for what the Quill facts you already have do not state"), text);
     }
 
     @Test

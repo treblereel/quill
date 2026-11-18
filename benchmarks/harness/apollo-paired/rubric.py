@@ -8,16 +8,15 @@ the Cryostat accuracy rubric; it is a cheap regression signal, not a substitute 
 facts that answers graded correct often omitted were dropped.
 """
 
-LIMIT = (r'не доказ|не гарант|не подтвержд|не наблюд|не провер|неизвест|не извест|not proven|unknown|'
-         r'not observed|runtime|рантайм|во время выполнения|при запуске|статич|static|динамич|dynamic|'
-         r'reflection|рефлекс|порядк\w* регистрац|registration order')
+LIMIT = (r'not proven|not guaranteed|not confirmed|not observed|not verified|cannot be (proven|verified|determined)|'
+         r'unknown|runtime|at run time|at startup|static|dynamic|reflection|registration order')
 
 R = {
     'AQ-001': {'portal': r'apollo-portal', 'adminservice': r'apollo-adminservice', 'configservice': r'apollo-configservice',
                'bom': r'spring-boot-dependencies|BOM', 'boot_version': r'4\.1\.1'},
     'AQ-002': {'factory': r'RestTemplateFactory', 'factory_bean': r'FactoryBean', 'unified': r'UnifiedPermissionValidator',
-               'user': r'UserPermissionValidator', 'singleton': r'singleton|синглтон'},
-    'AQ-003': {'component': r'@?Component', 'application': r'PortalApplication', 'scan': r'ComponentScan|scan|сканир'},
+               'user': r'UserPermissionValidator', 'singleton': r'singleton'},
+    'AQ-003': {'component': r'@?Component', 'application': r'PortalApplication', 'scan': r'ComponentScan|scan'},
     'AQ-004': {'context': r'ApplicationContext', 'resolvable': r'resolvable|ResolvableDependency|prepareBeanFactory'},
     'AQ-005': {'profile': r'Profile', 'missing_bean': r'ConditionalOnMissingBean', 'default': r'DefaultAuth|ConditionalOnMissingProfile|DefaultUserInfoHolder',
                'ldap': r'ldap', 'oidc': r'oidc', 'limit': LIMIT},
@@ -34,7 +33,7 @@ R = {
     'AQ-014': {'service': r'SpringSecurityUserService', 'lookup': r'getObject|getIfAvailable|ObjectProvider',
                'missing_bean': r'ConditionalOnMissingBean', 'limit': LIMIT},
     'AQ-015': {'config': r'EmailConfiguration', 'impl': r'DefaultEmailService', 'missing_bean': r'ConditionalOnMissingBean'},
-    'AQ-016': {'type': r'JdbcUserDetailsManager', 'name': r'jdbcUserDetailsManager', 'scope': r'singleton|синглтон'},
+    'AQ-016': {'type': r'JdbcUserDetailsManager', 'name': r'jdbcUserDetailsManager', 'scope': r'singleton'},
     'AQ-018': {'repositories': r'JpaRepository|EnableJpaRepositories', 'depends_on': r'DependsOn', 'profile': r'Profile'},
     'AQ-020': {'post_construct': r'PostConstruct', 'shutdown': r'PreDestroy|DisposableBean|shutdown|destroy', 'limit': LIMIT},
     'AQ-023': {'service': r'SpringSecurityUserService', 'lookup': r'getObject|ObjectProvider', 'limit': LIMIT},
@@ -45,9 +44,9 @@ R = {
     'AQ-026': {'lock': r'NamespaceAcquireLockAspect', 'unlock': r'NamespaceUnlockAspect', 'before': r'Before', 'after': r'After',
                'annotation': r'PreAcquireNamespaceLock'},
     'AQ-027': {'transactional': r'Transactional', 'service': r'ReleaseService', 'message': r'DatabaseMessageSender|sendMessage',
-               'required': r'REQUIRED|Required|присоедин|join'},
+               'required': r'REQUIRED|Required|join'},
     'AQ-028': {'event': r'ConfigPublishEvent', 'listener': r'ConfigPublishListener', 'method': r'onConfigPublish',
-               'annotation': r'EventListener', 'sync': r'синхрон|synchron|\bsync'},
+               'annotation': r'EventListener', 'sync': r'synchron|\bsync'},
     'AQ-029': {'cache': r'DatabaseDiscoveryClientMemoryCacheDecoratorImpl', 'self': r'DatabaseDiscoveryClientAlwaysAddSelfInstanceDecoratorImpl',
                'impl': r'DatabaseDiscoveryClientImpl', 'config': r'ApolloServiceDiscoveryAutoConfiguration|databaseDiscoveryClient'},
     'AQ-030': {'lazy': r'Lazy', 'item': r'ItemService', 'other': r'ReleaseService|NamespaceBranchService|AppNamespaceService'},
@@ -64,29 +63,29 @@ R = {
     'AQ-037': {'prefix': r'apollo\.service\.registry', 'heartbeat': r'heartbeat-interval-in-second|heartbeatIntervalInSecond',
                'metadata': r'metadata', 'name': r'spring\.application\.name'},
     'AQ-038': {'source': r'PortalDBPropertySource', 'refreshable': r'RefreshableConfig',
-               'order': r'MutablePropertySources|addLast|addFirst|приоритет|precedence'},
-    'AQ-039': {'refreshable': r'RefreshableConfig', 'table': r'ServerConfig', 'db': r'PortalDB', 'refresh': r'refresh|обновл'},
+               'order': r'MutablePropertySources|addLast|addFirst|priority|precedence'},
+    'AQ-039': {'refreshable': r'RefreshableConfig', 'table': r'ServerConfig', 'db': r'PortalDB', 'refresh': r'refresh|updat'},
     'AQ-040': {'config': r'PortalConfig', 'test': r'PortalConfigTest',
                'table': r'ServerConfig|PortalDB'},
     'AQ-041': {'security': r'PreAuthorize', 'release': r'ReleaseController', 'branch': r'NamespaceBranchController',
-               'spel': r'SpEL|Spring Expression|выражени', 'test': r'UnifiedPermissionValidatorTest'},
+               'spel': r'SpEL|Spring Expression|expression', 'test': r'UnifiedPermissionValidatorTest'},
     'AQ-042': {'service': r'ItemService', 'qualifier': r'Qualifier', 'name': r'fileTextResolver', 'test': r'ItemServiceTest'},
     'AQ-043': {'spring': r'SpringSecurityUserInfoHolder', 'oidc': r'OidcUserInfoHolder', 'default': r'DefaultUserInfoHolder',
                'config': r'AuthConfiguration', 'guard': r'portalAuthenticationValidator'},
-    'AQ-044': {'name': r'unifiedPermissionValidator', 'security': r'PreAuthorize', 'config': r'Configuration', 'scope': r'singleton|синглтон'},
-    'AQ-045': {'scope': r'RequestScope|request scope|request-scope|request-scoped', 'proxy': r'proxy|прокси',
-               'outside': r'ConfigPublishListener|вне (HTTP|запрос)|outside', 'unified': r'UnifiedPermissionValidator'},
+    'AQ-044': {'name': r'unifiedPermissionValidator', 'security': r'PreAuthorize', 'config': r'Configuration', 'scope': r'singleton'},
+    'AQ-045': {'scope': r'RequestScope|request scope|request-scope|request-scoped', 'proxy': r'proxy',
+               'outside': r'ConfigPublishListener|outside', 'unified': r'UnifiedPermissionValidator'},
     'AQ-046': {'unified': r'UnifiedPermissionValidatorTest', 'branch': r'ReleaseBranchInstanceControllerTest',
                'user': r'UserPermissionValidatorTest'},
     'AQ-047': {'config': r'ControllableAuthorizationConfiguration', 'boot_test': r'SpringBootTest|SpringJUnit|@SpringBoot',
                'primary': r'Primary'},
-    'AQ-048': {'spec': r'apollo\.openapi\.spec\.url|apollo-openapi\.yaml|spec', 'generator': r'openapi-generator|generator|генератор',
-               'controller': r'ReleaseController', 'generated': r'generated|сгенер'},
+    'AQ-048': {'spec': r'apollo\.openapi\.spec\.url|apollo-openapi\.yaml|spec', 'generator': r'openapi-generator|generator',
+               'controller': r'ReleaseController', 'generated': r'generated'},
     # 'test': naming the test class, or a counted passing run of the edited test (codex-check-20261116:
-    # "12 тестов прошли" after a correct rename and test change was graded a miss).
+    # "12 tests passed" after a correct rename and test change was graded a miss).
     'AQ-049': {'rename': r'resolveDelegate',
-               'test': r'UnifiedPermissionValidatorTest|\d+\s+тест\w*\s+(?:прош|успеш)|\d+\s+tests?\s+(?:passed|succeeded)',
-               'ran': r'BUILD SUCCESS|Tests run|прошл|passed|\d+/\d+'},
+               'test': r'UnifiedPermissionValidatorTest|\d+\s+tests?\s+(?:passed|succeeded)',
+               'ran': r'BUILD SUCCESS|Tests run|passed|\d+/\d+'},
     'AQ-050': {'controller': r'ReleaseController', 'method': r'createRelease', 'security': r'PreAuthorize',
                'holder': r'UserInfoHolder', 'config': r'PortalConfig|ServerConfig'},
 }

@@ -18,167 +18,171 @@ ROUTE = 'POST /openapi/v1/envs/{env}/apps/{appId}/clusters/{clusterName}/namespa
 # id -> (track, [prompts]); track as in Cryostat: independent | patch | linked.
 QUESTIONS = {
     'AQ-001': ('independent', [
-        'Какие модули образуют Apollo, где точка сборки и какие зависимости подключают Spring Boot и Spring Cloud?']),
+        'Which modules make up Apollo, where is its build entry point, and which dependencies bring in Spring Boot '
+        'and Spring Cloud?']),
     'AQ-002': ('independent', [
-        f'Какие beans объявлены в production-пакете {P}.component, только непосредственно в этом пакете, без '
-        'subpackages? Раздели component-классы, @Bean-методы и beans, которые производит FactoryBean, укажи их '
-        'имена и scope.']),
+        f'Which beans are declared in the production package {P}.component, directly in that package only, without '
+        'subpackages? Separate component classes, @Bean methods and beans produced by a FactoryBean, and give '
+        'their names and scope.']),
     'AQ-003': ('independent', [
-        f'Почему {P}.component.UnifiedPermissionValidator попадает в Spring-контекст apollo-portal: какие '
-        'аннотации, stereotypes или правила component scanning это обеспечивают?']),
+        f'Why does {P}.component.UnifiedPermissionValidator end up in the Spring context of apollo-portal: which '
+        'annotations, stereotypes or component scanning rules make that happen?']),
     'AQ-004': ('independent', [
-        'Откуда берётся зависимость типа org.springframework.context.ApplicationEventPublisher, которую получает '
-        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController: какой dependency или механизм Spring '
-        'её предоставляет и есть ли для неё bean definition?']),
+        'Where does the dependency of type org.springframework.context.ApplicationEventPublisher that '
+        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController receives come from: which dependency '
+        'or Spring mechanism provides it, and is there a bean definition for it?']),
     'AQ-005': ('independent', [
-        f'Может ли Spring не зарегистрировать bean {P}.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration'
-        '#springSecurityUserInfoHolder(org.springframework.beans.factory.ObjectProvider) при github,auth? Покажи '
-        'основания регистрации или пропуска и ограничения такого вывода.']),
+        f'Can Spring skip registering the bean {P}.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration'
+        '#springSecurityUserInfoHolder(org.springframework.beans.factory.ObjectProvider) under github,auth? Show '
+        'the grounds for registering or skipping it and the limits of that conclusion.']),
     'AQ-006': ('independent', [
-        'Что будет внедрено в параметр userInfoHolder конструктора '
-        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController при github,auth? Покажи кандидатов и '
-        'почему выбран именно этот bean.']),
+        'What is injected into the userInfoHolder parameter of the constructor of '
+        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController under github,auth? Show the candidates '
+        'and why this particular bean is chosen.']),
     'AQ-007': ('independent', [
-        f'Как Spring создаёт {P}.component.UserTokenPermissionValidator#<init>({P}.component.UserPermissionValidator,'
+        f'How does Spring create {P}.component.UserTokenPermissionValidator#<init>({P}.component.UserPermissionValidator,'
         f'{P}.service.UserTokenService,{P}.util.UserTokenAuthUtil,{P}.service.RolePermissionService,'
-        f'{P}.spi.UserInfoHolder) и какие beans удовлетворяют каждому параметру конструктора?']),
+        f'{P}.spi.UserInfoHolder), and which beans satisfy each constructor parameter?']),
     'AQ-009': ('independent', [
-        f'Какие зависимости {P}.component.emailbuilder.NormalPublishEmailBuilder получает от своего superclass, а какие '
-        'объявлены непосредственно? Учти переопределения.']),
+        f'Which dependencies does {P}.component.emailbuilder.NormalPublishEmailBuilder get from its superclass, and '
+        'which are declared directly? Take overrides into account.']),
     'AQ-010': ('independent', [
-        f'Какие реализации реально подходят для {P}.component.PermissionValidator#hasReleaseNamespacePermission'
-        '(java.lang.String,java.lang.String,java.lang.String,java.lang.String)? Отдели Java-наследование от bean '
-        'types Spring-контекста apollo-portal.']),
+        f'Which implementations actually qualify for {P}.component.PermissionValidator#hasReleaseNamespacePermission'
+        '(java.lang.String,java.lang.String,java.lang.String,java.lang.String)? Separate Java inheritance from '
+        'the bean types of the apollo-portal Spring context.']),
     'AQ-011': ('independent', [
-        'Где внедряется org.springframework.security.crypto.password.PasswordEncoder, создаваемый '
-        f'{P}.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#passwordEncoder(), и через '
-        'какие qualifiers? Отдельно покажи прямые injection sites и динамические обращения.']),
+        'Where is org.springframework.security.crypto.password.PasswordEncoder, created by '
+        f'{P}.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#passwordEncoder(), injected, '
+        'and through which qualifiers? Show direct injection sites and dynamic lookups separately.']),
     'AQ-012': ('independent', [
-        f'Почему qualifier у параметра fileTextResolver конструктора {P}.service.ItemService совпадает или не '
-        'совпадает с qualifiers кандидатов типа ConfigTextResolver? Учти имена beans и значение @Qualifier.']),
+        f'Why does the qualifier on the fileTextResolver parameter of the constructor of {P}.service.ItemService '
+        'match or not match the qualifiers of the candidates of type ConfigTextResolver? Take bean names and the '
+        '@Qualifier value into account.']),
     'AQ-013': ('independent', [
-        'Какие явные и неявные qualifiers действуют у параметра userInfoHolder конструктора '
-        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController и его кандидатов? Объясни влияние имени '
-        'bean, имени параметра, @Primary и @Qualifier.']),
+        'Which explicit and implicit qualifiers apply to the userInfoHolder parameter of the constructor of '
+        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController and to its candidates? Explain the '
+        'effect of the bean name, the parameter name, @Primary and @Qualifier.']),
     'AQ-014': ('independent', [
-        f'Какие beans может вернуть {P}.spi.springsecurity.SpringSecurityUserInfoHolder через свой '
-        'ObjectProvider<UserService>? Проследи lookup и условия, из-за которых результат зависит от runtime.']),
+        f'Which beans can {P}.spi.springsecurity.SpringSecurityUserInfoHolder return through its '
+        'ObjectProvider<UserService>? Trace the lookup and the conditions that make the result depend on runtime.']),
     'AQ-015': ('independent', [
-        f'Как выбирается реализация для {P}.listener.ConfigPublishListener#emailService при github,auth: '
-        '@Primary, условия или fallback/default bean?']),
+        f'How is the implementation for {P}.listener.ConfigPublishListener#emailService chosen under github,auth: '
+        '@Primary, conditions, or a fallback/default bean?']),
     'AQ-016': ('independent', [
-        f'Что создаёт {P}.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#jdbcUserDetailsManager'
-        '(javax.sql.DataSource,jakarta.persistence.EntityManagerFactory), какие у результата type, имя, qualifiers и '
-        'scope? Не смешивай их со свойствами declaring class.']),
+        f'What does {P}.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#jdbcUserDetailsManager'
+        '(javax.sql.DataSource,jakarta.persistence.EntityManagerFactory) create, and what are the type, name, '
+        'qualifiers and scope of the result? Do not mix them up with the properties of the declaring class.']),
     'AQ-018': ('independent', [
-        'Какие зависимости нужны '
+        'Which dependencies does '
         f'{P}.spi.configuration.AuthConfiguration.SpringSecurityAuthAutoConfiguration#springSecurityUserService('
         'org.springframework.security.crypto.password.PasswordEncoder,'
-        f'{P}.repository.UserRepository,{P}.repository.AuthorityRepository), чтобы создать результат? Покажи '
-        'параметры @Bean-метода, явные depends-on и зависимости его declaring class.']),
+        f'{P}.repository.UserRepository,{P}.repository.AuthorityRepository) need to create its result? Show the '
+        'parameters of the @Bean method, explicit depends-on and the dependencies of its declaring class.']),
     'AQ-020': ('independent', [
-        f'Когда создаётся и уничтожается {P}.listener.ConfigPublishListener, какие lifecycle callbacks объявлены '
-        'или наследуются? Где статического анализа недостаточно?']),
+        f'When is {P}.listener.ConfigPublishListener created and destroyed, and which lifecycle callbacks are '
+        'declared or inherited? Where is static analysis not enough?']),
     'AQ-023': ('independent', [
-        f'Как runtime-конфигурация влияет на то, какой UserService вернёт {P}.spi.springsecurity.SpringSecurityUserInfoHolder'
-        '#getUser()? Что известно заранее, а что определяется только при запуске?']),
+        f'How does runtime configuration affect which UserService {P}.spi.springsecurity.SpringSecurityUserInfoHolder'
+        '#getUser() returns? What is known in advance, and what is decided only at startup?']),
     'AQ-024': ('independent', [
-        'Кто регистрирует bean com.ctrip.framework.apollo.biz.registry.configuration.support.ApolloServiceDiscoveryProperties, '
-        'какие у него имя, типы и зависимости, и при каких условиях он появляется?']),
+        'Who registers the bean com.ctrip.framework.apollo.biz.registry.configuration.support.ApolloServiceDiscoveryProperties, '
+        'what are its name, types and dependencies, and under which conditions does it appear?']),
     'AQ-025': ('independent', [
-        f'Может ли {P}.listener.ConfigPublishListener#onConfigPublish({P}.listener.ConfigPublishEvent) в своём '
-        'асинхронном пути опираться на контекст текущего запроса (тип аутентификации, текущего пользователя)? '
-        'Покажи границы контекста и что требует runtime-проверки.']),
+        f'Can {P}.listener.ConfigPublishListener#onConfigPublish({P}.listener.ConfigPublishEvent) rely on the '
+        'context of the current request (authentication type, current user) in its asynchronous path? '
+        'Show the context boundaries and what needs a runtime check.']),
     'AQ-026': ('independent', [
-        'Какие aspects применимы к com.ctrip.framework.apollo.adminservice.controller.ItemController#create('
-        'java.lang.String,java.lang.String,java.lang.String,com.ctrip.framework.apollo.common.dto.ItemDTO), в каком '
-        'порядке и за счёт каких pointcuts или annotations?']),
+        'Which aspects apply to com.ctrip.framework.apollo.adminservice.controller.ItemController#create('
+        'java.lang.String,java.lang.String,java.lang.String,com.ctrip.framework.apollo.common.dto.ItemDTO), in which '
+        'order, and through which pointcuts or annotations?']),
     'AQ-027': ('independent', [
-        'Где начинается и заканчивается транзакция на пути через '
+        'Where does the transaction begin and end on the path through '
         'com.ctrip.framework.apollo.adminservice.controller.ReleaseController#publish(java.lang.String,java.lang.String,'
-        'java.lang.String,java.lang.String,java.lang.String,java.lang.String,boolean), и какие вызовы могут изменить '
+        'java.lang.String,java.lang.String,java.lang.String,java.lang.String,boolean), and which calls can change '
         'propagation?']),
     'AQ-028': ('independent', [
-        'Какие listeners могут получить событие, опубликованное в '
-        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController#createRelease? Учти тип события, '
-        'sync/async и транзакционную фазу.']),
+        'Which listeners can receive the event published in '
+        'com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController#createRelease? Take the event type, '
+        'sync/async and the transaction phase into account.']),
     'AQ-029': ('independent', [
-        'Какие decorators применяются к com.ctrip.framework.apollo.biz.registry.DatabaseDiscoveryClient, как выбран '
-        'delegate и что определяет порядок?']),
+        'Which decorators apply to com.ctrip.framework.apollo.biz.registry.DatabaseDiscoveryClient, how is the '
+        'delegate chosen, and what determines the order?']),
     'AQ-030': ('independent', [
-        'Есть ли циклы в зависимостях от com.ctrip.framework.apollo.biz.service.NamespaceService? Отдели цикл графа '
-        'зависимостей от реально недопустимого создания объектов.']),
+        'Are there cycles in the dependencies of com.ctrip.framework.apollo.biz.service.NamespaceService? Separate '
+        'a cycle in the dependency graph from object creation that is actually impossible.']),
     'AQ-031': ('independent', [
-        f'Как запрос {ROUTE} в apollo-portal доходит до бизнес-метода и его Spring-зависимости? Покажи один прямой '
-        'путь, не добавляя все транзитивные зависимости.']),
+        f'How does the request {ROUTE} in apollo-portal reach the business method and its Spring dependency? Show '
+        'one direct path, without adding every transitive dependency.']),
     'AQ-032': ('independent', [
-        f'Какие проверки доступа действуют для {ROUTE} в apollo-portal при github,auth, откуда берутся роли или '
-        'permissions и где меняется поведение по конфигурации?']),
+        f'Which access checks apply to {ROUTE} in apollo-portal under github,auth, where do the roles or '
+        'permissions come from, and where does configuration change the behaviour?']),
     'AQ-033': ('independent', [
-        'Что запускает сканирование в com.ctrip.framework.apollo.biz.message.ReleaseMessageScanner, какие '
-        'Spring-зависимости используются и какие настройки управляют расписанием?']),
+        'What starts the scanning in com.ctrip.framework.apollo.biz.message.ReleaseMessageScanner, which '
+        'Spring dependencies are used, and which settings control the schedule?']),
     'AQ-035': ('independent', [
-        'Что делает com.ctrip.framework.apollo.biz.registry.configuration.support.'
-        'ApolloServiceRegistryHeartbeatApplicationRunner#run(org.springframework.boot.ApplicationArguments) при '
-        'старте или остановке и какие beans затрагивает? Укажи доказанный порядок и неизвестные отношения.']),
+        'What does com.ctrip.framework.apollo.biz.registry.configuration.support.'
+        'ApolloServiceRegistryHeartbeatApplicationRunner#run(org.springframework.boot.ApplicationArguments) do at '
+        'startup or shutdown, and which beans does it touch? State the proven order and the unknown relations.']),
     'AQ-036': ('independent', [
-        'Где задаётся и читается настройка apollo-portal emergencyPublish.supported.envs? Покажи default, источники '
-        'значения при github,auth и места использования.']),
+        'Where is the apollo-portal setting emergencyPublish.supported.envs set and read? Show the default, the '
+        'sources of the value under github,auth and the places where it is used.']),
     'AQ-037': ('independent', [
-        'Какие ключи описывает com.ctrip.framework.apollo.biz.registry.configuration.support.'
-        'ApolloServiceRegistryProperties, включая вложенные значения, коллекции и значения по умолчанию?']),
+        'Which keys does com.ctrip.framework.apollo.biz.registry.configuration.support.'
+        'ApolloServiceRegistryProperties describe, including nested values, collections and default values?']),
     'AQ-038': ('independent', [
         'AQ-038 uses only explicit sources: classpath application.properties of apollo-portal sets '
         'emergencyPublish.supported.envs=dev, and the portal database table ServerConfig holds '
         'emergencyPublish.supported.envs=pro.\n'
-        'Какое значение emergencyPublish.supported.envs увидит PortalConfig при github,auth, без ambient env/system '
-        'properties и аргументов командной строки? Покажи приоритет источников и как он устанавливается.']),
+        'Which value of emergencyPublish.supported.envs does PortalConfig see under github,auth, without ambient '
+        'env/system properties and command-line arguments? Show the precedence of the sources and how it is '
+        'established.']),
     'AQ-039': ('independent', [
-        'Можно ли изменить emergencyPublish.supported.envs у работающего apollo-portal без пересборки и '
-        'перезапуска? Покажи доказательства поведения для этой версии.']),
+        'Can emergencyPublish.supported.envs be changed on a running apollo-portal without a rebuild and a '
+        'restart? Show the evidence of the behaviour for this version.']),
     'AQ-040': ('independent', [
-        'Что надо изменить при переименовании настройки emergencyPublish.supported.envs в '
-        'emergencyPublish.allowed.envs? Отдели код, конфигурацию и SQL-скрипты, документацию и тесты.']),
+        'What has to change when the setting emergencyPublish.supported.envs is renamed to '
+        'emergencyPublish.allowed.envs? Separate code, configuration and SQL scripts, documentation and tests.']),
     'AQ-041': ('independent', [
-        f'Каков прямой радиус изменения сигнатуры {P}.component.UnifiedPermissionValidator#hasReleaseNamespacePermission'
-        '(java.lang.String,java.lang.String,java.lang.String,java.lang.String)? Отдели Java callers, ссылки вне '
-        'Java-кода, overrides и интерфейсы, тесты и косвенные зависимости.']),
+        f'What is the direct blast radius of changing the signature of {P}.component.UnifiedPermissionValidator'
+        '#hasReleaseNamespacePermission(java.lang.String,java.lang.String,java.lang.String,java.lang.String)? '
+        'Separate Java callers, references outside Java code, overrides and interfaces, tests and indirect '
+        'dependencies.']),
     'AQ-042': ('independent', [
-        f'Если переименовать bean {P}.component.txtresolver.FileTextResolver из "fileTextResolver" в '
-        '"fileTextResolverV2", какие injection sites и объявления придётся проверить или изменить?']),
+        f'If the bean {P}.component.txtresolver.FileTextResolver is renamed from "fileTextResolver" to '
+        '"fileTextResolverV2", which injection sites and declarations have to be checked or changed?']),
     'AQ-043': ('independent', [
-        f'Что затронет изменение контракта {P}.spi.UserInfoHolder: реализации, bean-объявления, injection sites и '
-        'прямые пользователи методов?']),
+        f'What does a change to the contract of {P}.spi.UserInfoHolder affect: implementations, bean declarations, '
+        'injection sites and direct users of its methods?']),
     'AQ-044': ('independent', [
-        f'Как заменить component-класс {P}.component.UnifiedPermissionValidator @Bean-методом, не потеряв имя bean, '
-        'scope, lifecycle и совместимость потребителей?']),
+        f'How can the component class {P}.component.UnifiedPermissionValidator be replaced by a @Bean method '
+        'without losing the bean name, scope, lifecycle and compatibility for its consumers?']),
     'AQ-045': ('independent', [
-        f'Что изменится, если перевести {P}.component.UserPermissionValidator в request scope? Проверь состояние, '
-        'proxy, потребителей-singletons и контекст вызова вне HTTP-запроса.']),
+        f'What changes if {P}.component.UserPermissionValidator is moved to request scope? Check its state, the '
+        'proxy, singleton consumers and the context of calls made outside an HTTP request.']),
     'AQ-046': ('independent', [
-        f'Какие тесты следует запустить после изменения {P}.component.UnifiedPermissionValidator'
-        '#hasReleaseNamespacePermission(java.lang.String,java.lang.String,java.lang.String,java.lang.String) и '
-        'почему? Отдели прямое покрытие от эвристически релевантных тестов.']),
+        f'Which tests should be run after a change to {P}.component.UnifiedPermissionValidator'
+        '#hasReleaseNamespacePermission(java.lang.String,java.lang.String,java.lang.String,java.lang.String), and '
+        'why? Separate direct coverage from heuristically relevant tests.']),
     'AQ-047': ('independent', [
-        f'Как {P}.controller.ItemControllerAuthIntegrationTest подменяет Spring-зависимости и конфигурацию? Что '
-        'отличается от production и что такой тест не проверяет?']),
+        f'How does {P}.controller.ItemControllerAuthIntegrationTest replace Spring dependencies and configuration? '
+        'What differs from production, and what does such a test not verify?']),
     'AQ-048': ('independent', [
-        'Откуда появился com.ctrip.framework.apollo.openapi.api.ReleaseManagementApi, какой handwritten input или '
-        'plugin им управляет и что надо менять вместо generated-файла?']),
+        'Where does com.ctrip.framework.apollo.openapi.api.ReleaseManagementApi come from, which handwritten input '
+        'or plugin controls it, and what should be changed instead of the generated file?']),
     'AQ-049': ('patch', [
-        f'Переименуй {P}.component.UnifiedPermissionValidator#getDelegate() в resolveDelegate, обнови все '
-        'необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.\n'
-        'Тесты apollo-portal работают на H2 без внешних сервисов; запускай только узкие тесты, а не весь reactor.']),
+        f'Rename {P}.component.UnifiedPermissionValidator#getDelegate() to resolveDelegate, update every place '
+        'that needs it, and add or adapt a narrow test. Keep the behaviour and show the verification.\n'
+        'The apollo-portal tests run on H2 without external services; run only narrow tests, not the whole reactor.']),
     'AQ-050': ('linked', [
-        f'Разбери одну пользовательскую операцию {ROUTE} в apollo-portal: точку входа, DI-выбор, настройки, радиус '
-        'изменения и подходящие тесты. Работай по шагам в одной сессии.\n'
-        f'Найди точку входа операции {ROUTE} и её непосредственный обработчик.',
-        'Проследи выбор Spring-зависимостей в этой операции при github,auth.',
-        'Найди связанные настройки и их определения для этого профиля.',
-        'Раздели прямые вызовы, DI-связи и условные runtime-переходы на этом пути.',
-        f'Составь минимальный план изменения сигнатуры {P}.service.ReleaseService#publish({P}.entity.model.'
-        'NamespaceReleaseModel) и прямой радиус проверки для этой операции. Только план, без изменения кода.',
-        'Выбери узкие тесты для плана; отметь пробелы доказательств и не повторяй весь предыдущий разбор.']),
+        f'Analyse one user operation {ROUTE} in apollo-portal: the entry point, the DI selection, the settings, '
+        'the blast radius of a change and the fitting tests. Work step by step in one session.\n'
+        f'Find the entry point of the operation {ROUTE} and its immediate handler.',
+        'Trace the selection of Spring dependencies in this operation under github,auth.',
+        'Find the related settings and their definitions for this profile.',
+        'Separate direct calls, DI links and conditional runtime transitions on this path.',
+        f'Draw up a minimal plan for changing the signature of {P}.service.ReleaseService#publish({P}.entity.model.'
+        'NamespaceReleaseModel) and the direct verification radius for this operation. A plan only, no code changes.',
+        'Choose narrow tests for the plan; note the gaps in evidence and do not repeat the whole earlier analysis.']),
 }
 
 # Cryostat CQ cases whose Spring counterpart has no application-owned instance in Apollo.

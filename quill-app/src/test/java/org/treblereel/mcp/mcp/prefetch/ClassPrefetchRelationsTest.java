@@ -315,9 +315,16 @@ class ClassPrefetchRelationsTest {
                 List.of("x.Producers (2)"),
                 strings(impl, "application_producer_hosts"),
                 impl.toString());
+        // Cryostat full-20261118 CQ-044: the bare list "io.cryostat.Producers (12)" reached every
+        // Codex packet, Codex read Producers.java, and still proposed a new producer class in 4 of 5
+        // answers. The field has to say what the list is for.
+        assertTrue(
+                impl.path("application_producer_hosts_basis").asText().contains("convention"),
+                impl.toString());
         assertFalse(
                 service.has("application_producer_hosts"),
                 "only a class bean gets them: " + service);
+        assertFalse(service.has("application_producer_hosts_basis"), service.toString());
     }
 
     @Test

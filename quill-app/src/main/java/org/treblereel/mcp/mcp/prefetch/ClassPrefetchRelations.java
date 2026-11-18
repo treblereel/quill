@@ -1233,7 +1233,12 @@ final class ClassPrefetchRelations {
         List<String> hosts = new java.util.ArrayList<>();
         for (var row : rows)
             hosts.add(source(String.valueOf(row.className())) + " (" + row.total() + ")");
+        if (hosts.isEmpty()) return;
         strings(fact, "application_producer_hosts", hosts);
+        fact.put(
+                "application_producer_hosts_basis",
+                "Application classes that already declare producer methods, with their counts, most first: "
+                        + "the project's convention for where a producer replacing this class bean goes");
     }
 
     private static String lastSegment(String name) {

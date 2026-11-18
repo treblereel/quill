@@ -40,7 +40,7 @@ R = {
  'CQ-045': {'cache': r'cache', 'predestroy': r'PreDestroy', 'authorizer': r'SsarAuthorizer', 'request_end': r'per.request|\brequests?\b', 'test': r'SsarClientCacheTest'},
  'CQ-046': {'no_default': r'PermissionMapperNoDefaultTest', 'mapper_test': r'PermissionMapperTest', 'verb': r'PermissionMapperVerbDefaultTest', 'indirect': r'SsarAuthorizer|RbacHttpAuthenticationMechanism|indirect', 'gap': LIMIT + r'|coverage|covered'},
  'CQ-047': {'profile': r'TestProfile', 'client': r'KubernetesClient', 'bus': r'EventBus', 'inject_mock': r'InjectMock', 'enabled': r'cryostat\.discovery\.kubernetes\.enabled', 'ports': r'port-numbers', 'names': r'port-names'},
- 'CQ-048': {'proxy': r'PermissionMapper_ClientProxy', 'arc': r'ArC|Arc\b', 'source': r'PermissionMapper\.java', 'no_edit': r'do not edit|not edit|don.t edit|not be (edited|changed|modified)|no need to|source'},
+ 'CQ-048': {'proxy': r'PermissionMapper_ClientProxy', 'arc': r'ArC|Arc\b', 'source': r'PermissionMapper\.java', 'no_edit': r'do not edit|not edit|don.t edit|not be (edited|changed|modified)|no need to|source|would not (provide|persist|survive)|not durable|recreated|regenerated|overwritten'},
  'CQ-049': {'rename': r'parseMappingValue', 'lines': r'PermissionMapper', 'resolve': r'resolve', 'compile': r'compil|build', 'tests': r'test'},
  'CQ-050': {'method': r'getCached', 'aggregator': r'AnalysisReportAggregator', 'singleton': r'Singleton', 'cache': r'reports-aggregator', 'key': r'quarkus\.cache\.caffeine\.reports-aggregator\.expire-after-write', 'value': r'\b10m\b', 'entry': r'getEntry'},
 }

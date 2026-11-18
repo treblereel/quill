@@ -115,11 +115,19 @@ def start(suite, name):
                     log.write(f'{case} {client} -> {s}\n')
     else:
         plan = json.loads((d / 'run.json').read_text())
+        # A restarted run continues where it stopped: a finished session (session.json) is kept, and a
+        # session cut off mid-way must be removed by hand first, since arm.py never reuses a directory.
+        cut = sorted(s.name for s in (d / 'sessions').glob('*')
+                     if s.is_dir() and not (s / 'session.json').exists()) if (d / 'sessions').exists() else []
+        if cut:
+            sys.exit('unfinished sessions; remove them to rerun: ' + ', '.join(str(d / 'sessions' / n) for n in cut))
         with (d / 'run.log').open('a') as log:
             for repeat in range(1, plan['repeats'] + 1):
                 for case in plan['cases']:
                     for client in plan['clients']:
                         out = d / 'sessions' / f'{case.lower()}-{client}-{plan["arm"]}-r{repeat}'
+                        if (out / 'session.json').exists():
+                            continue
                         began = time.time()
                         r = subprocess.run([sys.executable, str(HARNESS[suite] / 'arm.py'), 'ask', client, plan['arm'],
                                             '--case', case, '--out', str(out)], capture_output=True, text=True)

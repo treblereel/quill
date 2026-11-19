@@ -1,0 +1,781 @@
+{
+  "schema_version": 1,
+  "template_sha256": "d7eae2e752d16565f9f9d8d263b200a20bd232a04c89e42ac4174ba78c1d3734",
+  "project_revision": "b19ddcfadf44a880550751a594fabd1769704dd4",
+  "cases": [
+    {
+      "id": "CQ-001",
+      "category": "orientation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {},
+      "prompts": {
+        "ru": "Какие модули образуют приложение, где его точка сборки и какие зависимости включают CDI/Quarkus?",
+        "en": "Map the application modules, build entry points and dependencies enabling CDI or Quarkus."
+      },
+      "oracle_id": "CQ-001"
+    },
+    {
+      "id": "CQ-002",
+      "category": "orientation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "module": "production-пакете io.cryostat.security.rbac, только непосредственно в этом пакете, без subpackages"
+      },
+      "prompts": {
+        "ru": "Какие beans объявлены в production-пакете io.cryostat.security.rbac, только непосредственно в этом пакете, без subpackages? Раздели классы, producer-методы и producer-поля, укажи их scope.",
+        "en": "List the beans declared in production-пакете io.cryostat.security.rbac, только непосредственно в этом пакете, без subpackages, separating classes, producer methods and producer fields, with their scopes."
+      },
+      "oracle_id": "CQ-002"
+    },
+    {
+      "id": "CQ-003",
+      "category": "orientation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "bean": "io.cryostat.security.rbac.PermissionMapper"
+      },
+      "prompts": {
+        "ru": "Почему io.cryostat.security.rbac.PermissionMapper попадает в CDI: какие аннотации, stereotypes или правила discovery это обеспечивают?",
+        "en": "Explain why io.cryostat.security.rbac.PermissionMapper is discovered as a CDI bean, including stereotypes and framework discovery rules."
+      },
+      "oracle_id": "CQ-003"
+    },
+    {
+      "id": "CQ-004",
+      "category": "orientation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "external_type": "io.vertx.mutiny.core.eventbus.EventBus"
+      },
+      "prompts": {
+        "ru": "Откуда берётся bean типа io.vertx.mutiny.core.eventbus.EventBus: какой dependency или extension его предоставляет и как он становится доступен приложению?",
+        "en": "Trace the origin of the io.vertx.mutiny.core.eventbus.EventBus bean to its dependency or extension and explain how it becomes available."
+      },
+      "oracle_id": "CQ-004"
+    },
+    {
+      "id": "CQ-005",
+      "category": "orientation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "bean": "io.cryostat.security.rbac.PermissionMapper"
+      },
+      "prompts": {
+        "ru": "Может ли Quarkus удалить io.cryostat.security.rbac.PermissionMapper при сборке? Покажи основания сохранения или удаления и ограничения такого вывода.",
+        "en": "Could Quarkus remove io.cryostat.security.rbac.PermissionMapper as unused? Give retention or removal evidence and the limits of that conclusion."
+      },
+      "oracle_id": "CQ-005"
+    },
+    {
+      "id": "CQ-006",
+      "category": "injection",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "field_site": "io.cryostat.security.rbac.PermissionMapper#config",
+        "profile": "prod"
+      },
+      "prompts": {
+        "ru": "Что будет внедрено в io.cryostat.security.rbac.PermissionMapper#config при профиле prod? Покажи кандидатов и почему выбран именно этот bean.",
+        "en": "Which bean satisfies io.cryostat.security.rbac.PermissionMapper#config under prod, and why are the other candidates excluded?"
+      },
+      "oracle_id": "CQ-006"
+    },
+    {
+      "id": "CQ-007",
+      "category": "injection",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "constructor_site": "io.cryostat.security.rbac.SsarClientCache#<init>(org.jboss.logging.Logger,io.cryostat.security.rbac.RbacConfig,io.cryostat.security.rbac.SsarClientFactory)"
+      },
+      "prompts": {
+        "ru": "Как CDI создаёт io.cryostat.security.rbac.SsarClientCache#<init>(org.jboss.logging.Logger,io.cryostat.security.rbac.RbacConfig,io.cryostat.security.rbac.SsarClientFactory) и какие beans удовлетворяют каждому параметру конструктора?",
+        "en": "How does CDI construct io.cryostat.security.rbac.SsarClientCache#<init>(org.jboss.logging.Logger,io.cryostat.security.rbac.RbacConfig,io.cryostat.security.rbac.SsarClientFactory), and which beans satisfy each constructor parameter?"
+      },
+      "oracle_id": "CQ-007"
+    },
+    {
+      "id": "CQ-008",
+      "status": "not_applicable",
+      "reason": {
+        "predicate": "Application-owned initializer @Inject methods",
+        "matches": [],
+        "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+        "java_files": 199,
+        "inventory": "javac-facts.json.gz",
+        "counterexamples_not_equivalent": "Four @Inject constructors are present; they are not initializer methods."
+      },
+      "bindings": null
+    },
+    {
+      "id": "CQ-009",
+      "category": "injection",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "bean": "io.cryostat.credentials.events.CredentialNotificationObserver"
+      },
+      "prompts": {
+        "ru": "Какие зависимости io.cryostat.credentials.events.CredentialNotificationObserver получает из своих superclass, а какие объявлены непосредственно? Учти переопределения.",
+        "en": "Separate the inherited and directly declared injection points of io.cryostat.credentials.events.CredentialNotificationObserver, taking overrides into account."
+      },
+      "oracle_id": "CQ-009"
+    },
+    {
+      "id": "CQ-010",
+      "category": "injection",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "typed_site": "io.cryostat.credentials.Credential.Listener#credentialCreatedEvent"
+      },
+      "prompts": {
+        "ru": "Какие реализации реально подходят для io.cryostat.credentials.Credential.Listener#credentialCreatedEvent? Отдели Java-наследование от CDI bean types, generic-ограничений и @Typed.",
+        "en": "Which implementations can satisfy io.cryostat.credentials.Credential.Listener#credentialCreatedEvent? Distinguish Java inheritance from CDI bean types, generics and @Typed restrictions."
+      },
+      "oracle_id": "CQ-010"
+    },
+    {
+      "id": "CQ-011",
+      "category": "qualifiers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "bean": "org.apache.commons.codec.binary.Base64, создаваемый io.cryostat.Producers#produceBase64Url()"
+      },
+      "prompts": {
+        "ru": "Где внедряется org.apache.commons.codec.binary.Base64, создаваемый io.cryostat.Producers#produceBase64Url() и через какие qualifiers? Отдельно покажи прямые injection sites и динамические обращения.",
+        "en": "Find the consumers of org.apache.commons.codec.binary.Base64, создаваемый io.cryostat.Producers#produceBase64Url(), distinguishing direct injection sites, qualifiers and programmatic lookups."
+      },
+      "oracle_id": "CQ-011"
+    },
+    {
+      "id": "CQ-012",
+      "category": "qualifiers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "qualified_site": "io.cryostat.events.S3TemplateService#base64Url"
+      },
+      "prompts": {
+        "ru": "Почему qualifier у io.cryostat.events.S3TemplateService#base64Url совпадает или не совпадает с qualifiers кандидатов? Учти значения annotation members и @Nonbinding.",
+        "en": "Explain qualifier matching for io.cryostat.events.S3TemplateService#base64Url, including annotation member values and @Nonbinding."
+      },
+      "oracle_id": "CQ-012"
+    },
+    {
+      "id": "CQ-013",
+      "category": "qualifiers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "default_site": "io.cryostat.security.rbac.PermissionMapper#config"
+      },
+      "prompts": {
+        "ru": "Какие явные и неявные qualifiers действуют у io.cryostat.security.rbac.PermissionMapper#config и его кандидатов? Объясни влияние @Default, @Any и @Named.",
+        "en": "Determine the explicit and implicit qualifiers of io.cryostat.security.rbac.PermissionMapper#config and its candidates, including @Default, @Any and @Named."
+      },
+      "oracle_id": "CQ-013"
+    },
+    {
+      "id": "CQ-014",
+      "category": "qualifiers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "lookup_site": "io.cryostat.events.S3TemplateService#metadataService"
+      },
+      "prompts": {
+        "ru": "Какие beans может вернуть io.cryostat.events.S3TemplateService#metadataService? Проследи select/qualifiers и условия, из-за которых выбор зависит от runtime.",
+        "en": "Which beans can io.cryostat.events.S3TemplateService#metadataService return? Trace select qualifiers and identify runtime-dependent choices."
+      },
+      "oracle_id": "CQ-014"
+    },
+    {
+      "id": "CQ-015",
+      "category": "qualifiers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "alternative_site": "io.cryostat.recordings.RecordingHelper#fs",
+        "profile": "prod"
+      },
+      "prompts": {
+        "ru": "Как выбирается реализация для io.cryostat.recordings.RecordingHelper#fs при prod: alternatives, priorities или fallback/default bean?",
+        "en": "Explain implementation selection for io.cryostat.recordings.RecordingHelper#fs under prod, including alternatives, priorities and fallback beans."
+      },
+      "oracle_id": "CQ-015"
+    },
+    {
+      "id": "CQ-016",
+      "category": "producers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "producer_method": "io.cryostat.Producers#produceInterruptibleReportGenerator()"
+      },
+      "prompts": {
+        "ru": "Что создаёт io.cryostat.Producers#produceInterruptibleReportGenerator(), какие у результата type, qualifiers и scope? Не смешивай их со scope declaring class.",
+        "en": "Describe the bean produced by io.cryostat.Producers#produceInterruptibleReportGenerator(): types, qualifiers and scope, separately from the declaring bean."
+      },
+      "oracle_id": "CQ-016"
+    },
+    {
+      "id": "CQ-017",
+      "status": "not_applicable",
+      "reason": {
+        "predicate": "Application-owned CDI producer fields",
+        "matches": [],
+        "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+        "java_files": 199,
+        "inventory": "javac-facts.json.gz",
+        "counterexamples_not_equivalent": "Fifteen CDI producer methods and REST @Produces exist; neither is a producer field."
+      },
+      "bindings": null
+    },
+    {
+      "id": "CQ-018",
+      "category": "producers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "producer_method": "io.cryostat.Producers#produceWebClient(io.vertx.mutiny.core.Vertx)"
+      },
+      "prompts": {
+        "ru": "Какие зависимости нужны io.cryostat.Producers#produceWebClient(io.vertx.mutiny.core.Vertx), чтобы создать результат? Покажи параметры producer и зависимости его declaring bean.",
+        "en": "Trace the dependencies needed by io.cryostat.Producers#produceWebClient(io.vertx.mutiny.core.Vertx), including producer parameters and declaring-bean injection points."
+      },
+      "oracle_id": "CQ-018"
+    },
+    {
+      "id": "CQ-019",
+      "status": "not_applicable",
+      "reason": {
+        "predicate": "Application-owned disposer parameters",
+        "matches": [],
+        "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+        "java_files": 199,
+        "inventory": "javac-facts.json.gz",
+        "counterexamples_not_equivalent": "@PreDestroy callbacks exist; they are not @Disposes parameters."
+      },
+      "bindings": null
+    },
+    {
+      "id": "CQ-020",
+      "category": "producers",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "bean": "io.cryostat.security.rbac.SsarClientCache"
+      },
+      "prompts": {
+        "ru": "Когда создаётся и уничтожается io.cryostat.security.rbac.SsarClientCache, какие lifecycle callbacks объявлены или наследуются? Где статического анализа недостаточно?",
+        "en": "Explain creation and destruction of io.cryostat.security.rbac.SsarClientCache, its declared or inherited lifecycle callbacks, and runtime uncertainties."
+      },
+      "oracle_id": "CQ-020"
+    },
+    {
+      "id": "CQ-021",
+      "status": "not_applicable",
+      "reason": {
+        "predicate": "Application-owned build-profile bean conditions",
+        "matches": [],
+        "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+        "java_files": 199,
+        "inventory": "javac-facts.json.gz",
+        "counterexamples_not_equivalent": "TestProfile and %profile config do not imply @IfBuildProfile bean conditions."
+      },
+      "bindings": null
+    },
+    {
+      "id": "CQ-022",
+      "status": "not_applicable",
+      "reason": {
+        "predicate": "Application-owned build-property bean conditions",
+        "matches": [],
+        "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+        "java_files": 199,
+        "inventory": "javac-facts.json.gz",
+        "counterexamples_not_equivalent": "@LookupIfProperty is runtime programmatic lookup filtering, not @IfBuildProperty."
+      },
+      "bindings": null
+    },
+    {
+      "id": "CQ-023",
+      "category": "activation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "runtime_lookup": "io.cryostat.events.S3TemplateService#metadataService"
+      },
+      "prompts": {
+        "ru": "Как runtime-конфигурация влияет на io.cryostat.events.S3TemplateService#metadataService? Что известно заранее, а что определяется только при запуске?",
+        "en": "How does runtime configuration affect io.cryostat.events.S3TemplateService#metadataService, and which choices cannot be determined before execution?"
+      },
+      "oracle_id": "CQ-023"
+    },
+    {
+      "id": "CQ-024",
+      "category": "activation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "synthetic_type": "io.cryostat.security.rbac.RbacConfig"
+      },
+      "prompts": {
+        "ru": "Кто регистрирует io.cryostat.security.rbac.RbacConfig, какие у synthetic bean типы, qualifiers и зависимости?",
+        "en": "Trace registration, types, qualifiers and dependencies of the synthetic bean io.cryostat.security.rbac.RbacConfig."
+      },
+      "oracle_id": "CQ-024"
+    },
+    {
+      "id": "CQ-025",
+      "category": "activation",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "async_method": "io.cryostat.security.rbac.SsarAuthorizer#checkSsarPermission(java.lang.String,java.lang.String)"
+      },
+      "prompts": {
+        "ru": "Может ли io.cryostat.security.rbac.SsarAuthorizer#checkSsarPermission(java.lang.String,java.lang.String) обращаться к своим contextual beans в этом async-пути? Покажи границы контекста и что требует runtime-проверки.",
+        "en": "Can io.cryostat.security.rbac.SsarAuthorizer#checkSsarPermission(java.lang.String,java.lang.String) access its contextual beans along this asynchronous path? Identify context boundaries and required runtime checks."
+      },
+      "oracle_id": "CQ-025"
+    },
+    {
+      "id": "CQ-026",
+      "category": "crosscutting",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "intercepted_method": "io.cryostat.credentials.Credentials#onStart(io.quarkus.runtime.StartupEvent)"
+      },
+      "prompts": {
+        "ru": "Какие interceptors применимы к io.cryostat.credentials.Credentials#onStart(io.quarkus.runtime.StartupEvent), в каком порядке и за счёт каких bindings?",
+        "en": "Determine the interceptors applicable to io.cryostat.credentials.Credentials#onStart(io.quarkus.runtime.StartupEvent), their ordering and binding provenance."
+      },
+      "oracle_id": "CQ-026"
+    },
+    {
+      "id": "CQ-027",
+      "category": "crosscutting",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "transactional_method": "io.cryostat.credentials.Credentials#onStart(io.quarkus.runtime.StartupEvent)"
+      },
+      "prompts": {
+        "ru": "Где начинается и заканчивается транзакция на пути через io.cryostat.credentials.Credentials#onStart(io.quarkus.runtime.StartupEvent), и какие вызовы могут изменить propagation?",
+        "en": "Trace transaction boundaries through io.cryostat.credentials.Credentials#onStart(io.quarkus.runtime.StartupEvent), including propagation-changing calls."
+      },
+      "oracle_id": "CQ-027"
+    },
+    {
+      "id": "CQ-028",
+      "category": "crosscutting",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "event_site": "io.cryostat.credentials.Credential.Listener#postPersist(io.cryostat.credentials.Credential)"
+      },
+      "prompts": {
+        "ru": "Какие observers могут получить событие из io.cryostat.credentials.Credential.Listener#postPersist(io.cryostat.credentials.Credential)? Учти event type, qualifiers, sync/async и transaction phase.",
+        "en": "Find observers eligible for the event fired at io.cryostat.credentials.Credential.Listener#postPersist(io.cryostat.credentials.Credential), including qualifiers, sync or async mode and transaction phase."
+      },
+      "oracle_id": "CQ-028"
+    },
+    {
+      "id": "CQ-029",
+      "category": "crosscutting",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "decorated_type": "io.cryostat.reports.ReportsService"
+      },
+      "prompts": {
+        "ru": "Какие decorators применяются к io.cryostat.reports.ReportsService, как выбран delegate и что определяет порядок?",
+        "en": "Identify decorators of io.cryostat.reports.ReportsService, delegate resolution and decoration order."
+      },
+      "oracle_id": "CQ-029"
+    },
+    {
+      "id": "CQ-030",
+      "category": "crosscutting",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "cycle_root": "io.cryostat.security.rbac.PermissionMapper"
+      },
+      "prompts": {
+        "ru": "Есть ли циклы в зависимостях от io.cryostat.security.rbac.PermissionMapper? Отдели цикл CDI-графа от реально недопустимого создания объектов.",
+        "en": "Find dependency cycles reachable from io.cryostat.security.rbac.PermissionMapper, distinguishing CDI graph cycles from invalid object construction."
+      },
+      "oracle_id": "CQ-030"
+    },
+    {
+      "id": "CQ-031",
+      "category": "entrypoints",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "endpoint": "GET /api/v4.1/targets/{targetId}/reports"
+      },
+      "prompts": {
+        "ru": "Как запрос к GET /api/v4.1/targets/{targetId}/reports доходит до бизнес-метода и CDI-зависимости? Покажи один прямой путь, не добавляя все транзитивные зависимости.",
+        "en": "Trace one direct path from GET /api/v4.1/targets/{targetId}/reports to its business method and CDI dependency without expanding unrelated transitive dependencies."
+      },
+      "oracle_id": "CQ-031"
+    },
+    {
+      "id": "CQ-032",
+      "category": "entrypoints",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "secured_endpoint": "GET /api/v4.1/targets/{targetId}/reports"
+      },
+      "prompts": {
+        "ru": "Какие проверки доступа действуют для GET /api/v4.1/targets/{targetId}/reports, откуда берутся роли или permissions и где меняется поведение по конфигурации?",
+        "en": "Explain access checks for GET /api/v4.1/targets/{targetId}/reports, role or permission provenance and configuration-dependent behavior."
+      },
+      "oracle_id": "CQ-032"
+    },
+    {
+      "id": "CQ-033",
+      "category": "entrypoints",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "scheduled_method": "io.cryostat.ws.MessagingServer#pingClients()"
+      },
+      "prompts": {
+        "ru": "Что запускает io.cryostat.ws.MessagingServer#pingClients(), какие CDI-зависимости используются и какие настройки управляют расписанием или отключением?",
+        "en": "Explain how io.cryostat.ws.MessagingServer#pingClients() is scheduled, its CDI dependencies and configuration controlling schedule or disablement."
+      },
+      "oracle_id": "CQ-033"
+    },
+    {
+      "id": "CQ-034",
+      "status": "not_applicable",
+      "reason": {
+        "predicate": "Application-owned MicroProfile Reactive Messaging handlers",
+        "matches": [],
+        "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+        "java_files": 199,
+        "inventory": "javac-facts.json.gz",
+        "counterexamples_not_equivalent": "Vert.x @ConsumeEvent and WebSockets exist; they are not Reactive Messaging @Incoming/@Outgoing channels."
+      },
+      "bindings": null
+    },
+    {
+      "id": "CQ-035",
+      "category": "entrypoints",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "startup_hook": "io.cryostat.events.BucketedEventTemplateMetadataService#onStart(io.quarkus.runtime.StartupEvent)"
+      },
+      "prompts": {
+        "ru": "Что делает io.cryostat.events.BucketedEventTemplateMetadataService#onStart(io.quarkus.runtime.StartupEvent) при старте или остановке и какие beans затрагивает? Укажи доказанный порядок и неизвестные отношения.",
+        "en": "Trace io.cryostat.events.BucketedEventTemplateMetadataService#onStart(io.quarkus.runtime.StartupEvent) during startup or shutdown, its bean dependencies and the ordering that can actually be established."
+      },
+      "oracle_id": "CQ-035"
+    },
+    {
+      "id": "CQ-036",
+      "category": "configuration",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "config_key": "cryostat.services.reports.memory-cache.enabled",
+        "profile": "prod"
+      },
+      "prompts": {
+        "ru": "Где задаётся и читается cryostat.services.reports.memory-cache.enabled? Покажи default, overrides по профилю prod и места использования.",
+        "en": "Find definitions and consumers of cryostat.services.reports.memory-cache.enabled, including defaults and overrides under prod."
+      },
+      "oracle_id": "CQ-036"
+    },
+    {
+      "id": "CQ-037",
+      "category": "configuration",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "config_mapping": "io.cryostat.security.rbac.RbacConfig"
+      },
+      "prompts": {
+        "ru": "Какие ключи описывает io.cryostat.security.rbac.RbacConfig, включая вложенные группы, optional/list/map и значения по умолчанию?",
+        "en": "Expand the keys of io.cryostat.security.rbac.RbacConfig, including nested groups, optional values, collections and defaults."
+      },
+      "oracle_id": "CQ-037"
+    },
+    {
+      "id": "CQ-038",
+      "category": "configuration",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "config_key": "cryostat.security.rbac.cache.maximum-size",
+        "config_context": "prod; только application-fixture ordinal 100 (1000) и explicit-override ordinal 500 (25), без ambient env/system properties"
+      },
+      "prompts": {
+        "ru": "Какое значение cryostat.security.rbac.cache.maximum-size получится в контексте prod; только application-fixture ordinal 100 (1000) и explicit-override ordinal 500 (25), без ambient env/system properties? Покажи приоритет источников и не раскрывай секретные значения.",
+        "en": "Resolve cryostat.security.rbac.cache.maximum-size for prod; только application-fixture ordinal 100 (1000) и explicit-override ordinal 500 (25), без ambient env/system properties, explaining source precedence without revealing secrets."
+      },
+      "oracle_id": "CQ-038"
+    },
+    {
+      "id": "CQ-039",
+      "category": "configuration",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "config_key": "cryostat.services.reports.memory-cache.enabled"
+      },
+      "prompts": {
+        "ru": "Можно ли изменить cryostat.services.reports.memory-cache.enabled без пересборки? Покажи доказательства build-time/runtime поведения для используемой версии.",
+        "en": "Can cryostat.services.reports.memory-cache.enabled change without rebuilding? Establish build-time versus runtime behavior for the installed version."
+      },
+      "oracle_id": "CQ-039"
+    },
+    {
+      "id": "CQ-040",
+      "category": "configuration",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "config_key": "cryostat.services.reports.memory-cache.enabled",
+        "new_config_key": "cryostat.services.reports.memory-cache.active"
+      },
+      "prompts": {
+        "ru": "Что надо изменить при переименовании cryostat.services.reports.memory-cache.enabled в cryostat.services.reports.memory-cache.active? Отдели код, конфигурацию, deployment descriptors и тесты.",
+        "en": "Plan renaming cryostat.services.reports.memory-cache.enabled to cryostat.services.reports.memory-cache.active, separating code, configuration, deployment descriptors and tests."
+      },
+      "oracle_id": "CQ-040"
+    },
+    {
+      "id": "CQ-041",
+      "category": "refactoring",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "method": "io.cryostat.security.rbac.PermissionMapper#resolve(java.lang.String)"
+      },
+      "prompts": {
+        "ru": "Каков прямой радиус изменения сигнатуры io.cryostat.security.rbac.PermissionMapper#resolve(java.lang.String)? Отдели callers, overrides, интерфейсы, тесты и косвенные зависимости.",
+        "en": "Determine the direct blast radius of changing io.cryostat.security.rbac.PermissionMapper#resolve(java.lang.String), separating callers, overrides, interfaces, tests and indirect dependencies."
+      },
+      "oracle_id": "CQ-041"
+    },
+    {
+      "id": "CQ-042",
+      "category": "refactoring",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "qualified_bean": "io.cryostat.Producers#produceBase64Url()",
+        "new_qualifier": "@io.smallrye.common.annotation.Identifier(\"BASE64_URL_V2\")"
+      },
+      "prompts": {
+        "ru": "Если изменить qualifier у io.cryostat.Producers#produceBase64Url() на @io.smallrye.common.annotation.Identifier(\"BASE64_URL_V2\"), какие injection sites и producers придётся проверить или изменить?",
+        "en": "Assess changing the qualifier of io.cryostat.Producers#produceBase64Url() to @io.smallrye.common.annotation.Identifier(\"BASE64_URL_V2\"), including affected injection points and producers."
+      },
+      "oracle_id": "CQ-042"
+    },
+    {
+      "id": "CQ-043",
+      "category": "refactoring",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "interface": "io.cryostat.reports.ReportsService"
+      },
+      "prompts": {
+        "ru": "Что затронет изменение контракта io.cryostat.reports.ReportsService: реализации, injection sites, decorators/producers и прямые пользователи методов?",
+        "en": "Assess a contract change to io.cryostat.reports.ReportsService, covering implementations, injection points, decorators, producers and direct method users."
+      },
+      "oracle_id": "CQ-043"
+    },
+    {
+      "id": "CQ-044",
+      "category": "refactoring",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "bean": "io.cryostat.security.rbac.PermissionMapper"
+      },
+      "prompts": {
+        "ru": "Как заменить class bean io.cryostat.security.rbac.PermissionMapper producer-методом, не потеряв qualifiers, scope, lifecycle и совместимость потребителей?",
+        "en": "Plan replacing the class bean io.cryostat.security.rbac.PermissionMapper with a producer while preserving qualifiers, scope, lifecycle and consumer compatibility."
+      },
+      "oracle_id": "CQ-044"
+    },
+    {
+      "id": "CQ-045",
+      "category": "refactoring",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "bean": "io.cryostat.security.rbac.SsarClientCache",
+        "new_scope": "@RequestScoped"
+      },
+      "prompts": {
+        "ru": "Что изменится, если перевести io.cryostat.security.rbac.SsarClientCache в @RequestScoped? Проверь состояние, proxy, lifetime зависимостей и контекст вызова.",
+        "en": "Assess changing io.cryostat.security.rbac.SsarClientCache to @RequestScoped, including mutable state, proxies, dependency lifetimes and calling contexts."
+      },
+      "oracle_id": "CQ-045"
+    },
+    {
+      "id": "CQ-046",
+      "category": "verification",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "change_target": "io.cryostat.security.rbac.PermissionMapper#resolve(java.lang.String)"
+      },
+      "prompts": {
+        "ru": "Какие тесты следует запустить после изменения io.cryostat.security.rbac.PermissionMapper#resolve(java.lang.String) и почему? Отдели прямое покрытие от эвристически релевантных тестов.",
+        "en": "Select tests for a change to io.cryostat.security.rbac.PermissionMapper#resolve(java.lang.String), separating direct evidence from heuristic relevance and coverage gaps."
+      },
+      "oracle_id": "CQ-046"
+    },
+    {
+      "id": "CQ-047",
+      "category": "verification",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "test_class": "io.cryostat.discovery.KubeEndpointSlicesDiscoveryTest"
+      },
+      "prompts": {
+        "ru": "Как io.cryostat.discovery.KubeEndpointSlicesDiscoveryTest подменяет CDI-зависимости и конфигурацию? Что отличается от production и что такой тест не проверяет?",
+        "en": "Explain CDI and configuration substitutions in io.cryostat.discovery.KubeEndpointSlicesDiscoveryTest, differences from production and resulting coverage limits."
+      },
+      "oracle_id": "CQ-047"
+    },
+    {
+      "id": "CQ-048",
+      "category": "verification",
+      "mode": "independent",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "generated_type": "io.cryostat.security.rbac.PermissionMapper_ClientProxy"
+      },
+      "prompts": {
+        "ru": "Откуда появился io.cryostat.security.rbac.PermissionMapper_ClientProxy, какой handwritten input или extension им управляет и что надо менять вместо generated-файла?",
+        "en": "Trace io.cryostat.security.rbac.PermissionMapper_ClientProxy to its handwritten inputs or generating extension and identify the correct place to make a change."
+      },
+      "oracle_id": "CQ-048"
+    },
+    {
+      "id": "CQ-049",
+      "category": "verification",
+      "mode": "patch",
+      "turns": 1,
+      "status": "applicable",
+      "bindings": {
+        "rename_method": "io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String)",
+        "new_method_name": "parseMappingValue"
+      },
+      "prompts": {
+        "ru": "Переименуй io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) в parseMappingValue, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.",
+        "en": "Rename io.cryostat.security.rbac.PermissionMapper#parse(java.lang.String) to parseMappingValue, update required references and add or adapt a focused test while preserving behavior."
+      },
+      "oracle_id": "CQ-049"
+    },
+    {
+      "id": "CQ-050",
+      "category": "verification",
+      "mode": "linked",
+      "turns": 6,
+      "status": "applicable",
+      "bindings": {
+        "flow_anchor": "GET /api/v4.1/targets/{targetId}/reports",
+        "profile": "prod"
+      },
+      "prompts": {
+        "ru": "Разбери одну пользовательскую операцию GET /api/v4.1/targets/{targetId}/reports: точку входа, DI-выбор, настройки, радиус изменения и подходящие тесты. Работай по шагам в одной сессии.",
+        "en": "Investigate the user operation GET /api/v4.1/targets/{targetId}/reports in one continuous session: entry point, DI selection, configuration, change impact and tests."
+      },
+      "oracle_id": "CQ-050",
+      "steps": [
+        {
+          "step": 1,
+          "prompt": "Найди точку входа операции GET /api/v4.1/targets/{targetId}/reports и её непосредственный обработчик."
+        },
+        {
+          "step": 2,
+          "prompt": "Проследи выбор CDI-зависимости в этой операции при prod."
+        },
+        {
+          "step": 3,
+          "prompt": "Найди связанные настройки и их определения для этого профиля."
+        },
+        {
+          "step": 4,
+          "prompt": "Раздели прямые вызовы, DI-связи и условные runtime-переходы на этом пути."
+        },
+        {
+          "step": 5,
+          "prompt": "Составь минимальный план изменения контракта этой операции и прямой радиус проверки."
+        },
+        {
+          "step": 6,
+          "prompt": "Выбери узкие тесты для плана; отметь пробелы доказательств и не повторяй весь предыдущий разбор."
+        }
+      ]
+    }
+  ],
+  "oracle_file": "oracles.json",
+  "execution_status": "not_run",
+  "runner_integration": "No automatic compatibility with older runners; load public-tasks only and isolate all oracle files."
+}

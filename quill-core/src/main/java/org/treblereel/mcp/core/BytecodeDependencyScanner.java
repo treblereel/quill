@@ -11,22 +11,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Handle;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.ModuleVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
-/** Extracts application-to-application references that only exist in bytecode instructions. */
+/**
+ * Extracts application-to-application references that only exist in bytecode instructions.
+ */
 public final class BytecodeDependencyScanner {
 
-    private BytecodeDependencyScanner() {}
+    private BytecodeDependencyScanner() {
+    }
 
     public record StaticDependency(
             String fromClass, String toClass, String kind, int occurrences,
-            List<Integer> evidenceLines) {}
+            List<Integer> evidenceLines) {
+    }
 
     public record StaticMethodCall(
             String fromClass,
@@ -43,7 +49,8 @@ public final class BytecodeDependencyScanner {
             int callerExceptionHandlerCount,
             List<String> callerControlFlowEdges,
             List<String> callerAsyncBoundaries,
-            List<String> callerExternalCalls) {}
+            List<String> callerExternalCalls) {
+    }
 
     public record StaticFieldAccess(
             String fromClass,
@@ -55,22 +62,27 @@ public final class BytecodeDependencyScanner {
             String accessKind,
             int occurrences,
             List<Integer> evidenceLines,
-            List<Integer> instructionOrdinals) {}
+            List<Integer> instructionOrdinals) {
+    }
 
     public record ScanResult(
             List<StaticDependency> dependencies,
             List<StaticMethodCall> methodCalls,
-            List<StaticFieldAccess> fieldAccesses) {}
+            List<StaticFieldAccess> fieldAccesses) {
+    }
 
-    private record Edge(String fromClass, String toClass, String kind) {}
+    private record Edge(String fromClass, String toClass, String kind) {
+    }
 
     private record CallEdge(
             String fromClass, String fromMethod, String fromDescriptor,
-            String toClass, String toMethod, String toDescriptor, String invocationKind) {}
+            String toClass, String toMethod, String toDescriptor, String invocationKind) {
+    }
 
     private record FieldEdge(
             String fromClass, String fromMethod, String fromDescriptor,
-            String toClass, String fieldName, String fieldDescriptor, String accessKind) {}
+            String toClass, String fieldName, String fieldDescriptor, String accessKind) {
+    }
 
     public static List<StaticDependency> scan(List<Path> classesDirectories) {
         return analyze(ClassFileSnapshot.capture(classesDirectories)).dependencies();
@@ -137,21 +149,21 @@ public final class BytecodeDependencyScanner {
                         List.copyOf(entry.getValue().lines),
                         List.copyOf(entry.getValue().instructionOrdinals),
                         controlFlow.getOrDefault(new MethodKey(entry.getKey().fromClass(),
-                                entry.getKey().fromMethod(), entry.getKey().fromDescriptor()),
+                                        entry.getKey().fromMethod(), entry.getKey().fromDescriptor()),
                                 new ControlFlowEvidence()).branchCount,
                         controlFlow.getOrDefault(new MethodKey(entry.getKey().fromClass(),
-                                entry.getKey().fromMethod(), entry.getKey().fromDescriptor()),
+                                        entry.getKey().fromMethod(), entry.getKey().fromDescriptor()),
                                 new ControlFlowEvidence()).exceptionHandlerCount,
                         List.copyOf(controlFlow.getOrDefault(new MethodKey(
                                 entry.getKey().fromClass(), entry.getKey().fromMethod(),
                                 entry.getKey().fromDescriptor()), new ControlFlowEvidence()).edges),
                         List.copyOf(controlFlow.getOrDefault(new MethodKey(
-                                entry.getKey().fromClass(), entry.getKey().fromMethod(),
-                                entry.getKey().fromDescriptor()),
+                                        entry.getKey().fromClass(), entry.getKey().fromMethod(),
+                                        entry.getKey().fromDescriptor()),
                                 new ControlFlowEvidence()).asyncBoundaries),
                         List.copyOf(controlFlow.getOrDefault(new MethodKey(
-                                entry.getKey().fromClass(), entry.getKey().fromMethod(),
-                                entry.getKey().fromDescriptor()),
+                                        entry.getKey().fromClass(), entry.getKey().fromMethod(),
+                                        entry.getKey().fromDescriptor()),
                                 new ControlFlowEvidence()).externalCalls)))
                 .sorted(Comparator.comparing(StaticMethodCall::fromClass)
                         .thenComparing(StaticMethodCall::fromMethod)
@@ -201,13 +213,13 @@ public final class BytecodeDependencyScanner {
 
         @Override
         public void visit(int version, int access, String name, String signature,
-                String superName, String[] interfaces) {
+                          String superName, String[] interfaces) {
             owner = className(name);
         }
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String descriptor,
-                String signature, String[] exceptions) {
+                                         String signature, String[] exceptions) {
             String callerMethod = name;
             String callerDescriptor = descriptor;
             ControlFlowEvidence methodControlFlow = controlFlow.computeIfAbsent(
@@ -216,19 +228,19 @@ public final class BytecodeDependencyScanner {
                 private Type directClassLiteral;
                 private int currentLine;
                 private int instructionOrdinal;
-                private final Map<org.objectweb.asm.Label, Integer> labelOrdinals =
+                private final Map<Label, Integer> labelOrdinals =
                         new IdentityHashMap<>();
                 private final List<PendingEdge> pendingEdges = new ArrayList<>();
                 private final List<PendingExceptionRegion> exceptionRegions = new ArrayList<>();
                 private final Set<Integer> noFallthrough = new HashSet<>();
 
                 @Override
-                public void visitLineNumber(int line, org.objectweb.asm.Label start) {
+                public void visitLineNumber(int line, Label start) {
                     currentLine = line;
                 }
 
                 @Override
-                public void visitLabel(org.objectweb.asm.Label label) {
+                public void visitLabel(Label label) {
                     labelOrdinals.put(label, instructionOrdinal + 1);
                 }
 
@@ -241,7 +253,7 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitFieldInsn(int opcode, String fieldOwner, String fieldName,
-                        String fieldDescriptor) {
+                                           String fieldDescriptor) {
                     nextInstruction();
                     directClassLiteral = null;
                     addFieldAccess(fieldOwner, fieldName, fieldDescriptor,
@@ -252,7 +264,7 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitMethodInsn(int opcode, String methodOwner, String methodName,
-                        String methodDescriptor, boolean isInterface) {
+                                            String methodDescriptor, boolean isInterface) {
                     nextInstruction();
                     if (isAsyncBoundary(methodOwner, methodName)) {
                         methodControlFlow.asyncBoundaries.add(
@@ -280,7 +292,7 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitInvokeDynamicInsn(String name, String descriptor,
-                        Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
+                                                   Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
                     nextInstruction();
                     directClassLiteral = null;
                     addMethodTypes(descriptor);
@@ -336,7 +348,7 @@ public final class BytecodeDependencyScanner {
                 }
 
                 @Override
-                public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) {
+                public void visitJumpInsn(int opcode, Label label) {
                     nextInstruction();
                     methodControlFlow.branchCount++;
                     pendingEdges.add(new PendingEdge(instructionOrdinal, label));
@@ -361,25 +373,25 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitTableSwitchInsn(int min, int max,
-                        org.objectweb.asm.Label dflt, org.objectweb.asm.Label... labels) {
+                                                 Label dflt, Label... labels) {
                     nextInstruction();
                     methodControlFlow.branchCount++;
                     noFallthrough.add(instructionOrdinal);
                     pendingEdges.add(new PendingEdge(instructionOrdinal, dflt));
-                    for (org.objectweb.asm.Label label : labels) {
+                    for (Label label : labels) {
                         pendingEdges.add(new PendingEdge(instructionOrdinal, label));
                     }
                     directClassLiteral = null;
                 }
 
                 @Override
-                public void visitLookupSwitchInsn(org.objectweb.asm.Label dflt, int[] keys,
-                        org.objectweb.asm.Label[] labels) {
+                public void visitLookupSwitchInsn(Label dflt, int[] keys,
+                                                  Label[] labels) {
                     nextInstruction();
                     methodControlFlow.branchCount++;
                     noFallthrough.add(instructionOrdinal);
                     pendingEdges.add(new PendingEdge(instructionOrdinal, dflt));
-                    for (org.objectweb.asm.Label label : labels) {
+                    for (Label label : labels) {
                         pendingEdges.add(new PendingEdge(instructionOrdinal, label));
                     }
                     directClassLiteral = null;
@@ -404,7 +416,7 @@ public final class BytecodeDependencyScanner {
                         Integer handler = labelOrdinals.get(region.handler());
                         if (start == null || end == null || handler == null) continue;
                         for (int ordinal = start; ordinal < end && ordinal <= instructionOrdinal;
-                                ordinal++) {
+                             ordinal++) {
                             methodControlFlow.edges.add(ordinal + ">" + handler);
                         }
                     }
@@ -412,13 +424,13 @@ public final class BytecodeDependencyScanner {
 
                 @Override
                 public void visitLocalVariable(String name, String descriptor, String signature,
-                        org.objectweb.asm.Label start, org.objectweb.asm.Label end, int index) {
+                                               Label start, Label end, int index) {
                     addType(Type.getType(descriptor), "TYPE_USE");
                 }
 
                 @Override
-                public void visitTryCatchBlock(org.objectweb.asm.Label start,
-                        org.objectweb.asm.Label end, org.objectweb.asm.Label handler, String type) {
+                public void visitTryCatchBlock(Label start,
+                                               Label end, Label handler, String type) {
                     methodControlFlow.exceptionHandlerCount++;
                     exceptionRegions.add(new PendingExceptionRegion(start, end, handler));
                     if (type != null) add(type, "TYPE_USE");
@@ -452,30 +464,32 @@ public final class BytecodeDependencyScanner {
                 private void nextInstruction() {
                     instructionOrdinal++;
                 }
+
                 private void addHandleReference(String internalName, String kind) {
                     String target = className(internalName);
-                    if (applicationClasses.contains(target)) edges.computeIfAbsent(new Edge(owner,target,kind), ignored -> new EdgeEvidence()).add(currentLine);
+                    if (applicationClasses.contains(target))
+                        edges.computeIfAbsent(new Edge(owner, target, kind), ignored -> new EdgeEvidence()).add(currentLine);
                 }
 
                 private void addCall(String internalName, String methodName,
-                        String methodDescriptor, String kind) {
+                                     String methodDescriptor, String kind) {
                     if (internalName == null || methodName == null || methodDescriptor == null
                             || !methodDescriptor.startsWith("(")) return;
                     String target = className(internalName);
                     if (!applicationClasses.contains(target)) return;
                     calls.computeIfAbsent(new CallEdge(owner, callerMethod, callerDescriptor,
-                            target, methodName, methodDescriptor, kind),
+                                    target, methodName, methodDescriptor, kind),
                             ignored -> new EdgeEvidence()).add(currentLine, instructionOrdinal);
                 }
 
                 private void addFieldAccess(String internalName, String fieldName,
-                        String fieldDescriptor, String kind) {
+                                            String fieldDescriptor, String kind) {
                     if (internalName == null || fieldName == null || fieldDescriptor == null
                             || kind == null) return;
                     String target = className(internalName);
                     if (!applicationClasses.contains(target)) return;
                     fields.computeIfAbsent(new FieldEdge(owner, callerMethod, callerDescriptor,
-                            target, fieldName, fieldDescriptor, kind),
+                                    target, fieldName, fieldDescriptor, kind),
                             ignored -> new EdgeEvidence()).add(currentLine, instructionOrdinal);
                 }
             };
@@ -521,12 +535,15 @@ public final class BytecodeDependencyScanner {
         }
     }
 
-    private record MethodKey(String owner, String method, String descriptor) {}
+    private record MethodKey(String owner, String method, String descriptor) {
+    }
 
-    private record PendingEdge(int source, org.objectweb.asm.Label target) {}
+    private record PendingEdge(int source, Label target) {
+    }
 
-    private record PendingExceptionRegion(org.objectweb.asm.Label start,
-            org.objectweb.asm.Label end, org.objectweb.asm.Label handler) {}
+    private record PendingExceptionRegion(Label start,
+                                          Label end, Label handler) {
+    }
 
     private static final class ControlFlowEvidence {
         private int branchCount;
@@ -599,10 +616,13 @@ public final class BytecodeDependencyScanner {
         };
     }
 
-    /** Only the standard LambdaMetafactory implementation slot denotes a callback target. */
+    /**
+     * Only the standard LambdaMetafactory implementation slot denotes a callback target.
+     */
     private static Handle lambdaImplementation(Handle bootstrap, Object[] arguments) {
         String prefix = "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;";
-        if (bootstrap.getTag() != Opcodes.H_INVOKESTATIC || !bootstrap.getOwner().equals("java/lang/invoke/LambdaMetafactory")) return null;
+        if (bootstrap.getTag() != Opcodes.H_INVOKESTATIC || !bootstrap.getOwner().equals("java/lang/invoke/LambdaMetafactory"))
+            return null;
         boolean alternate = bootstrap.getName().equals("altMetafactory")
                 && bootstrap.getDesc().equals(prefix + "[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;");
         boolean ordinary = bootstrap.getName().equals("metafactory")
@@ -615,13 +635,15 @@ public final class BytecodeDependencyScanner {
         if (alternate) {
             if (arguments.length < 4 || !(arguments[3] instanceof Integer flags) || (flags & ~7) != 0) return null;
             int cursor = 4;
-            for (int flag : new int[] {2, 4}) if ((flags & flag) != 0) {
-                if (cursor >= arguments.length || !(arguments[cursor++] instanceof Integer count) || count < 0
-                        || count > 256 || count > arguments.length - cursor) return null;
-                for (int i = 0; i < count; i++) {
-                    if (!(arguments[cursor++] instanceof Type type) || type.getSort() != (flag == 2 ? Type.OBJECT : Type.METHOD)) return null;
+            for (int flag : new int[]{2, 4})
+                if ((flags & flag) != 0) {
+                    if (cursor >= arguments.length || !(arguments[cursor++] instanceof Integer count) || count < 0
+                            || count > 256 || count > arguments.length - cursor) return null;
+                    for (int i = 0; i < count; i++) {
+                        if (!(arguments[cursor++] instanceof Type type) || type.getSort() != (flag == 2 ? Type.OBJECT : Type.METHOD))
+                            return null;
+                    }
                 }
-            }
             if (cursor != arguments.length) return null;
         }
         return implementation;

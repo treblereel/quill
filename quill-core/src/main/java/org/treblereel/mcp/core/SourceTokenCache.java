@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Content-addressed cache for exact source token counts. */
 final class SourceTokenCache {
@@ -148,6 +149,7 @@ final class SourceTokenCache {
             }
             return result;
         } catch (IOException | RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return Map.of();
         }
     }

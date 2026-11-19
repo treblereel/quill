@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildIntegrationCapabilities;
+import org.treblereel.mcp.index.BuildIntegrationInstaller;
+import org.treblereel.mcp.index.JavaCompilerSettings;
+
 import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.*;
 import java.util.*;

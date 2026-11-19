@@ -1,0 +1,305 @@
+package org.treblereel.mcp.mcp.query;
+
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendMeta;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.appendPage;
+import static org.treblereel.mcp.mcp.support.ToolResponseSupport.errorNode;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.UsageRepository.MethodCallView;
+import org.treblereel.mcp.diagnostics.QuillLog;
+import org.treblereel.mcp.model.ClassRecord;
+
+/** Presents indexed Spring MVC and JAX-RS routes with direct call evidence. */
+public final class FrameworkEndpointQueries {
+
+    private static final ObjectMapper JSON = Json.MAPPER;
+    private static final Set<String> FRAMEWORKS = Set.of("spring", "jax-rs");
+    private static final int CALL_DETAIL_LIMIT = 20;
+
+    public ObjectNode findFrameworkEndpoints(
+            ReadQueryContext reader,
+            String framework,
+            String httpMethod,
+            String pathPrefix,
+            String module,
+            boolean includeGenerated,
+            boolean includeTests,
+            int limit,
+            int offset) {
+        String normalizedFramework = normalize(framework);
+        if (normalizedFramework != null && !FRAMEWORKS.contains(normalizedFramework)) {
+            return errorNode("Invalid framework: expected spring, jax-rs, or all");
+        }
+        String normalizedMethod =
+                httpMethod == null || httpMethod.isBlank()
+                        ? null
+                        : httpMethod.strip().toUpperCase(Locale.ROOT);
+        String normalizedPrefix =
+                pathPrefix == null || pathPrefix.isBlank() ? null : normalizePath(pathPrefix);
+        Map<String, String> metadata = reader.index.getMetadata();
+        String detail = metadata.get("framework_endpoints_detail");
+        if (detail == null) {
+            ObjectNode error = JSON.createObjectNode();
+            error.put(
+                    "error", "Framework endpoint metadata is unavailable; rebuild the Quill index");
+            appendMeta(error, reader, 0);
+            return error;
+        }
+
+        Map<Integer, ClassRecord> classes = new HashMap<>();
+        reader.symbols.findAllClasses().forEach(cls -> classes.put(cls.id(), cls));
+        List<Endpoint> endpoints;
+        try {
+            endpoints =
+                    parse(detail).stream()
+                            .filter(
+                                    endpoint ->
+                                            normalizedFramework == null
+                                                    || normalizedFramework.equals(
+                                                            endpoint.framework()))
+                            .filter(
+                                    endpoint ->
+                                            normalizedMethod == null
+                                                    || endpoint.httpMethods().stream()
+                                                            .anyMatch(
+                                                                    verb ->
+                                                                            verb.equalsIgnoreCase(
+                                                                                    normalizedMethod))
+                                                    || endpoint.httpMethods().contains("ANY"))
+                            .filter(
+                                    endpoint ->
+                                            normalizedPrefix == null
+                                                    || endpoint.paths().stream()
+                                                            .anyMatch(
+                                                                    path ->
+                                                                            path.startsWith(
+                                                                                    normalizedPrefix)))
+                            .filter(
+                                    endpoint ->
+                                            inScope(
+                                                    classes.get(endpoint.classId()),
+                                                    module,
+                                                    includeGenerated,
+                                                    includeTests))
+                            .sorted(
+                                    Comparator.comparing(Endpoint::framework)
+                                            .thenComparing(endpoint -> endpoint.paths().getFirst())
+                                            .thenComparing(Endpoint::className)
+                                            .thenComparing(Endpoint::signature))
+                            .toList();
+        } catch (Exception error) {
+            QuillLog.swallowed(error);
+            return errorNode("Framework endpoint metadata is invalid; rebuild the Quill index");
+        }
+        int from = Math.min(offset, endpoints.size());
+        int to = (int) Math.min((long) from + limit, endpoints.size());
+        List<Endpoint> page = endpoints.subList(from, to);
+
+        ObjectNode root = JSON.createObjectNode();
+        if (normalizedFramework == null) root.putNull("framework_filter");
+        else root.put("framework_filter", normalizedFramework);
+        if (normalizedMethod == null) root.putNull("http_method_filter");
+        else root.put("http_method_filter", normalizedMethod);
+        if (normalizedPrefix == null) root.putNull("path_prefix_filter");
+        else root.put("path_prefix_filter", normalizedPrefix);
+        if (module == null) root.putNull("module_filter");
+        else root.put("module_filter", module);
+        root.put("include_generated", includeGenerated);
+        root.put("include_tests", includeTests);
+        root.put("call_detail_limit", CALL_DETAIL_LIMIT);
+        ArrayNode limitations = root.putArray("limitations");
+        limitations.add(
+                "Only constant Spring MVC and JAX-RS annotations retained in compiled bytecode are analyzed");
+        limitations.add(
+                "Programmatic, XML, YAML, runtime-generated, incomplete hierarchies, and unresolved meta-annotated routes may be absent");
+        limitations.add(
+                "Composed Spring mappings require indexed annotation definitions and explicit AliasFor overrides; ambiguous mappings and convention-based overrides are omitted or incomplete");
+        limitations.add(
+                "Media types, params, headers, runtime registration, and JAX-RS subresource chains are not resolved; SUBRESOURCE only denotes a declared Path without a recognized HTTP method");
+        limitations.add(
+                "Inherited mappings require complete indexed ancestors; conflicting interface contracts are omitted. JAX-RS type Path is not inherited");
+        limitations.add(
+                "Direct calls use the method body declaration; external bodies have unavailable counts, not proven empty call sets");
+        limitations.add(
+                "Direct project calls are static bytecode targets, not guaranteed runtime service dispatches");
+
+        ArrayNode values = root.putArray("endpoints");
+        Set<Integer> countedClasses = new HashSet<>();
+        int naiveTokens = 0;
+        for (Endpoint endpoint : page) {
+            ClassRecord cls = classes.get(endpoint.classId());
+            ObjectNode node = values.addObject();
+            node.put("framework", endpoint.framework());
+            node.set("http_methods", JSON.valueToTree(endpoint.httpMethods()));
+            node.set("paths", JSON.valueToTree(endpoint.paths()));
+            node.put("class", endpoint.className());
+            node.put("method", endpoint.methodName());
+            node.put("signature", endpoint.signature());
+            node.put("descriptor", endpoint.descriptor());
+            node.set("annotations", JSON.valueToTree(endpoint.annotations()));
+            node.put("declaring_class", endpoint.declaringClassName());
+            node.set("mapping_sources", JSON.valueToTree(endpoint.mappingSources()));
+            ClassRecord declaration =
+                    endpoint.declaringClassId() == null
+                            ? null
+                            : classes.get(endpoint.declaringClassId());
+            boolean callsIndexed =
+                    declaration != null
+                            && declaration.className().equals(endpoint.declaringClassName());
+            node.put("direct_call_targets_indexed", callsIndexed);
+            if (callsIndexed && declaration.sourceFile() != null)
+                node.put("declaring_source", declaration.sourceFile());
+            if (callsIndexed && countedClasses.add(declaration.id()))
+                naiveTokens += declaration.sourceTokens();
+            if (cls != null) {
+                if (cls.sourceFile() != null)
+                    node.put(
+                            "source",
+                            cls.sourceLine() > 0
+                                    ? cls.sourceFile() + ":" + cls.sourceLine()
+                                    : cls.sourceFile());
+                node.put("origin", cls.origin());
+                if (cls.module() != null) node.put("module", cls.module());
+                if (cls.sourceSet() != null) node.put("source_set", cls.sourceSet());
+                if (countedClasses.add(cls.id())) naiveTokens += cls.sourceTokens();
+            }
+            List<MethodCallView> calls =
+                    callsIndexed
+                            ? reader.usages.findAdjacentMethodCalls(
+                                    endpoint.declaringClassId(),
+                                    endpoint.methodName(),
+                                    endpoint.descriptor(),
+                                    "outbound",
+                                    reader.methods()
+                                            .symbolicOwners(
+                                                    endpoint.declaringClassId(),
+                                                    endpoint.methodName(),
+                                                    endpoint.descriptor(),
+                                                    "outbound"))
+                            : List.of();
+            if (callsIndexed) node.put("direct_project_call_count", calls.size());
+            else node.putNull("direct_project_call_count");
+            node.put("calls_truncated", calls.size() > CALL_DETAIL_LIMIT);
+            ArrayNode callNodes = node.putArray("direct_project_calls");
+            for (MethodCallView call : calls.stream().limit(CALL_DETAIL_LIMIT).toList()) {
+                ObjectNode callNode = callNodes.addObject();
+                callNode.put("class", call.toClass());
+                callNode.put("method", call.toMethod());
+                callNode.put("descriptor", call.toDescriptor());
+                callNode.put("invocation_kind", call.invocationKind());
+                callNode.put("occurrence_count", call.occurrenceCount());
+                callNode.set("evidence_lines", JSON.valueToTree(call.evidenceLines()));
+                if (call.toModule() != null) callNode.put("module", call.toModule());
+                if (countedClasses.add(call.toClassId())) naiveTokens += call.toSourceTokens();
+            }
+        }
+        appendPage(root, page.size(), endpoints.size(), limit, offset);
+        appendMeta(root, reader, naiveTokens);
+        return root;
+    }
+
+    private static List<Endpoint> parse(String detail) throws Exception {
+        List<Endpoint> result = new ArrayList<>();
+        for (JsonNode node : JSON.readTree(detail)) {
+            List<String> classPaths = strings(node.path("classPaths"));
+            List<String> methodPaths = strings(node.path("methodPaths"));
+            result.add(
+                    new Endpoint(
+                            node.path("classId").asInt(),
+                            node.path("className").asText(),
+                            node.path("methodName").asText(),
+                            node.path("signature").asText(),
+                            node.path("descriptor").asText(),
+                            node.path("framework").asText(),
+                            strings(node.path("httpMethods")),
+                            combinePaths(classPaths, methodPaths),
+                            strings(node.path("annotations")),
+                            declarationId(node),
+                            node.has("declaringClassName")
+                                    ? node.path("declaringClassName").asText()
+                                    : node.path("className").asText(),
+                            strings(node.path("mappingSources"))));
+        }
+        return result;
+    }
+
+    private static Integer declarationId(JsonNode node) {
+        if (!node.has("declaringClassId")) return node.path("classId").asInt();
+        if (node.path("declaringClassId").isNull()) return null;
+        return node.path("declaringClassId").asInt();
+    }
+
+    private static List<String> strings(JsonNode array) {
+        if (!array.isArray()) return List.of();
+        return array.valueStream().map(JsonNode::asText).toList();
+    }
+
+    private static List<String> combinePaths(List<String> classPaths, List<String> methodPaths) {
+        List<String> owners = classPaths.isEmpty() ? List.of("") : classPaths;
+        List<String> methods = methodPaths.isEmpty() ? List.of("") : methodPaths;
+        Set<String> result = new LinkedHashSet<>();
+        for (String owner : owners) {
+            for (String method : methods) result.add(joinPath(owner, method));
+        }
+        return List.copyOf(result);
+    }
+
+    private static String joinPath(String first, String second) {
+        String left = normalizePath(first);
+        String right = normalizePath(second);
+        if ("/".equals(left)) return right;
+        if ("/".equals(right)) return left;
+        return left + right;
+    }
+
+    private static String normalizePath(String path) {
+        if (path == null || path.isBlank() || "/".equals(path.strip())) return "/";
+        String value = path.strip();
+        if (!value.startsWith("/")) value = "/" + value;
+        while (value.length() > 1 && value.endsWith("/")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        return value;
+    }
+
+    private static boolean inScope(
+            ClassRecord cls, String module, boolean includeGenerated, boolean includeTests) {
+        if (cls == null) return false;
+        if (module != null && !module.equals(cls.module())) return false;
+        if (!includeGenerated && "generated".equals(cls.origin())) return false;
+        return includeTests || !cls.inTestSourceSet();
+    }
+
+    private static String normalize(String value) {
+        if (value == null || value.isBlank() || "all".equalsIgnoreCase(value)) return null;
+        return value.strip().toLowerCase(Locale.ROOT);
+    }
+
+    private record Endpoint(
+            int classId,
+            String className,
+            String methodName,
+            String signature,
+            String descriptor,
+            String framework,
+            List<String> httpMethods,
+            List<String> paths,
+            List<String> annotations,
+            Integer declaringClassId,
+            String declaringClassName,
+            List<String> mappingSources) {}
+}

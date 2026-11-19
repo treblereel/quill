@@ -84,7 +84,7 @@ class ProducerFieldFallbackTest {
                 .filter(b -> "cachedService".equals(b.memberName()))
                 .findFirst().orElseThrow();
 
-        assertTrue(producer.qualifiers().contains("@Cached"));
+        assertTrue(org.treblereel.mcp.db.BeanRepository.matchesQualifier(producer.qualifiers(), "@Cached"));
         assertTrue(producer.qualifiers().contains("@Any"));
         assertFalse(producer.qualifiers().contains("@Default"),
                 "A bean with a custom CDI qualifier must not receive @Default");

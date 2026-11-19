@@ -19,29 +19,30 @@ class IndexWriterReaderTest {
 
     @Test void kotlinSourceTypesRoundTripAndInvalidDataRemainsUnknown() {
         var database = QuillDatabase.create(tempDir.resolve("types.db"));
-        IndexWriter.write(database, List.of(new ClassRecord(0, "acme.Owner", "CLASS", null,
-                List.of(), "Owner.kt", 1, false, 0)), List.of(), List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(database, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "acme.Owner", "CLASS", null,
+                List.of(), "Owner.kt", 1, false, 0))).snapshot());
         var type = new KotlinDeclarationTypes.Type("class", "kotlin/String", true, false, false,
                 List.of(), null, null, null, null);
         var types = new KotlinDeclarationTypes(type, null, List.of(new KotlinDeclarationTypes.Parameter("p", type, null)),
                 List.of(new KotlinDeclarationTypes.TypeParameter(0, "T", "INVARIANT", false, List.of(type))), List.of());
         var declaration = new KotlinDeclarationRecord(1, "FUNCTION", "f", "f", "()V", "kotlin_metadata",
                 false, false, false, false, false, false, false, List.of(), types);
-        IndexWriter.writeKotlinDeclarations(database, List.of(declaration));
-        assertEquals(declaration, IndexReader.findKotlinDeclarations(database, 1).getFirst());
-        for (String invalid : List.of("", "invalid", "[]", "{}", "{\"result\":{}}")) assertNull(IndexReader.kotlinTypesFromJson(invalid));
-        assertNull(IndexReader.kotlinTypesFromJson(null));
+        IndexFixture.writeKotlinDeclarations(database, List.of(declaration));
+        assertEquals(declaration, database.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findKotlinDeclarations(1)).getFirst());
+        for (String invalid : List.of("", "invalid", "[]", "{}", "{\"result\":{}}")) assertNull(SymbolRepository.kotlinTypesFromJson(invalid));
+        assertNull(SymbolRepository.kotlinTypesFromJson(null));
         database.useHandle(h -> h.execute("UPDATE kotlin_declarations SET declaration_types='{}'"));
-        assertNull(IndexReader.findKotlinDeclarations(database, 1).getFirst().declarationTypes());
+        assertNull(database.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findKotlinDeclarations(1)).getFirst().declarationTypes());
     }
 
     @Test
     void storesAndReadsKotlinSemanticDeclarations() {
         Jdbi database = QuillDatabase.create(tempDir.resolve("kotlin.db"));
-        IndexWriter.write(database, List.of(new ClassRecord(
+        IndexWriter.writeIncremental(database, new IndexFixture()
+                .classes(List.of(new ClassRecord(
                         0, "org.acme.Order", "CLASS", "java.lang.Object", List.of(),
-                        "src/main/kotlin/org/acme/Order.kt", 1, false, 20)),
-                List.of(), List.of(), List.of(), Map.of());
+                        "src/main/kotlin/org/acme/Order.kt", 1, false, 20))).snapshot());
         database.useHandle(handle -> handle.execute("""
                 INSERT INTO class_members
                   (class_id, kind, name, signature, descriptor, type_name,
@@ -49,7 +50,7 @@ class IndexWriterReaderTest {
                 VALUES (1, 'METHOD', 'loadJvm', 'loadJvm(int):java.lang.Object',
                         '(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;',
                         'java.lang.Object', '["int"]', 'public', '[]')"""));
-        IndexWriter.writeKotlinDeclarations(database, List.of(
+        IndexFixture.writeKotlinDeclarations(database, List.of(
                 new KotlinDeclarationRecord(1, "DATA_CLASS", "org.acme.Order",
                         "org.acme.Order", "", "kotlin_metadata", false, false,
                         false, false, false, false, false),
@@ -61,7 +62,7 @@ class IndexWriterReaderTest {
                         "kotlin_metadata", false, false, false,
                         true, true, false, false)));
 
-        var declarations = IndexReader.findKotlinDeclarations(database, 1);
+        var declarations = database.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findKotlinDeclarations(1));
 
         assertEquals(3, declarations.size());
         assertEquals("DATA_CLASS", declarations.get(0).kind());
@@ -70,9 +71,9 @@ class IndexWriterReaderTest {
         assertTrue(declarations.get(1).hasDefaultParameters());
         assertTrue(declarations.get(2).mutable());
         assertTrue(declarations.get(2).lateinit());
-        var matches = IndexReader.searchSymbols(database, "load", "METHOD", 10, 0);
+        var matches = database.withHandle(repositoryHandle4 -> new SymbolRepository(repositoryHandle4).searchSymbols("load", "METHOD", 10, 0));
         assertEquals(1, matches.size());
-        assertEquals(1, IndexReader.countSymbols(database, "load", "METHOD"));
+        assertEquals(1, database.withHandle(repositoryHandle5 -> new SymbolRepository(repositoryHandle5).countSymbols("load", "METHOD")).intValue());
         assertEquals("loadJvm", matches.getFirst().symbolName());
         assertEquals("load", matches.getFirst().semanticName());
         assertTrue(matches.getFirst().isSuspend());
@@ -82,8 +83,9 @@ class IndexWriterReaderTest {
     @Test
     void roundTripsKotlinParametersAndDistinguishesUnknownFromZeroArguments() {
         Jdbi database = QuillDatabase.create(tempDir.resolve("parameters.db"));
-        IndexWriter.write(database, List.of(new ClassRecord(0, "acme.Owner", "CLASS", null,
-                List.of(), "Owner.kt", 1, false, 0)), List.of(), List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(database, new IndexFixture()
+                .classes(List.of(new ClassRecord(0, "acme.Owner", "CLASS", null,
+                List.of(), "Owner.kt", 1, false, 0))).snapshot());
         var parameters = List.of(new KotlinValueParameter("required", false, false),
                 new KotlinValueParameter("optional", true, false), new KotlinValueParameter("values", false, true));
         var known = new KotlinDeclarationRecord(1, "FUNCTION", "f", "f", "(II[I)V", "kotlin_metadata",
@@ -92,8 +94,8 @@ class IndexWriterReaderTest {
                 false, false, false, false, false, false, false, List.of());
         var unknown = new KotlinDeclarationRecord(1, "FUNCTION", "g", "g", "()V", "kotlin_metadata",
                 false, false, false, false, false, false, false);
-        IndexWriter.writeKotlinDeclarations(database, List.of(known, empty, unknown));
-        var values = IndexReader.findKotlinDeclarations(database, 1);
+        IndexFixture.writeKotlinDeclarations(database, List.of(known, empty, unknown));
+        var values = database.withHandle(repositoryHandle6 -> new SymbolRepository(repositoryHandle6).findKotlinDeclarations(1));
         assertEquals(known, values.stream().filter(v -> v.name().equals("f")).findFirst().orElseThrow());
         assertEquals(empty, values.stream().filter(v -> v.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow());
         assertEquals(unknown, values.stream().filter(v -> v.name().equals("g")).findFirst().orElseThrow());
@@ -103,10 +105,10 @@ class IndexWriterReaderTest {
     void invalidParameterMetadataDegradesToUnknown() {
         for (String invalid : List.of("broken", "{}", "null", "[null]", "[{}]",
                 "[{\"name\":\"x\",\"hasDefault\":false,\"vararg\":false},{\"name\":\"x\",\"hasDefault\":true,\"vararg\":false}]")) {
-            assertNull(IndexReader.kotlinParametersFromJson(invalid), invalid);
+            assertNull(SymbolRepository.kotlinParametersFromJson(invalid), invalid);
         }
-        assertNull(IndexReader.kotlinParametersFromJson(null));
-        assertEquals(List.of(), IndexReader.kotlinParametersFromJson("[]"));
+        assertNull(SymbolRepository.kotlinParametersFromJson(null));
+        assertEquals(List.of(), SymbolRepository.kotlinParametersFromJson("[]"));
     }
 
     @Test
@@ -132,10 +134,10 @@ class IndexWriterReaderTest {
                         "src/main/resources/application.properties", 2, ".", "main")),
                 List.of(usage));
 
-        IndexWriter.writeFreshWithConfiguration(database, classes, List.of(), List.of(),
-                List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), initial,
-                List.of(resourceUsage));
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .configuration(initial)
+                .resourceUsages(List.of(resourceUsage)).snapshot());
         int stableId = database.withHandle(handle -> handle.createQuery(
                         "SELECT id FROM configuration_definitions WHERE key = 'app.name'")
                 .mapTo(Integer.class).one());
@@ -143,14 +145,13 @@ class IndexWriterReaderTest {
         ConfigurationScanner.Result updated = new ConfigurationScanner.Result(List.of(
                 initial.definitions().getFirst(),
                 new ConfigurationScanner.Definition("new.key", "property",
-                        "src/main/resources/application.properties", 2, ".", "main")),
+                        "src/main/resources/application.properties", 2, ".", "main", "{\"owner\":\"updated\"}")),
                 List.of(usage));
         IndexWriter.IncrementalWriteTimings timings =
-                IndexWriter.writeIncrementalWithConfiguration(
-                        QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(),
-                        List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), updated,
-                        List.of(resourceUsage));
+                IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), new IndexFixture()
+                .classes(classes)
+                .configuration(updated)
+                .resourceUsages(List.of(resourceUsage)).snapshot());
 
         assertTrue(timings.rowsInserted() >= 1);
         assertTrue(timings.rowsDeleted() >= 1);
@@ -158,6 +159,7 @@ class IndexWriterReaderTest {
                         "SELECT id FROM configuration_definitions WHERE key = 'app.name'")
                 .mapTo(Integer.class).one());
         assertEquals(stableId, updatedStableId);
+        assertEquals("{\"owner\":\"updated\"}", database.withHandle(h -> h.createQuery("SELECT evidence FROM configuration_definitions WHERE key='new.key'").mapTo(String.class).one()));
         assertEquals(List.of("app.name", "new.key"), database.withHandle(handle ->
                 handle.createQuery("SELECT key FROM configuration_definitions ORDER BY key")
                         .mapTo(String.class).list()));
@@ -184,10 +186,10 @@ class IndexWriterReaderTest {
                 "templates/order.html", "resource", 1, "example.GeneratedConsumer", "read",
                 "java.lang.Class#getResource", null, null, null);
 
-        IndexWriter.writeFreshWithConfiguration(database, classes, List.of(), List.of(),
-                List.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                new ConfigurationScanner.Result(List.of(), List.of(usage)), List.of(resource));
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .configuration(new ConfigurationScanner.Result(List.of(), List.of(usage)))
+                .resourceUsages(List.of(resource)).snapshot());
 
         assertNull(database.withHandle(handle -> handle.createQuery(
                         "SELECT module FROM configuration_usages")
@@ -212,8 +214,9 @@ class IndexWriterReaderTest {
                         "app-two/target/generated-sources/annotations/example/Registry.java",
                         "generated"));
 
-        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), occurrences);
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .classOccurrences(occurrences).snapshot());
 
         var rows = database.withHandle(handle -> handle.createQuery(
                         "SELECT module, origin FROM class_occurrences ORDER BY module")
@@ -232,29 +235,28 @@ class IndexWriterReaderTest {
         List<ClassAnnotationRecord> initial = List.of(
                 new ClassAnnotationRecord(1, "example.Specialized", true, null),
                 new ClassAnnotationRecord(1, "example.Root", false, "example.Specialized"));
-        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                initial);
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .classAnnotations(initial).snapshot());
 
         assertEquals(List.of("example.Root"),
-                IndexReader.findAnnotationNames(database, "Root"));
-        assertEquals(1, IndexReader.countAnnotatedClasses(database, "example.Root", true));
-        assertEquals(0, IndexReader.countAnnotatedClasses(database, "example.Root", false));
+                database.withHandle(repositoryHandle7 -> new SymbolRepository(repositoryHandle7).findAnnotationNames("Root")));
+        assertEquals(1, database.withHandle(repositoryHandle8 -> new SymbolRepository(repositoryHandle8).countAnnotatedClasses("example.Root", true)).intValue());
+        assertEquals(0, database.withHandle(repositoryHandle9 -> new SymbolRepository(repositoryHandle9).countAnnotatedClasses("example.Root", false)).intValue());
 
         List<ClassAnnotationRecord> updated = List.of(
                 new ClassAnnotationRecord(1, "example.Specialized", true, null),
                 new ClassAnnotationRecord(1, "example.OtherRoot", false,
                         "example.Specialized"));
-        IndexWriter.IncrementalWriteTimings timings = IndexWriter.writeIncremental(
-                QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(), List.of(),
-                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), updated);
+        IndexWriter.IncrementalWriteTimings timings = IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), new IndexFixture()
+                .classes(classes)
+                .classAnnotations(updated).snapshot());
 
         assertTrue(timings.rowsInserted() >= 1);
         assertTrue(timings.rowsDeleted() >= 1);
-        assertEquals(List.of(), IndexReader.findAnnotationNames(database, "Root"));
+        assertEquals(List.of(), database.withHandle(repositoryHandle10 -> new SymbolRepository(repositoryHandle10).findAnnotationNames("Root")));
         assertEquals(List.of("example.OtherRoot"),
-                IndexReader.findAnnotationNames(database, "OtherRoot"));
+                database.withHandle(repositoryHandle11 -> new SymbolRepository(repositoryHandle11).findAnnotationNames("OtherRoot")));
     }
 
     @Test
@@ -269,24 +271,22 @@ class IndexWriterReaderTest {
                 List.of("java.lang.String"), "public", List.of("example.Tracked"),
                 List.of(new MemberAnnotationRecord("example.Tracked", "METHOD_PARAMETER",
                         0, "input", "java.lang.String"))));
-        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(new ClassAnnotationRecord(
-                        1, "example.Tracked", true, null)), initial);
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .classAnnotations(List.of(new ClassAnnotationRecord(
+                        1, "example.Tracked", true, null)))
+                .classMembers(initial).snapshot());
 
         assertEquals("run(java.lang.String):void",
-                IndexReader.findClassMembers(database, 1).getFirst().signature());
-        assertEquals("run", IndexReader.findClassMembers(database, List.of(1))
+                database.withHandle(repositoryHandle12 -> new SymbolRepository(repositoryHandle12).findClassMembers(1)).getFirst().signature());
+        assertEquals("run", database.withHandle(repositoryHandle13 -> new SymbolRepository(repositoryHandle13).findClassMembers(List.of(1)))
                 .get(1).getFirst().name());
         assertEquals(List.of("example.Tracked"),
-                IndexReader.findSymbolAnnotationNames(database, "Tracked"));
-        assertEquals(2, IndexReader.countAnnotatedSymbols(
-                database, "example.Tracked", "ALL", true));
-        var annotatedMethods = IndexReader.findAnnotatedSymbols(
-                database, "example.Tracked", "METHOD", true, 10, 0);
+                database.withHandle(repositoryHandle14 -> new SymbolRepository(repositoryHandle14).findSymbolAnnotationNames("Tracked")));
+        assertEquals(2, database.withHandle(repositoryHandle15 -> new SymbolRepository(repositoryHandle15).countAnnotatedSymbols("example.Tracked", "ALL", true)).intValue());
+        var annotatedMethods = database.withHandle(repositoryHandle16 -> new SymbolRepository(repositoryHandle16).findAnnotatedSymbols("example.Tracked", "METHOD", true, 10, 0));
         assertEquals(0, annotatedMethods.size());
-        var annotatedParameters = IndexReader.findAnnotatedSymbols(
-                database, "example.Tracked", "PARAMETER", true, 10, 0);
+        var annotatedParameters = database.withHandle(repositoryHandle17 -> new SymbolRepository(repositoryHandle17).findAnnotatedSymbols("example.Tracked", "PARAMETER", true, 10, 0));
         assertEquals(1, annotatedParameters.size());
         assertEquals(0, annotatedParameters.getFirst().parameterIndex());
         assertEquals("input", annotatedParameters.getFirst().parameterName());
@@ -295,14 +295,13 @@ class IndexWriterReaderTest {
         List<ClassMemberRecord> updated = List.of(new ClassMemberRecord(
                 1, "METHOD", "execute", "execute():boolean", "boolean",
                 List.of(), "public final", List.of()));
-        IndexWriter.IncrementalWriteTimings timings = IndexWriter.writeIncremental(
-                QuillDatabase.openWritable(dbPath), classes, List.of(), List.of(), List.of(),
-                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), updated);
+        IndexWriter.IncrementalWriteTimings timings = IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), new IndexFixture()
+                .classes(classes)
+                .classMembers(updated).snapshot());
 
         assertTrue(timings.rowsInserted() >= 1);
         assertTrue(timings.rowsDeleted() >= 1);
-        assertEquals("execute", IndexReader.findClassMembers(database, 1).getFirst().name());
+        assertEquals("execute", database.withHandle(repositoryHandle18 -> new SymbolRepository(repositoryHandle18).findClassMembers(1)).getFirst().name());
     }
 
     @Test
@@ -325,12 +324,13 @@ class IndexWriterReaderTest {
                 new ClassMemberRecord(3, "METHOD", "main",
                         "main(java.lang.String[]):void", "void",
                         List.of("java.lang.String[]"), "public static", List.of()));
-        IndexWriter.writeFresh(database, classes, List.of(), List.of(), dependencies, Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                annotations, members);
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .dependencies(dependencies)
+                .classAnnotations(annotations)
+                .classMembers(members).snapshot());
 
-        Map<String, UnusedClassCandidate> evidence = IndexReader
-                .findUnusedClassCandidates(database).stream()
+        Map<String, UnusedClassCandidate> evidence = database.withHandle(repositoryHandle19 -> new UsageRepository(repositoryHandle19).findUnusedClassCandidates()).stream()
                 .collect(java.util.stream.Collectors.toMap(
                         item -> item.classRecord().className(), item -> item));
 
@@ -355,15 +355,15 @@ class IndexWriterReaderTest {
                         List.of("example.Order"), "public", List.of("example.Audited")),
                 new ClassMemberRecord(1, "FIELD", "paymentGateway", "paymentGateway:Gateway",
                         "example.Gateway", List.of(), "private", List.of()));
-        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), members);
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .classMembers(members).snapshot());
 
-        var all = IndexReader.searchSymbols(database, "Payment", null, 10, 0);
-        var methods = IndexReader.searchSymbols(database, "Payment", "METHOD", 10, 0);
+        var all = database.withHandle(repositoryHandle20 -> new SymbolRepository(repositoryHandle20).searchSymbols("Payment", null, 10, 0));
+        var methods = database.withHandle(repositoryHandle21 -> new SymbolRepository(repositoryHandle21).searchSymbols("Payment", "METHOD", 10, 0));
 
         assertEquals(3, all.size());
-        assertEquals(3, IndexReader.countSymbols(database, "Payment", null));
+        assertEquals(3, database.withHandle(repositoryHandle22 -> new SymbolRepository(repositoryHandle22).countSymbols("Payment", null)).intValue());
         assertEquals(1, methods.size());
         assertEquals("processPayment", methods.getFirst().symbolName());
         assertEquals(List.of("example.Order"), methods.getFirst().parameterTypes());
@@ -384,11 +384,11 @@ class IndexWriterReaderTest {
                 List.of("1>2", "2>4", "2>3", "3>4"),
                 List.of("java.util.concurrent.Executor.execute"),
                 List.of("6|14|java.util.concurrent.Executor|execute|(Ljava/lang/Runnable;)V|scheduling")));
-        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), calls);
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .methodCalls(calls).snapshot());
 
-        var inbound = IndexReader.findMethodCalls(database, 2, "execute", "inbound", 10, 0);
+        var inbound = database.withHandle(repositoryHandle23 -> new UsageRepository(repositoryHandle23).findMethodCalls(2, "execute", "inbound", 10, 0));
         assertEquals(1, inbound.size());
         assertEquals("example.Caller", inbound.getFirst().fromClass());
         assertEquals(List.of(12, 18), inbound.getFirst().evidenceLines());
@@ -400,29 +400,23 @@ class IndexWriterReaderTest {
         assertEquals(List.of("java.util.concurrent.Executor.execute"),
                 inbound.getFirst().callerAsyncBoundaries());
         assertEquals(1, inbound.getFirst().callerExternalCalls().size());
-        assertEquals(1, IndexReader.countMethodCalls(database, 1, "run", "outbound"));
-        assertEquals(1, IndexReader.findMethodCalls(database, 2, "execute",
-                "(Ljava/lang/String;)Z", "inbound", 10, 0).size());
-        assertEquals(0, IndexReader.countMethodCalls(
-                database, 2, "execute", "()Z", "inbound"));
-        var inboundUsages = IndexReader.findMethodInboundUsages(database);
+        assertEquals(1, database.withHandle(repositoryHandle24 -> new UsageRepository(repositoryHandle24).countMethodCalls(1, "run", "outbound")).intValue());
+        assertEquals(1, database.withHandle(repositoryHandle25 -> new UsageRepository(repositoryHandle25).findMethodCalls(2, "execute", "(Ljava/lang/String;)Z", "inbound", 10, 0, ReadQueryContext.readWithGraph(database, context -> context.methods().symbolicOwners(2, "execute", "(Ljava/lang/String;)Z", "inbound")))).size());
+        assertEquals(0, database.withHandle(repositoryHandle26 -> new UsageRepository(repositoryHandle26).countMethodCalls(2, "execute", "()Z", "inbound", ReadQueryContext.readWithGraph(database, context -> context.methods().symbolicOwners(2, "execute", "()Z", "inbound")))).intValue());
+        var inboundUsages = database.withHandle(repositoryHandle27 -> new UsageRepository(repositoryHandle27).findMethodInboundUsages());
         assertEquals(1, inboundUsages.size());
         assertEquals("(Ljava/lang/String;)Z", inboundUsages.getFirst().descriptor());
         assertEquals(1, inboundUsages.getFirst().callerClassCount());
         assertEquals(2, inboundUsages.getFirst().occurrenceCount());
-        var exact = IndexReader.findExactMethodUsages(
-                database, 2, "execute", "(Ljava/lang/String;)Z", 10, 0);
+        var exact = database.withHandle(repositoryHandle28 -> new UsageRepository(repositoryHandle28).findExactMethodUsages(ReadQueryContext.readWithGraph(database, context -> context.methods().symbolicOwners(2, "execute", "(Ljava/lang/String;)Z", "inbound")), "execute", "(Ljava/lang/String;)Z", 10, 0));
         assertEquals(1, exact.size());
-        assertEquals(1, IndexReader.countExactMethodUsages(
-                database, 2, "execute", "(Ljava/lang/String;)Z"));
-        assertEquals(0, IndexReader.countExactMethodUsages(
-                database, 2, "execute", "()Z"));
+        assertEquals(1, database.withHandle(repositoryHandle29 -> new UsageRepository(repositoryHandle29).countExactMethodUsages(ReadQueryContext.readWithGraph(database, context -> context.methods().symbolicOwners(2, "execute", "(Ljava/lang/String;)Z", "inbound")), "execute", "(Ljava/lang/String;)Z")).intValue());
+        assertEquals(0, database.withHandle(repositoryHandle30 -> new UsageRepository(repositoryHandle30).countExactMethodUsages(ReadQueryContext.readWithGraph(database, context -> context.methods().symbolicOwners(2, "execute", "()Z", "inbound")), "execute", "()Z")).intValue());
 
-        IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), classes,
-                List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
-        assertEquals(0, IndexReader.countMethodCalls(database, 2, null, "inbound"));
-        assertTrue(IndexReader.findMethodInboundUsages(database).isEmpty());
+        IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), new IndexFixture()
+                .classes(classes).snapshot());
+        assertEquals(0, database.withHandle(repositoryHandle31 -> new UsageRepository(repositoryHandle31).countMethodCalls(2, null, "inbound")).intValue());
+        assertTrue(database.withHandle(repositoryHandle32 -> new UsageRepository(repositoryHandle32).findMethodInboundUsages()).isEmpty());
     }
 
     @Test
@@ -439,11 +433,11 @@ class IndexWriterReaderTest {
                         "read_instance", 2, List.of(11, 14)),
                 new FieldAccessRecord(1, "write", "()V", 2, "value", "I",
                         "write_instance", 1, List.of(19)));
-        IndexWriter.writeFresh(database, classes, List.of(), List.of(), List.of(), Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), accesses);
+        IndexWriter.writeFresh(database, new IndexFixture()
+                .classes(classes)
+                .fieldAccesses(accesses).snapshot());
 
-        var usages = IndexReader.findFieldUsages(database);
+        var usages = database.withHandle(repositoryHandle33 -> new UsageRepository(repositoryHandle33).findFieldUsages());
         assertEquals(1, usages.size());
         assertEquals("value", usages.getFirst().fieldName());
         assertEquals("I", usages.getFirst().descriptor());
@@ -451,19 +445,15 @@ class IndexWriterReaderTest {
         assertEquals(2, usages.getFirst().readOccurrences());
         assertEquals(1, usages.getFirst().writerClassCount());
         assertEquals(1, usages.getFirst().writeOccurrences());
-        var reads = IndexReader.findExactFieldUsages(
-                database, 2, "value", "I", "read", 10, 0);
+        var reads = database.withHandle(repositoryHandle34 -> new UsageRepository(repositoryHandle34).findExactFieldUsages(2, "value", "I", "read", 10, 0));
         assertEquals(1, reads.size());
         assertEquals("read_instance", reads.getFirst().accessKind());
         assertEquals(List.of(11, 14), reads.getFirst().evidenceLines());
-        assertEquals(1, IndexReader.countExactFieldUsages(
-                database, 2, "value", "I", "write"));
+        assertEquals(1, database.withHandle(repositoryHandle35 -> new UsageRepository(repositoryHandle35).countExactFieldUsages(2, "value", "I", "write")).intValue());
 
-        IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), classes,
-                List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of());
-        assertTrue(IndexReader.findFieldUsages(database).isEmpty());
+        IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), new IndexFixture()
+                .classes(classes).snapshot());
+        assertTrue(database.withHandle(repositoryHandle36 -> new UsageRepository(repositoryHandle36).findFieldUsages()).isEmpty());
     }
 
     @Test
@@ -478,13 +468,15 @@ class IndexWriterReaderTest {
                 new DependencyRecord(1, 2, "CALLS", null, 2, List.of(7, 11)),
                 new DependencyRecord(1, 2, "TYPE_USE", null, 1));
 
-        IndexWriter.write(jdbi, classes, List.of(), List.of(), dependencies, Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .dependencies(dependencies).snapshot());
 
-        assertEquals(1, IndexReader.countDependents(jdbi, 2));
-        assertEquals(3, IndexReader.countDependencyEdges(jdbi, 2, true));
-        assertEquals(1, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).classes());
-        assertEquals(3, IndexReader.dependencyBreakdown(jdbi, 2, true).get(0).edges());
-        assertEquals(List.of(7, 11), IndexReader.findDependencies(jdbi, 2, "inbound").stream()
+        assertEquals(1, jdbi.withHandle(repositoryHandle37 -> new UsageRepository(repositoryHandle37).countDependents(2)).intValue());
+        assertEquals(3, jdbi.withHandle(repositoryHandle38 -> new UsageRepository(repositoryHandle38).countDependencyEdges(2, true)).intValue());
+        assertEquals(1, jdbi.withHandle(repositoryHandle39 -> new UsageRepository(repositoryHandle39).dependencyBreakdown(2, true)).get(0).classes());
+        assertEquals(3, jdbi.withHandle(repositoryHandle40 -> new UsageRepository(repositoryHandle40).dependencyBreakdown(2, true)).get(0).edges());
+        assertEquals(List.of(7, 11), jdbi.withHandle(repositoryHandle41 -> new UsageRepository(repositoryHandle41).findDependencies(2, "inbound")).stream()
                 .filter(dependency -> dependency.kind().equals("CALLS"))
                 .findFirst().orElseThrow().evidenceLines());
     }
@@ -502,9 +494,11 @@ class IndexWriterReaderTest {
                 new DependencyRecord(3, 1, "TYPE_USE", null),
                 new DependencyRecord(4, 1, "TYPE_USE", null));
 
-        IndexWriter.write(database, classes, List.of(), List.of(), dependencies, Map.of());
+        IndexWriter.writeIncremental(database, new IndexFixture()
+                .classes(classes)
+                .dependencies(dependencies).snapshot());
 
-        IndexReader.ArchitectureHub hub = IndexReader.findArchitectureHubs(database).getFirst();
+        UsageRepository.ArchitectureHub hub = database.withHandle(repositoryHandle42 -> new UsageRepository(repositoryHandle42).findArchitectureHubs()).getFirst();
         assertEquals(1, hub.classId());
         assertEquals(3, hub.totalDependents());
         assertEquals(2, hub.sourceDependents());
@@ -538,12 +532,19 @@ class IndexWriterReaderTest {
         List<DependencyRecord> dependencies = List.of(
                 new DependencyRecord(1, 2, "TYPE_USE", null));
         Map<String, String> metadata = Map.of("database_write_mode", "incremental");
-        IndexWriter.writeFresh(writable, initialClasses, beans, List.of(), dependencies, metadata,
-                List.of(), List.of(), List.of(), List.of(), List.of(), files);
+        IndexWriter.writeFresh(writable, new IndexFixture()
+                .classes(initialClasses)
+                .beans(beans)
+                .dependencies(dependencies)
+                .metadata(metadata)
+                .files(files).snapshot());
 
-        IndexWriter.IncrementalWriteTimings unchanged = IndexWriter.writeIncremental(
-                QuillDatabase.openWritable(dbPath), initialClasses, beans, List.of(), dependencies,
-                metadata, List.of(), List.of(), List.of(), List.of(), List.of(), files);
+        IndexWriter.IncrementalWriteTimings unchanged = IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), new IndexFixture()
+                .classes(initialClasses)
+                .beans(beans)
+                .dependencies(dependencies)
+                .metadata(metadata)
+                .files(files).snapshot());
 
         assertEquals(0, unchanged.rowsInserted());
         assertEquals(0, unchanged.rowsDeleted());
@@ -553,14 +554,16 @@ class IndexWriterReaderTest {
                 new ClassRecord(0, "example.A", "CLASS", null, List.of(), "src/A.java", 1,
                         true, 11, 1, "source", "current"),
                 initialClasses.get(1));
-        IndexWriter.IncrementalWriteTimings changed = IndexWriter.writeIncremental(
-                QuillDatabase.openWritable(dbPath), changedClasses, beans, List.of(), List.of(),
-                metadata, List.of(), List.of(), List.of(), List.of(), List.of(), files);
+        IndexWriter.IncrementalWriteTimings changed = IndexWriter.writeIncremental(QuillDatabase.openWritable(dbPath), new IndexFixture()
+                .classes(changedClasses)
+                .beans(beans)
+                .metadata(metadata)
+                .files(files).snapshot());
 
         assertEquals(1, changed.rowsInserted(), "Only the changed class row should be inserted");
         assertEquals(2, changed.rowsDeleted(),
                 "The old class row and removed dependency should be deleted");
-        assertEquals(11, IndexReader.findClassByName(QuillDatabase.open(dbPath), "example.A")
+        assertEquals(11, QuillDatabase.open(dbPath).withHandle(repositoryHandle43 -> new SymbolRepository(repositoryHandle43).findClassByName("example.A"))
                 .orElseThrow().sourceTokens());
         int dependencyCount = QuillDatabase.open(dbPath).withHandle(h ->
                 h.createQuery("SELECT count(*) FROM dependencies").mapTo(Integer.class).one());
@@ -588,9 +591,11 @@ class IndexWriterReaderTest {
             new ClassRecord(0, "org.acme.OrderDTO", "CLASS", "java.lang.Object",
                     List.of("Serializable"), "src/main/java/org/acme/OrderDTO.java", 5, false, 200)
         );
-        IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(), Map.of("indexed_at", "2026-08-26"));
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .metadata(Map.of("indexed_at", "2026-08-26")).snapshot());
 
-        var result = IndexReader.findAllClasses(jdbi);
+        var result = jdbi.withHandle(repositoryHandle44 -> new SymbolRepository(repositoryHandle44).findAllClasses());
         assertEquals(2, result.size());
         assertEquals("org.acme.OrderService", result.get(0).className());
         assertTrue(result.get(0).isBean());
@@ -607,9 +612,11 @@ class IndexWriterReaderTest {
             new BeanRecord(0, 1, "CLASS", "@ApplicationScoped", List.of("@Default"),
                     List.of(), false, null, null, null, null, List.of("OrderService", "Object"))
         );
-        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .beans(beans).snapshot());
 
-        var result = IndexReader.findBeans(jdbi, null);
+        var result = jdbi.withHandle(repositoryHandle45 -> new BeanRepository(repositoryHandle45).findBeans(null));
         assertEquals(1, result.size());
         assertEquals("@ApplicationScoped", result.getFirst().scope());
     }
@@ -626,15 +633,17 @@ class IndexWriterReaderTest {
         var beans = List.of(
                 bean(1), bean(2), bean(3));
 
-        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .beans(beans).snapshot());
 
-        assertEquals(List.of("org.acme.Current"), IndexReader.findAllClasses(jdbi).stream()
+        assertEquals(List.of("org.acme.Current"), jdbi.withHandle(repositoryHandle46 -> new SymbolRepository(repositoryHandle46).findAllClasses()).stream()
                 .map(ClassRecord::className).toList());
-        assertEquals(1, IndexReader.countClasses(jdbi));
-        assertEquals(10, IndexReader.sumSourceTokens(jdbi));
-        assertEquals(1, IndexReader.countBeans(jdbi));
-        assertEquals(1, IndexReader.findBeans(jdbi, null).size());
-        assertTrue(IndexReader.searchClasses(jdbi, "Stale", 10).isEmpty());
+        assertEquals(1, jdbi.withHandle(repositoryHandle47 -> new SymbolRepository(repositoryHandle47).countClasses()).intValue());
+        assertEquals(10, jdbi.withHandle(repositoryHandle48 -> new SymbolRepository(repositoryHandle48).sumSourceTokens()).intValue());
+        assertEquals(1, jdbi.withHandle(repositoryHandle49 -> new BeanRepository(repositoryHandle49).countBeans()).intValue());
+        assertEquals(1, jdbi.withHandle(repositoryHandle50 -> new BeanRepository(repositoryHandle50).findBeans(null)).size());
+        assertTrue(jdbi.withHandle(repositoryHandle51 -> new SymbolRepository(repositoryHandle51).searchClasses("Stale", 10)).isEmpty());
     }
 
     private static BeanRecord bean(int classId) {
@@ -654,21 +663,26 @@ class IndexWriterReaderTest {
                         false, null, List.of(), null, null, List.of()),
                 new BeanRecord(0, 2, "CLASS", "@Dependent", List.of(), List.of(),
                         false, null, List.of(), null, null, List.of()));
-        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .beans(beans).snapshot());
 
-        assertEquals("org.acme.Second", IndexReader.findClassesByIds(jdbi, List.of(2)).get(2).className());
-        assertEquals("@Singleton", IndexReader.findBeansByIds(jdbi, List.of(1)).get(1).scope());
-        assertEquals("@Dependent", IndexReader.findBeansByClassIds(jdbi, List.of(2)).get(2).scope());
-        assertTrue(IndexReader.findClassesByIds(jdbi, List.of()).isEmpty());
+        assertEquals("org.acme.Second", jdbi.withHandle(repositoryHandle52 -> new SymbolRepository(repositoryHandle52).findClassesByIds(List.of(2))).get(2).className());
+        assertEquals("@Singleton", jdbi.withHandle(repositoryHandle53 -> new BeanRepository(repositoryHandle53).findBeansByIds(List.of(1))).get(1).scope());
+        assertEquals("@Dependent", jdbi.withHandle(repositoryHandle54 -> new BeanRepository(repositoryHandle54).findBeansByClassIds(List.of(2))).get(2).scope());
+        assertTrue(jdbi.withHandle(repositoryHandle55 -> new SymbolRepository(repositoryHandle55).findClassesByIds(List.of())).isEmpty());
     }
 
     @Test
     void findHotspotsWithSinceRecomputesCounts() {
+        try (var repositoryHandle = jdbi.open()) {
+        GitRepository gitRepository = new GitRepository(repositoryHandle);
         var classes = List.of(
             new ClassRecord(0, "org.acme.Foo", "CLASS", null,
                     List.of(), "src/Foo.java", 1, false, 100)
         );
-        IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes).snapshot());
 
         var commits = List.of(
             new org.treblereel.mcp.model.GitCommitRecord(1, "aaa", "aaa", "dev1", "d@t.c", "2026-08-01T10:00:00Z", "old"),
@@ -682,25 +696,29 @@ class IndexWriterReaderTest {
             new org.treblereel.mcp.model.GitFileStats(1, "src/Foo.java", 1, 2,
                     "2026-08-20T10:00:00Z", "dev2", "2026-08-01T10:00:00Z", 2)
         );
-        IndexWriter.writeGitData(jdbi, stats, commits, commitFiles);
+        IndexFixture.writeGitData(jdbi, stats, commits, commitFiles);
 
-        var allTime = IndexReader.findHotspots(jdbi, 10, null);
+        var allTime = gitRepository.findHotspots(10, null);
         assertEquals(1, allTime.size());
         assertEquals(2, allTime.getFirst().commitCount(), "All-time should return 2 commits");
 
-        var filtered = IndexReader.findHotspots(jdbi, 10, "2026-08-15");
+        var filtered = gitRepository.findHotspots(10, "2026-08-15");
         assertEquals(1, filtered.size());
         assertEquals(1, filtered.getFirst().commitCount(),
                 "Since 2026-08-15 should return 1 commit, recomputed from join");
     }
+    }
 
     @Test
     void findHotspotsWithSinceExcludesOldFiles() {
+        try (var repositoryHandle = jdbi.open()) {
+        GitRepository gitRepository = new GitRepository(repositoryHandle);
         var classes = List.of(
             new ClassRecord(0, "org.acme.Old", "CLASS", null, List.of(), "Old.java", 1, false, 50),
             new ClassRecord(0, "org.acme.New", "CLASS", null, List.of(), "New.java", 1, false, 50)
         );
-        IndexWriter.write(jdbi, classes, List.of(), List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes).snapshot());
 
         var commits = List.of(
             new org.treblereel.mcp.model.GitCommitRecord(1, "aaa", "aaa", "dev", "d@t", "2026-01-01T00:00:00Z", "old"),
@@ -714,58 +732,74 @@ class IndexWriterReaderTest {
             new org.treblereel.mcp.model.GitFileStats(1, "Old.java", 1, 1, "2026-01-01T00:00:00Z", "dev", "2026-01-01T00:00:00Z", 1),
             new org.treblereel.mcp.model.GitFileStats(2, "New.java", 2, 1, "2026-08-01T00:00:00Z", "dev", "2026-08-01T00:00:00Z", 1)
         );
-        IndexWriter.writeGitData(jdbi, stats, commits, commitFiles);
+        IndexFixture.writeGitData(jdbi, stats, commits, commitFiles);
 
-        var filtered = IndexReader.findHotspots(jdbi, 10, "2026-06-01");
+        var filtered = gitRepository.findHotspots(10, "2026-06-01");
         assertEquals(1, filtered.size());
         assertEquals("New.java", filtered.getFirst().filePath());
+    }
     }
 
     @Test
     void readMetadata() {
-        IndexWriter.write(jdbi, List.of(), List.of(), List.of(), List.of(),
-                Map.of("indexed_at", "2026-08-26", "last_commit", "abc123"));
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .metadata(Map.of("indexed_at", "2026-08-26", "last_commit", "abc123")).snapshot());
 
-        var meta = IndexReader.getMetadata(jdbi);
+        var meta = jdbi.withHandle(repositoryHandle56 -> new IndexRepository(repositoryHandle56).getMetadata());
         assertEquals("2026-08-26", meta.get("indexed_at"));
         assertEquals("abc123", meta.get("last_commit"));
     }
 
     @Test
     void storesAndReadsApplicationModuleClasspath() {
-        IndexWriter.writeModuleClasspath(jdbi, List.of(
+        IndexFixture.writeModuleClasspath(jdbi, List.of(
                 new ModuleClasspathRecord("application", "application", 0, "self"),
                 new ModuleClasspathRecord("application", "service", 1, "project_dependency"),
                 new ModuleClasspathRecord("application", "common", 2, "project_dependency")));
 
         assertEquals(Set.of("application", "service", "common"),
-                IndexReader.findVisibleModules(jdbi, "application"));
-        assertEquals(List.of(0, 1, 2), IndexReader.findModuleClasspath(jdbi, "application")
+                jdbi.withHandle(repositoryHandle57 -> new IndexRepository(repositoryHandle57).findVisibleModules("application")));
+        assertEquals(List.of(0, 1, 2), jdbi.withHandle(repositoryHandle58 -> new IndexRepository(repositoryHandle58).findModuleClasspath("application"))
                 .stream().map(ModuleClasspathRecord::distance).toList());
-        assertEquals(3, IndexReader.findAllModuleClasspath(jdbi).size());
-        assertTrue(IndexReader.findVisibleModules(jdbi, "missing").isEmpty());
+        assertEquals(3, jdbi.withHandle(repositoryHandle59 -> new IndexRepository(repositoryHandle59).findAllModuleClasspath()).size());
+        assertTrue(jdbi.withHandle(repositoryHandle60 -> new IndexRepository(repositoryHandle60).findVisibleModules("missing")).isEmpty());
     }
 
     @Test
     void profileFilterExactMatch() {
-        assertTrue(IndexReader.matchesProfile(List.of("dev"), "dev"));
-        assertTrue(IndexReader.matchesProfile(List.of("dev", "local"), "dev"));
+        assertTrue(BeanRepository.matchesProfile(List.of("dev"), "dev"));
+        assertTrue(BeanRepository.matchesProfile(List.of("dev", "local"), "dev"));
+    }
+
+    @Test void qualifierSelectorsMatchQualifiedIdentityWithoutPrefixCollisions() {
+        assertTrue(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@Flavor"));
+        assertTrue(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@demo.Flavor"));
+        assertFalse(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@other.Flavor"));
+        assertFalse(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "@Flav"));
+        assertTrue(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "Flavor(value=red)"));
+        assertFalse(IndexReader.matchesQualifier(List.of("@demo.Flavor(value=red)"), "Flavor(value=blue)"));
     }
 
     @Test
     void profileFilterRejectsNegation() {
-        assertFalse(IndexReader.matchesProfile(List.of("!dev"), "dev"));
+        assertFalse(BeanRepository.matchesProfile(List.of("!dev"), "dev"));
+        assertTrue(BeanRepository.matchesProfile(List.of("!dev"), "prod"));
+        assertFalse(BeanRepository.matchesProfile(List.of("+dev", "+prod"), "prod"));
+        assertTrue(BeanRepository.matchesProfile(List.of("+prod", "!dev"), "prod"));
+        assertFalse(BeanRepository.matchesProfile(List.of("prod", "!prod"), "prod"));
+        assertTrue(BeanRepository.matchesProfile(List.of("prod", "!dev"), "prod"));
+        assertFalse(BeanRepository.matchesProfile(List.of("prod", "!dev"), "test"));
     }
 
     @Test
     void profileFilterRejectsSubstring() {
-        assertFalse(IndexReader.matchesProfile(List.of("dev-staging"), "dev"));
+        assertFalse(BeanRepository.matchesProfile(List.of("dev-staging"), "dev"));
     }
 
     @Test
     void profileFilterNullOrEmptyProfiles() {
-        assertFalse(IndexReader.matchesProfile(null, "dev"));
-        assertFalse(IndexReader.matchesProfile(List.of(), "dev"));
+        assertTrue(BeanRepository.matchesProfile(null, "dev"));
+        assertTrue(BeanRepository.matchesProfile(List.of(), "dev"));
     }
 
     @Test
@@ -776,7 +810,9 @@ class IndexWriterReaderTest {
             new ClassRecord(0, "org.acme.NotDevService", "CLASS", "java.lang.Object",
                     List.of(), "NotDevService.java", 1, true, 100),
             new ClassRecord(0, "org.acme.DevStagingService", "CLASS", "java.lang.Object",
-                    List.of(), "DevStagingService.java", 1, true, 100)
+                    List.of(), "DevStagingService.java", 1, true, 100),
+            new ClassRecord(0, "org.acme.UnconditionalService", "CLASS", "java.lang.Object",
+                    List.of(), "UnconditionalService.java", 1, true, 100)
         );
         var beans = List.of(
             new BeanRecord(0, 1, "CLASS", "@Singleton", List.of("@Default"),
@@ -784,13 +820,18 @@ class IndexWriterReaderTest {
             new BeanRecord(0, 2, "CLASS", "@Singleton", List.of("@Default"),
                     List.of(), false, null, List.of("!dev"), null, null, List.of()),
             new BeanRecord(0, 3, "CLASS", "@Singleton", List.of("@Default"),
-                    List.of(), false, null, List.of("dev-staging"), null, null, List.of())
+                    List.of(), false, null, List.of("dev-staging"), null, null, List.of()),
+            new BeanRecord(0, 4, "CLASS", "@Singleton", List.of("@Default"),
+                    List.of(), false, null, null, null, null, List.of())
         );
-        IndexWriter.write(jdbi, classes, beans, List.of(), List.of(), Map.of());
+        IndexWriter.writeIncremental(jdbi, new IndexFixture()
+                .classes(classes)
+                .beans(beans).snapshot());
 
-        var result = IndexReader.findBeans(jdbi, Map.of("profile", "dev"));
-        assertEquals(1, result.size(), "Only exact 'dev' profile should match, not '!dev' or 'dev-staging'");
-        assertEquals(1, result.getFirst().classId());
+        var result = jdbi.withHandle(handle -> new BeanRepository(handle).findBeans(Map.of("profile", "dev")));
+        assertEquals(Set.of(1, 4), result.stream().map(BeanRecord::classId).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(Set.of(2, 4), jdbi.withHandle(handle -> new BeanRepository(handle).findBeans(Map.of("profile", "prod"))).stream()
+                .map(BeanRecord::classId).collect(java.util.stream.Collectors.toSet()));
     }
     @Test void kotlinSourceDebugRoundTripsAndRemovesStaleEvidence() {
         var db = QuillDatabase.create(tempDir.resolve("source-debug.db"));
@@ -798,12 +839,12 @@ class IndexWriterReaderTest {
         var info = new org.treblereel.mcp.core.KotlinSourceDebug.Info("acme.Owner", List.of(
                 new org.treblereel.mcp.core.KotlinSourceDebug.Mapping("Kotlin", "Owner.kt", "acme/Owner", 5, 1, 100, 1)), false,
                 new org.treblereel.mcp.core.KotlinSourceDebug.Coroutine("acme.Owner", "run", "Owner.kt", 2, List.of(5), List.of(6)));
-        IndexWriter.writeKotlinSourceDebug(db, java.util.Map.of(1, info));
-        assertEquals(info, IndexReader.findKotlinSourceDebug(db, 1).orElseThrow());
+        IndexFixture.writeKotlinSourceDebug(db, java.util.Map.of(1, info));
+        assertEquals(info, db.withHandle(repositoryHandle62 -> new SymbolRepository(repositoryHandle62).findKotlinSourceDebug(1)).orElseThrow());
         db.useHandle(h -> h.execute("UPDATE kotlin_source_debug SET data='invalid'"));
-        assertTrue(IndexReader.findKotlinSourceDebug(db, 1).isEmpty());
-        IndexWriter.writeKotlinSourceDebug(db, java.util.Map.of());
-        assertTrue(IndexReader.findKotlinSourceDebug(db, 1).isEmpty());
+        assertTrue(db.withHandle(repositoryHandle63 -> new SymbolRepository(repositoryHandle63).findKotlinSourceDebug(1)).isEmpty());
+        IndexFixture.writeKotlinSourceDebug(db, java.util.Map.of());
+        assertTrue(db.withHandle(repositoryHandle64 -> new SymbolRepository(repositoryHandle64).findKotlinSourceDebug(1)).isEmpty());
     }
 
 }

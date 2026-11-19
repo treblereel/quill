@@ -23,6 +23,7 @@ import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.AnnotationValue;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Best-effort Kotlin declaration model backed by the compiler's {@code kotlin.Metadata}. */
 public final class KotlinMetadataReader {
@@ -242,7 +243,7 @@ public final class KotlinMetadataReader {
     private static void capture(Map<String, KotlinDeclarationTypes> result, String key,
             java.util.function.Supplier<KotlinDeclarationTypes> supplier) {
         try { result.put(key, supplier.get()); }
-        catch (RuntimeException invalidType) { /* Keep independently readable declaration metadata. */ }
+        catch (RuntimeException invalidType) { QuillLog.swallowed(invalidType); /* Keep independently readable declaration metadata. */ }
     }
 
     static KotlinDeclarationTypes types(KmType result, KmType receiver, List<KmValueParameter> parameters,

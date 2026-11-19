@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.McpJsonInstaller;
+import org.treblereel.mcp.index.ProjectConfiguration;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.PrintWriter;
@@ -17,7 +21,7 @@ import picocli.CommandLine;
 class ClientRefreshCommandTest {
     @TempDir Path root;
 
-    @Test void refreshDoesNotRequireOrCreateIndexBuildIntegrationOrPermissionGrants() throws Exception {
+    @Test void refreshDoesNotRequireOrCreateIndexBuildIntegrationOrClaudePermissionGrants() throws Exception {
         Files.writeString(root.resolve("AGENTS.md"), "User conventions\n");
         Files.writeString(root.resolve("CLAUDE.md"), "Legacy unmarked Quill instructions\n");
         Files.createDirectories(root.resolve(".claude"));
@@ -34,6 +38,8 @@ class ClientRefreshCommandTest {
         assertEquals(permissions, Files.readString(root.resolve(".claude/settings.local.json")));
         assertTrue(ClaudeSettingsInstaller.isEnabled(root));
         assertTrue(Files.exists(root.resolve(".codex/config.toml")));
+        assertTrue(Files.readString(root.resolve(".codex/config.toml"))
+                .contains("default_tools_approval_mode = \"approve\""));
         for (String name : List.of(".quill", ".mvn", ".gitignore", ".claude/quill-permissions.json")) {
             assertFalse(Files.exists(root.resolve(name)), name);
         }

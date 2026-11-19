@@ -79,10 +79,24 @@ atomically points each commit and branch at its active generation. This lets an 
 request finish reading the previous snapshot while `quill update` publishes the next
 one, including on Windows where an open SQLite file cannot be replaced safely.
 
+Explicit target lists in `get_context`, `plan_change`, `verify_change` and
+`change_session` are evaluated in full; the ten-target limit applies only to automatic
+inference from dirty sources. Production queries with `include_tests: false` exclude
+both unit-test and integration-test source sets, including their helper classes.
+
+Method control-flow and asynchronous/external-call evidence is stored once per JVM
+method, separately from its outgoing call edges. Schema changes rebuild a new
+generation instead of modifying the active database; a failed replacement leaves
+older databases and their refs intact. Full indexing compacts the disposable staging
+database before integrity validation and atomic publication. Incremental updates
+retain their indexes and never run `VACUUM`.
+
 **Important:** Quill indexes compiled bytecode, not source code, and never runs a Maven
 or Gradle build. Build the project yourself before `quill init`. Successful builds are
 recorded by the integration installed during initialization; Quill consumes that event
-and refreshes the index before the next MCP response. Every MCP response reports the indexed
+and refreshes the index in the background. Requests for that project return retryable
+`REFRESH_PENDING` until the refresh finishes; retry the same query without rebuilding or
+reducing its targets. Every indexed MCP response reports the indexed
 and current commit plus worktree freshness in `_meta`. Dirty and untracked files are
 also exposed as a live overlay by `find_git_hotspots`. Changes to Java or Kotlin sources,
 resources, generated sources, or Maven/Gradle build inputs mark structural answers
@@ -97,7 +111,7 @@ defaults for constrained or unusually large local environments.
 Workspace fan-out queries use up to four shared read workers; set
 `QUILL_WORKSPACE_QUERY_WORKERS` to a positive value (capped at 32) to override it.
 `QUILL_MCP_REQUEST_TIMEOUT` sets the per-tool timeout in seconds (default: `30`).
-Successful JSON responses are capped at 256 KiB; set `QUILL_MCP_MAX_RESPONSE_BYTES`
+Successful JSON responses are capped at 64 KiB and paginated lists default to 25 items; set `QUILL_MCP_MAX_RESPONSE_BYTES`
 to override the cap. Truncated responses report omitted fields and filtering guidance.
 Dependency JAR indexing uses up to eight workers, capped automatically by available CPUs
 and the process heap budget (roughly 256 MiB per worker). Set
@@ -107,6 +121,41 @@ the client input also cancels active workers so the stdio server can terminate c
 Concurrent requests share an expensive Git worktree snapshot for 500 ms. An
 expired snapshot remains available while one background refresh runs, so Git inspection
 does not periodically stall MCP workers; edits appear after that refresh completes.
+
+MCP answers `initialize` and exposes its tool catalog before preparing indexes. Preparation
+runs in the background. Until a prepared generation is available, queries return
+`refresh_pending` with `action: wait` and retry guidance; no build is started.
+
+When a project is unavailable, MCP responses include a stable `reason` and an `action`.
+For `action: wait`, `stage`, `elapsed_ms`, and `retry_after_ms` describe queued preparation,
+build-result processing, or index refresh; `automatic_retry` confirms background work will
+continue. Rebuilding is unnecessary in those states. `action: build` or `fix_build` includes
+`stale_modules` and a `verification_plan` with the working directory and a `quick_compile`
+command (`test-compile` for Maven or `testClasses` for Gradle). Captured build errors are
+included when available. Quill never starts these commands. `get_build_problems` and
+`get_file_problems` can read the last captured diagnostics while the index is unavailable.
+`get_build_status` also returns compact readiness guidance during preparation; use `detail:"full"`
+for the verification plan and captured diagnostics.
+`previous_generation_available` reports whether an earlier index exists; it does not
+mean its answers have been verified against the current inputs.
+
+A Git commit of already indexed content triggers a background index refresh without a build.
+Quill verifies JVM source/resource hashes, bytecode, build inputs and classpaths against the previous
+compiled snapshot before reusing its compilation evidence. Changed or missing evidence never
+becomes fresh merely because the worktree is clean. Older indexes containing Kotlin or resource inputs need one normal index refresh to capture
+complete input hashes; no compilation is needed merely to upgrade this evidence.
+
+After initial preparation,
+queries continue using the last prepared generation during background updates and after
+refresh failures. These responses retain its `index_id`, report `previous_generation` in
+`_meta.stale_reasons`, and include the refresh reason in `project_warnings`. Freshness remains
+unverified until preparation succeeds; `verify_change` and `change_session` cannot issue a
+verified receipt from this fallback. New requests switch only after the replacement is
+prepared; readers already using the previous generation can finish safely. Integrity validation is
+single-flight per immutable file. A verified staging database retains its integrity evidence
+after atomic rename only when file identity, size and modification time match. Changed files
+are validated again. Input preparation stays pinned to its selected generation and reports
+separate stages for type graphs, Git, source/build inputs, compiler outputs and dependencies.
 
 For an informational cold-index and MCP latency benchmark (not part of CI), run:
 
@@ -250,21 +299,25 @@ for added and removed repositories, and `workspace clear` removes only entries m
 workspace. Use `workspace clear --repositories` when indexes and build integration should also be
 removed.
 
-Both `quill init` and `quill workspace init` offer one interactive consent question to
-let Claude use Quill's current read-only MCP tools without repeated tool-approval prompts.
-For scripts, pass `--allow-quill-tools` explicitly; without a terminal no permissions are
-granted automatically. Use `--no-allow-quill-tools` to skip the question (it does not revoke
-existing permissions). `--allow-quill-tools` cannot be combined with `--index-only`.
-Workspace consent covers the workspace root and its discovered JVM repositories.
+Both `quill init` and `quill workspace init` allow every Quill tool in Claude by default,
+including non-interactive runs. Use `--no-allow-quill-tools` to skip this grant (it does not
+revoke existing permissions); `--allow-quill-tools` remains an explicit equivalent of the
+default. `--index-only` never grants permissions and cannot be combined with explicit
+`--allow-quill-tools`.
+Workspace initialization covers the workspace root and its discovered JVM repositories.
 
-Consent adds concrete tool names derived from Quill's read-only contracts to each target's
-`.claude/settings.local.json`, not global or shared permission settings. There is no wildcard
-grant for future tools. Existing rules, including `ask` and `deny`, are preserved and remain
-authoritative. New tools require renewed consent on a later `init`. Ownership is recorded in
-`.claude/quill-permissions.json`; keep that local receipt with the settings, and do not commit
-it. `quill clean` / `workspace clear` remove only permissions Quill added, preserving pre-existing
-rules. Claude's workspace trust and MCP connection approval are separate client checks;
-this option does not bypass them or change Codex permissions.
+Every Quill tool only reads, so initialization adds the single server rule `mcp__quill` to each
+target's `.claude/settings.local.json` (not global or shared permission settings); tools added
+in later Quill versions need no new grant. Concrete `mcp__quill__<tool>` rules Quill granted
+earlier are replaced by it. Existing rules, including `ask` and `deny`, are preserved and remain
+authoritative. Ownership is recorded in `.claude/quill-permissions.json`; keep that local receipt
+with the settings, and do not commit it. `quill clean` / `workspace clear` remove only permissions
+Quill added, preserving pre-existing rules. Claude's workspace trust and MCP connection approval
+are separate client checks; this option does not bypass them. Codex registrations created by
+Quill likewise use `default_tools_approval_mode = "approve"`. A Quill-written registration still
+on the earlier `"writes"` default is moved to `"approve"`; other explicit server approval modes
+are preserved; user-owned project registrations are not overwritten. No global approval,
+shell permission, or sandbox setting is changed.
 
 Manage that choice later without re-indexing, rebuilding, or removing the MCP server:
 
@@ -285,7 +338,7 @@ quill client refresh --workspace /path/to/initialized/workspace
 ```
 
 Refresh preserves content outside Quill's managed instruction blocks, other MCP servers,
-and existing tool permissions. It never indexes, builds, grants tool permissions, or changes
+and existing Claude tool permissions. It never indexes, builds, grants Claude tool permissions, or changes
 global Codex trust. Workspace refresh uses the recorded configured repositories, not discovery.
 Malformed managed markers, unsupported configuration, and symlinked targets require repair
 before refresh. Unmarked legacy instructions are preserved, not silently deleted.
@@ -329,14 +382,33 @@ Once indexed, Quill exposes these tools via MCP:
 Every tool result includes native MCP `structuredContent` and an advertised object
 `outputSchema`. Quill does not duplicate the JSON payload as text content.
 
-The default `--tools full` profile exposes the complete catalog. To reduce the initial
-`tools/list` context for smaller local models, select `router`, `core`, `code`, `di`, or `git`:
+Method queries accept a full indexed signature, a JVM descriptor, or a parameter-only
+selector such as `(java.lang.String, int[])`. Parentheses and a matching method name
+are optional for parameter selectors (`accept(java.lang.String, int[])` or
+`java.lang.String, int[]`). Use exact erased qualified types; short type names
+and parameter variable names are not guessed. Ambiguous declarations still require
+an exact signature or JVM descriptor.
+
+The default `--tools compact` profile exposes eight common queries, including `get_context`,
+plus overview and router fallback. The `codex` profile, which Quill writes into Codex
+configuration, adds `change_session`, `get_external_symbol_details`,
+`get_project_dependencies`, `trace_state_lifecycle`, `find_usages`, `find_entry_points` and
+`get_annotated_classes`: Codex otherwise spends a model turn on `search_tools` for each.
+The `claude` profile, which Quill writes into `.mcp.json`, is currently the compact catalog:
+Claude loads every listed schema into each request, so it is tuned separately from Codex.
+Use `--tools full` for the complete initial catalog, or choose `router`, `core`, `code`,
+`di`, or `git`:
 
 ```bash
 quill --mcp --project /path/to/project --tools core
 quill --mcp --project /path/to/project --tools core,git
 quill --mcp --project /path/to/project --tools router
 ```
+
+Without `--workspace` and with at most one `--project`, the catalog omits the `project`
+selector (it is still accepted) and the five workspace-only tools. Input schemas do not
+repeat `additionalProperties: false`; unknown arguments are rejected with the list of
+accepted ones.
 
 Comma-separated profiles form a union. `core` contains the general navigation, dependency,
 impact, risk, and build-status tools; the specialized profiles add their respective analysis
@@ -413,6 +485,8 @@ does not imply that an executor, reactive stream, or message publication has com
   classes, and impacted tests while keeping lifecycle/semantic fit as an explicit limitation
 - **find_method_overrides** — find direct or transitive overriding declarations for a selected
   method or overload, with hierarchy paths and Java modifier checks
+- **find_unused** — one advertised dead-code tool with `kind=classes|methods|fields`; it
+  dispatches to the per-kind tools below, which remain callable but are not listed
 - **find_unused_classes** — find conservative dead-code candidates while excluding indexed
   references, hierarchy use, DI/framework roots, main classes, and ServiceLoader providers
 - **find_unused_methods** — find uncalled private-method candidates using exact erased JVM
@@ -436,7 +510,11 @@ does not imply that an executor, reactive stream, or message publication has com
   it does not prove compatibility. See [API compatibility review](docs/api-compatibility.md).
 - **get_build_status** — inspect build-result integration, compiled outputs, pending events,
   index freshness, and the next required action without invoking Maven or Gradle; build-required
-  responses distinguish `classes_missing` from `classes_stale` and identify stale modules
+  responses distinguish `classes_missing` from `classes_stale`. The default `detail:"summary"`
+  returns statuses, counts and reasons. Use `detail:"full"`, exact repository-relative `module`
+  and `source_set` filters, and `limit`/`offset` for complete evidence pages. Follow
+  `next_page_request`; pages may shrink to preserve complete rows within the response budget.
+  The source-set filter selects evidence; readiness still covers every source set in the selected module
 - **get_build_problems** — read normalized errors captured from the last Maven or Gradle build,
   including source positions and module filtering, without starting a build
 - **get_annotated_classes** — find directly annotated and meta-annotated classes by short
@@ -490,14 +568,18 @@ does not imply that an executor, reactive stream, or message publication has com
   while stable action IDs let clients distinguish repeated guidance from a new requirement;
   all views preserve the same directive. Primary actions include their evidence snapshot and any
   external command needed for preparation or retry, even when the corresponding section is omitted;
-  summary detail is the default, while
+  summary detail is the default: inventory lists keep at most five entries with exact
+  `*_count` / `*_has_more` fields and complete source-set status counts. This presentation
+  does not change phase gates, verdicts, reason codes, or executable argv. Use
+  `full_evidence_request` for the complete snapshot;
   full detail preserves the complete plan/verification parity contract, and `view=auto` returns
   only the plan before structural edits or verification evidence afterwards. Dirty changes with
   unresolved contract, target, module, coverage, or pagination evidence enter `review_required`;
   changes needing only build evidence enter `verification_required`. Stateless snapshots may skip
   phases when the newly observed evidence already satisfies them
 - **find_impacted_tests** — rank tests by static dependency paths and Git co-change evidence,
-  with explicit reporting when compiled test outputs are not indexed
+  with explicit reporting when compiled test outputs are not indexed. Related targets share a
+  5,000-class traversal budget; reaching it reports incomplete evidence for review
 - **get_type_hierarchy** — inspect paged ancestor and descendant paths, including external
   ancestors that are referenced by indexed bytecode but are not themselves indexed
 - **get_dependencies** — complete dependency metrics plus an optional relation graph,
@@ -510,11 +592,24 @@ does not imply that an executor, reactive stream, or message publication has com
   `view=compact` for a paginated project map (default `limit=20`, max 50, `offset=0`).
   The map includes unavailable projects, indexed framework/counts and freshness, and
   explicit `next_page_request` / per-project `details_request` calls. Counts describe
-  the index, not a complete endpoint or architecture analysis. Compact mode cannot be
+  the index, not a complete endpoint or architecture analysis. Readiness entries keep reasons,
+  retry guidance and bounded module samples; full build plans and diagnostics are available
+  through the detail request rather than repeated for every project. Compact mode cannot be
   combined with a project selector or `details=true`; use `project=<name>, view=full`
   for details. Pagination applies only to compact mode. Set `details=true` for diagnostic
   samples and per-dimension architecture-hub rankings. Its `capabilities` block advertises
   supported source languages, stable `symbol_id` chaining, and machine-readable errors
+
+Narrow query responses summarize coverage and readiness warnings by default: counts,
+completeness flags, reasons, actions, and retry guidance remain available without repository-wide
+inventories or repeated build plans. Warning `details_request` calls explicitly select `detail:"full"` build status.
+For `get_call_hierarchy`, `find_usages`, `find_symbol_usages`, `get_context`, and
+`find_workspace_usages`, follow `coverage.details_request` or set `evidence_detail=full`
+to inspect full evidence. Scope inventories use pages of 100 entries: follow
+`coverage.indexed_scopes_page.next_page_request` or set `evidence_offset` with full detail.
+This offset is independent of the query's result `offset`/`limit`; each scope page identifies
+its index generation. Presentation never upgrades completeness or non-use claims.
+Build diagnostics and change-workflow tools retain their existing detailed evidence contracts.
 
 MCP startup instructions report the actual server mode: `workspace` for `--workspace`,
 otherwise `single_project`. A repository called a "workspace" in its documentation does
@@ -551,6 +646,101 @@ emitted by the MCP surface.
 Paginated responses use the same `showing`, `total`, `limit`, `offset`, `has_more`,
 `truncated`, and optional `next_offset` fields.
 
+### Response conventions
+
+Responses omit values a client can derive, so read absent fields by these rules:
+
+- **`_meta` on a fresh index** carries only `index_id`, `indexed_at`, `indexed_commit`,
+  `stale_warning: false`, `stale_scope: "current"` and `answer_confidence: "high"`, plus
+  `worktree_dirty: true` and `worktree_changed_files` when only non-structural files changed.
+  The full freshness breakdown (`current_commit`, `commit_stale`, `structure_stale`,
+  `stale_reasons`, ...) appears whenever anything is stale; an absent boolean there means
+  `false`.
+- **Dispatch evidence** in `get_call_hierarchy` and `find_symbol_usages` is written once per
+  distinct target in `dispatch_targets`; each edge or usage points to it with
+  `dispatch_ref`. It omits `false` proof flags and empty lists, as stated in
+  `evidence_defaults` (`absent_boolean_flags_mean: false`, `absent_lists_mean: "empty"`).
+- **`coverage`** (schema 2) names the never-proven guarantees once in `not_covered`
+  instead of six `false` flags, and no longer repeats `index_id`/`indexed_at` from `_meta`.
+- **`symbol_id` v3** is readable and about 60% shorter:
+  `quill:symbol:v3:Class~kind~name~descriptor~sourceHash`, where `sourceHash` (8 hex digits)
+  only separates equal class names declared in different source files. v2 ids are still
+  accepted as input.
+- **Shared evidence fields** are stated once per response: `source_evidence_defaults`
+  (`basis`, `scope`, never-proven flags) for every `source_evidence`, and, in
+  `list_injection_points`, `resolution_context` for the limitations and applied or
+  unsupported rules that every injection point shares (per-point lists keep only the rest).
+- **Configuration rows** in `find_configuration_references`: a field every row of one `kind`
+  carries with the same value (`module`, `sourceSet`, `configuration_scope`,
+  `resolution_strategy`, ...) is written once in `row_defaults_by_kind.<kind>`, and shared
+  `declared_source` fields under its `declared_source`. A row without the field takes the
+  default of its kind.
+- **Injection points** in `list_injection_points`: when every point carries `limitations`,
+  `resolution_strategy`, `resolution_trace.applied_rules`/`unsupported_rules` or
+  `provider_evidence.scope`/`runtime_resolution_proven`, the most common value is written once
+  in `point_defaults` (nested the same way) and a point without the field takes it. Empty
+  provider `profiles` lists are omitted.
+- **Beans** in `list_beans` omit an empty `profiles` list (active in every profile) and a
+  `:0` line suffix in `source`; what `arc_retention.removal_ruled_out` means is written once in
+  `arc_retention_notes`.
+- **Dependency jars** in `get_project_dependencies`: a jar at its standard place under
+  `maven_repository_root` has no `jar` field; `jar_path_rule` gives the path.
+- **Member listings** in `get_symbol_details` give each member's `kind`, `name`,
+  `signature` (methods and constructors) or `type` (fields), `descriptor`, and its
+  `modifiers` and `annotations` when present; parameter annotations are under
+  `parameter_annotations`. Identity the class already states is not repeated: member ids
+  follow `member_symbol_id_format` (fill in `{kind}`, `{name}`, `{descriptor}`), and the
+  language and source file are the class's. Kotlin members keep `source_name` when it differs
+  from the JVM name.
+- **Source locations** corroborated by the compiler carry `excerpt`, the referencing source
+  line (bounded, up to 50 per response), when the file still matches the indexed hash.
+- **Call edges** omit `edge_kind` and `execution_semantics` for ordinary calls; the values
+  are given once in `edge_defaults`. Endpoints no longer repeat `parameters` and
+  `return_type`, which follow from `descriptor`; `source` has no `:0` suffix when the line
+  is unknown.
+- **`get_overview`** names `architecture_hubs_ranked_by` once instead of `ranked_by` on
+  every hub. Without `details`, each hub is a row in `architecture_hub_columns` order
+  (`details=true` keeps one object per hub). The full `capabilities` contract is returned
+  only with `details=true`. `suggested_tools` names the tools that fit the project (DI,
+  configuration, HTTP endpoints) so agents can call them, or pass them to `execute_tool` in
+  the router profile, without searching the catalog. The overview also lists
+  `project.auxiliary_build_projects`: separate Maven/Gradle builds in the repository that
+  are not part of the indexed modules.
+- **Annotation values.** The index (schema 33) keeps explicitly written annotation members
+  (strings, numbers, booleans, enum names, class names, arrays of those) for classes,
+  members and parameters; `find_annotated_symbols` returns them in `values`. When the
+  annotation type is indexed (application or dependency JARs) its declared defaults are
+  filled in too and the defaulted members are listed under `$defaults`.
+- **Empty results are not errors.** An annotation that no indexed declaration carries
+  returns an empty list with `annotation_indexed: false`.
+- **Error guidance.** `CLASS_NOT_FOUND` and external-class misses explain why in `reason`
+  and may suggest a structured `next_step` (`{tool, arguments}`), only for tools the
+  active profile exposes. A class without a bean record returns `NOT_A_BEAN` with
+  `related_beans` (enclosing class, superclass). Unknown arguments list the accepted ones.
+
+Bean and injection evidence follows CDI and Spring semantics more closely:
+
+- Injection points declared by superclasses (fields and initializer methods, except those
+  overridden lower in the hierarchy) belong to the bean and are labelled
+  `Parent.member`.
+- Each SmallRye `@ConfigMapping` interface is a `SYNTHETIC` `@Dependent` bean with member
+  `synthetic:ConfigMappingCreator`; Quarkus `@ConfigRoot` mappings in the default
+  `BUILD_TIME` phase are not runtime beans and are skipped.
+- Each `@RegisterRestClient` interface is a `SYNTHETIC` bean qualified `@RestClient`, scoped by
+  its scope annotation or `@ApplicationScoped`, with member `synthetic:RestClient`.
+- Points resolved to a `@RequestScoped`, `@SessionScoped` or `@ConversationScoped` bean carry
+  `context_requirement` with `async_availability: "unproven"`: static analysis cannot prove
+  that asynchronous code has the context active.
+- Unresolved injection points carry `provider_evidence`: up to five beans of the required type
+  declared in dependency JARs (for example framework producers), with artifact, scope,
+  qualifiers, profiles and whether the qualifier names match. It is declaration evidence,
+  not proof of runtime resolution.
+- Container-provided beans (`Event`, `Instance`, `Provider`, `InjectionPoint`,
+  `BeanManager`, ...) resolve with status `RESOLVED`, reason `BUILTIN_BEAN` and no bean id.
+
+Run `quill update --force` after upgrading to rebuild existing indexes with this
+evidence.
+
 ## Connect Quill to Claude Code or Codex
 
 Initialize the project once before connecting an MCP client. From the project directory:
@@ -583,7 +773,10 @@ contain local paths and dependency coordinates and should not be committed.
 To measure real MCP usage without recording code, queries, arguments, paths, or response
 contents, start the server with `--telemetry` (or set `QUILL_TELEMETRY=1`). Quill appends local
 JSONL measurements to `.quill/telemetry/mcp-tools.jsonl`: tool name, profile, duration, response
-byte count, success/error state, and non-content limitation flags such as stale or truncated.
+byte count, success/error state, non-content limitation flags such as stale or truncated,
+the MCP client (`client`, name/version from initialize) and, when the client reports it per
+call (Codex does, Claude Code does not), the `model`. This allows comparing profiles per
+client and model.
 Summarize a capture, or compare it with an earlier baseline, using:
 
 ```bash
@@ -646,13 +839,16 @@ Alternatively, add a project-scoped entry to `.codex/config.toml`:
 
 ```toml
 [mcp_servers.quill]
+enabled = true
+default_tools_approval_mode = "approve"
 command = "/absolute/path/to/quill"
-args = ["--mcp"]
+args = ["--mcp", "--tools", "codex"]
 cwd = "/absolute/path/to/project"
 ```
 
 `quill init` and `quill client refresh` create `.codex/config.toml` when missing,
-or add this section to an existing file. A native launch records its executable path; development runs from a
+or add this section to an existing file; an entry Quill wrote earlier with `args = ["--mcp"]`
+moves to the `codex` profile. A native launch records its executable path; development runs from a
 JAR fall back to `quill` from `PATH`, keeping the generated configuration binary-only.
 Other settings are preserved, repeated initialization is a no-op, and an existing
 user-owned `mcp_servers.quill` section is never overwritten. A Quill-managed project entry
@@ -715,7 +911,17 @@ Normal `quill init` installs a reversible build-result integration instead of Gi
 hooks. Maven uses `.mvn/extensions.xml`; Gradle gets a Quill-managed block in the root
 `settings.gradle[.kts]`. A successful build writes a small atomic JSON event below
 `.quill/build-events/`. Before serving the next MCP request, Quill consumes that event
-and refreshes the index from the bytecode produced by the build. The integration never
+and refreshes the index from the bytecode produced by the build. While a Maven build
+runs, the extension keeps a marker below `.quill/builds-running/`, and the MCP server
+holds its background re-checks of compiled outputs until the build ends, serving the
+previous generation with the `build_running` readiness reason meanwhile. A marker whose
+process is gone or that is older than three hours is ignored. When several MCP servers
+of the same Quill version serve one project, for example one per AI client, the first to
+lock `.quill/leader-v<schema>.lock` does the background work: watching inputs, consuming
+build results and refreshing the index. The others answer queries from the published
+generations and re-prepare when the leader announces new evidence in
+`.quill/leader-v<schema>.revision`; when the leader exits, one of them takes over. The
+integration never
 starts a build itself and build failures do not replace the previous index. Use
 `--index-only` to skip all project configuration changes. `quill clean` removes only
 the Quill-managed integration and the entire `.quill` directory.
@@ -749,7 +955,7 @@ Producer artifact versions and wire-format versions are independent.
 Java compile settings are exported separately to `target/quill-java-{main,test}.properties`
 for Maven and `build/quill-java-<sourceSet>.properties` for Gradle, including custom source
 sets. These locations stay stable when the project's compiled-output directory changes.
-`get_build_status` exposes `java_compiler_settings` with `captured`, `configuration_only`,
+`get_build_status` with `detail:"full"` exposes paged `java_compiler_settings` with `captured`, `configuration_only`,
 `missing`, `stale`, or `invalid` status. SHA-256 checks cover the build descriptors,
 settings/toolchain files and JDK release metadata; same-size edits with restored mtime
 are detected. Configuration-only discovery never claims that a JDK compiled the project.
@@ -895,17 +1101,16 @@ JNA on macOS (20 ms stream latency) and the JDK event provider elsewhere. On mac
 registration waits for the FSEvents stream to start on a serial dispatch queue; closing
 a subscription drains callbacks before releasing its stream and queue. File hashing
 in the watcher is disabled; the worker verifies input contents before and after analysis.
-If event registration fails or its event loop terminates, relevant directory-entry
-metadata is polled with 100 ms between scans. While events are active, a metadata audit
-runs every two seconds and an isolated temporary heartbeat checks event delivery.
-Missed metadata notifications receive a two-second delivery grace period. Failed
+An isolated temporary heartbeat checks event delivery without scanning project files.
+If event registration fails or its event loop terminates, input observation is marked
+unavailable; there is no periodic metadata scan or polling fallback. Failed
 subscriptions retry after 1, 2, 4, 8, 16 and at most 30 seconds; a successful heartbeat
 resets this backoff. Recovery warms current inputs without switching modules. The
 heartbeat is excluded from compiler inputs and removed on close.
 Module switches and shutdown close the
 event streams and cancel background work. K2 response diagnostics include
 `input_detection` (`directory_watcher_fsevents`, `directory_watcher_watch_service`,
-or `metadata_poll_100ms`) to identify the active input watcher.
+or `unavailable`) to identify the active input watcher.
 Runtime checksums are validated when the worker starts, with file
 attributes checked between requests. Crashes, timeouts and runtime changes discard the
 worker; the next request starts a fresh process. MCP shutdown terminates it. When startup
@@ -952,6 +1157,14 @@ arbitrary compiler flags cannot be smuggled through the argument list.
 Kotlin Multiplatform/Android task graphs and custom script definitions need further
 integration; they are not covered by the standard JVM main/test capture.
 Maven build capture requires extension 0.1.3 or newer.
+Content-based compilation freshness requires extension 0.1.4 or newer (or the current
+Gradle capture scripts). Each module/source set records the inputs, active Maven profiles,
+and output fingerprint of successful compilation. A successful incremental/no-op compile
+can confirm existing bytecode without changing its timestamp. Receipts are committed at
+the end of a successful Maven session; unrelated consumer builds do not replace other
+modules' receipts. Missing legacy receipts retain the conservative timestamp fallback.
+Verification commands preserve captured profiles for the requested source sets; conflicting
+profile evidence is reported instead of suggesting the same ineffective command again.
 Compiler-confirmed indexed targets have high confidence; local targets suppress unrelated
 indexed matches. A resolved target absent from the index reports `semantic_target_not_indexed`.
 The earlier fully embedded compiler's native size and runtime costs are recorded in
@@ -997,7 +1210,8 @@ Quill falls back to `gradle` or `mvn` from `PATH`.
 
 ## Building Quill
 
-Building Quill requires JDK 21 through 25. The Maven build rejects newer feature releases until
+Building Quill requires JDK 25. The main application targets Java 25; isolated semantic workers retain Java 17 bytecode
+for compatibility with project toolchains. The Maven build rejects newer feature releases until
 they are explicitly validated; released native executables do not require a local JDK to run.
 
 ```bash
@@ -1012,9 +1226,33 @@ The build produces a thin library JAR and a runnable shaded `-all.jar` for devel
 and diagnostics. Keeping them separate makes repeated Maven builds reproducible and
 avoids shading an already shaded artifact. Quill releases are distributed as native
 executables, so end-user MCP configuration should point to `quill` or `quill.exe`.
-The independently versioned Maven build extension is verified with
-`./mvnw -f quill-maven-extension/pom.xml verify`; it is intentionally outside the
-Quill reactor so only that artifact can be published to Maven Central.
+The independently versioned Maven build extension is intentionally outside the Quill
+reactor. This development branch uses the unpublished `0.1.6-SNAPSHOT`; install it locally
+before the first Quill build (also before using this native candidate on another machine):
+
+```bash
+mvn -Dmaven.multiModuleProjectDirectory="$PWD/quill-maven-extension" -f quill-maven-extension/pom.xml install
+```
+
+The explicit multi-module directory bootstraps the standalone extension without loading
+the repository's `.mvn/extensions.xml`, which already requests the new version.
+Use `verify` instead of `install` for subsequent isolated extension checks. Publishing
+that artifact to Maven Central is a separate release action.
+
+### Formatting and logging
+
+Java sources use google-java-format in AOSP style through Spotless. `verify` checks only
+files changed since the pinned `spotless.ratchetFrom` commit, so code is reformatted as it is
+touched rather than all at once. Format your changes before committing:
+
+```bash
+./mvnw spotless:apply
+```
+
+Diagnostics go to stderr through `QuillLog`, because stdout carries the MCP protocol. Set
+`QUILL_LOG_LEVEL` to `debug`, `info` (default), `warn` or `off`; `QUILL_DEBUG=1` or `--debug`
+also enables debug output. At debug level every best-effort fallback reports where it caught
+an exception, which explains an answer that degraded to `unknown` or `unavailable`.
 
 ### Native executable
 
@@ -1054,3 +1292,92 @@ download verification.
 ## License
 
 Quill is licensed under the [Apache License 2.0](LICENSE).
+
+### Cumulative CDI and source-context implementation
+
+CDI qualifier identity preserves its qualified annotation name, binding member values
+and defaults, ignoring `@Nonbinding`. `@Typed`, `Object`, array types and primitive/wrapper
+assignment are preserved; different generic arguments are not collapsed into a raw match.
+Profile filters include unconditional beans and exclusions. Producer and declaring-bean
+conditions combine; `+profile` means required, `!profile` means excluded. Static injection
+selection reports `CONTEXT_REQUIRED` if a build profile is needed. Quarkus producer discovery
+requires a successful, fresh, module-owned compiler capture with Quarkus plugin/ArC evidence.
+
+`get_context` accepts `Class#method(qualified.Types)` and returns complete bounded Java
+method source only with an exact compiler declaration, matching indexed source hash,
+and valid project boundary. Missing, changed, oversized or unsupported source has an explicit
+status; no approximate line window is returned. `find_framework_endpoints` uses `path` for
+the route prefix. Argument errors list accepted names without requiring another catalog lookup.
+
+### Framework provider evidence
+
+`list_beans` resolves an exact class first, then the provided bean type when no
+declaration class matches. Short names do not match unrelated class suffixes;
+explicit wildcards remain available. Scope, qualifier, profile and origin filters
+are retained. Unknown injection points expose bounded dependency declarations,
+producer member/scope/artifact and qualifier-name matches without promoting them
+to a proven CDI/runtime selection. A configuration-mapping annotation alone does
+not prove the generated bean scope. Endpoint prefetch reuses this same evidence.
+
+### Declared configuration evidence
+
+`find_configuration_references` keeps its no-source `index` default. Explicit
+`view="declared"` adds current source hashes, indexed key/line validation, file/key
+profile conditions and bounded literal boolean/number/duration declarations.
+Declared view also includes bounded exact-field bytecode read sites (methods,
+descriptors and line tables), plus captured static-final String aliases of the
+shown keys. Constant equality does not prove source binding; declaration lines
+not present in the index remain unknown. Java field-read source windows add
+current indexed-hash-validated neighbouring lines, merge overlaps and expose
+truncation; bounds apply per declared-configuration packet. Windows do not
+claim complete methods, branch paths or bytecode/source identity. No compiler
+is started by this packet.
+Values are never indexed. Expressions, sensitive keys and opaque strings are
+not emitted; no environment/system values are read or effective runtime values
+claimed. At most12definitions in5files per page receive source evidence.
+Profiled definitions link to their base consumers without selecting a runtime
+winner. Captured application `QuarkusTestProfile#getConfigOverrides()` literal maps
+are also indexed as test-only declarations, including inherited bodies. Declared
+view verifies source and bytecode hashes; dynamic/unsupported bodies and profile
+activation remain unknown. Test declarations never resolve production defaults.
+Index schema31 requires reindexing older projects. Endpoint prefetch limits configuration candidates to directly indexed
+owned-field/programmatic reads, excluding sibling-member settings.
+
+### Generic prefetch and long sessions
+
+An explicit `Class#method(qualified.Types)` also supplies a compact direct-impact packet:
+production callers, direct test references, overrides, interface contracts and scoped counts.
+The same packet is available through `get_context(view="impact")`. References are static,
+not runtime test coverage; pagination, missing supertypes and unclassified callers keep
+incompleteness explicit. Full dispatch/source evidence remains available on demand.
+
+
+Native project initialization and `client refresh --project` install project-local
+`UserPromptSubmit` and `SessionStart` hooks in `.codex/hooks.json` and `.claude/settings.json`.
+Existing handlers, permissions and host trust settings are preserved. In Codex, trust the
+project and review new or changed hooks in `/hooks` before they can run. Initialization
+does not grant that trust. The `prefetch --project` helper reads an existing
+index; it never starts MCP, builds, initializes a project or calls a language model.
+It looks up literal indexed identifiers or exact HTTP method/path operations, not question
+templates. Identifier lookup emits at most three verified class declaration cards. HTTP
+lookup provides the handler declaration and bounded direct-callee DI/configuration evidence;
+its source range may use captured javac settings for read-only semantic analysis. Callee
+bodies remain available on demand and configuration values are not indexed. The selected
+operation is retained for follow-ups without literal identifiers; unchanged context is
+suppressed, not retransmitted on every turn. Ambiguous routes and stale/source-hash failures
+remain explicit. DI uses the indexed default context rather than guessing a runtime profile. New sessions, `/clear`, compaction, forks and new index generations
+invalidate delivery state. Workspace-wide automatic prefetch is not installed; use explicit
+repository contexts or normal workspace MCP queries.
+
+Expired worktree snapshots refresh synchronously. Every public project query refreshes live
+worktree evidence before reading its immutable index generation. Schema v30 requires reindexing
+older semantic generations rather than silently reusing pre-fix CDI/qualifier data.
+
+Gitlinks are discovered read-only, including nested and uninitialized submodules. Workspace
+mode indexes initialized submodule repositories independently, including explicit gitlinks beyond
+directory discovery depth. Parent indexes do not absorb compiled outputs from another Git repository.
+Submodule HEAD and structural changes participate in parent freshness; documentation-only changes
+remain dirty without marking structural evidence stale. Quill never clones, fetches or updates a
+submodule checkout. Initialize/build it explicitly first, then use normal project `init`/`update`
+or workspace discovery. Nested traversal beyond eight levels reports a limit rather than claiming
+complete worktree evidence.

@@ -18,6 +18,7 @@ final class JavaCompilerCapture {
                 || !("compile".equals(mojo.getGoal()) || "testCompile".equals(mojo.getGoal()))) return;
         var project = event.getProject();
         if (project == null || project.getBasedir() == null || event.getSession() == null) return;
+        if (CompilationCapture.skipped(event)) { CompilationCapture.failed(event); return; }
         boolean test = "testCompile".equals(mojo.getGoal());
         var config = mojo.getConfiguration() == null ? new Xpp3Dom("configuration") : new Xpp3Dom(mojo.getConfiguration());
         var evaluator = new PluginParameterExpressionEvaluator(event.getSession(), mojo);
@@ -28,6 +29,8 @@ final class JavaCompilerCapture {
         values.setProperty("execution", mojo.getExecutionId() == null ? "" : mojo.getExecutionId());
         values.setProperty("compilerPluginVersion", mojo.getVersion());
         values.setProperty("evidence", "successful_mojo");
+        values.setProperty("quarkusRest", Boolean.toString(quarkusRest(project)));
+        values.setProperty("quarkusArc", Boolean.toString(quarkus(project, Set.of("quarkus-arc"))));
         Path module = project.getBasedir().toPath().toAbsolutePath().normalize();
         String executable = value(config, "executable");
         Toolchain toolchain = null;
@@ -72,7 +75,23 @@ final class JavaCompilerCapture {
         if (home != null) inputs.add(home.resolve("release"));
         for (String source : test ? project.getTestCompileSourceRoots() : project.getCompileSourceRoots()) inputs.add(Path.of(source).resolve("module-info.java"));
         fingerprints(values, inputs);
-        KotlinCompilerCapture.write(module.resolve("target/quill-java-" + (test ? "test" : "main") + ".properties"), values);
+        CompilationCapture.finish(event, values);
+
+    }
+
+    static boolean quarkusRest(org.apache.maven.project.MavenProject project) {
+        return quarkus(project, Set.of("quarkus-rest", "quarkus-resteasy-reactive"));
+    }
+
+    static boolean quarkus(org.apache.maven.project.MavenProject project, Set<String> artifacts) {
+        boolean plugin = project.getBuildPlugins().stream().anyMatch(p ->
+                "quarkus-maven-plugin".equals(p.getArtifactId())
+                        && Set.of("io.quarkus", "io.quarkus.platform").contains(p.getGroupId())
+                        && (p.isExtensions() || p.getExecutions().stream().anyMatch(e ->
+                                e.getGoals().contains("build") || e.getGoals().contains("generate-code"))));
+        return plugin && project.getArtifacts().stream().anyMatch(a -> "io.quarkus".equals(a.getGroupId())
+                && artifacts.contains(a.getArtifactId())
+                && !"test".equals(a.getScope()));
     }
 
     static Properties settings(Xpp3Dom config, boolean test) {

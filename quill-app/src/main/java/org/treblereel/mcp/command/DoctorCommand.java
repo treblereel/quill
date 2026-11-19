@@ -1,5 +1,12 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildIntegrationInstaller;
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.CodexConfigInstaller;
+import org.treblereel.mcp.index.ProjectConfiguration;
+import org.treblereel.mcp.index.ProjectInitializer;
+import org.treblereel.mcp.index.ProjectUpdater;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -19,13 +26,15 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
+import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Static project checks by default; explicit MCP probing may refresh derived index state. */
 @Command(name = "doctor", mixinStandardHelpOptions = true,
         description = "Diagnose project integration, compiled outputs, and index freshness")
 public class DoctorCommand implements Callable<Integer> {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;
@@ -96,7 +105,7 @@ public class DoctorCommand implements Callable<Integer> {
                                 + ": " + String.join(", ", diagnostics.staleReasons()),
                         "Compile structural changes, then run an MCP request or `quill update`"));
             }
-            if (UpdateCommand.hasProjectChanges(normalized, diagnostics.database())) {
+            if (ProjectUpdater.hasProjectChanges(normalized, diagnostics.database())) {
                 checks.add(Check.warning("project_fingerprint",
                         "Compiled outputs or project inputs differ from the active index",
                         "After a successful build, run an MCP request or `quill update`"));
@@ -370,6 +379,7 @@ public class DoctorCommand implements Callable<Integer> {
         try {
             candidate = Path.of(command);
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             broken.add(client + " (invalid path: " + command + ")");
             return;
         }
@@ -389,7 +399,8 @@ public class DoctorCommand implements Callable<Integer> {
             for (int i = 0; i + 1 < args.size(); i++) {
                 if ("--tools".equals(args.get(i).asText())) return args.get(i + 1).asText();
             }
-            return "full";
+            // Without --tools the server starts with its default profile.
+            return "compact";
         } catch (IOException error) {
             return null;
         }

@@ -14,6 +14,65 @@ import org.objectweb.asm.Opcodes;
 class BytecodeSourceMapperTest {
 
     @Test
+    void mapsMovedJavaPackagesWithinTheirOwnModuleAndSourceSet(@TempDir Path project) throws Exception {
+        Path main = project.resolve("module/src/main/java/moved");
+        Path test = project.resolve("module/src/test/java/moved");
+        Path other = project.resolve("other/src/main/java/moved");
+        for (Path directory : List.of(main, test, other)) {
+            Files.createDirectories(directory);
+            Files.writeString(directory.resolve("Invoice.java"),
+                    "/* package wrong; */\npackage org.\n acme; @Deprecated class Invoice {String value=\"package fake;\";}");
+        }
+        Path classes = project.resolve("module/target/classes");
+        Path tests = project.resolve("module/target/test-classes");
+        writeClass(classes, "org/acme/Invoice", "Invoice.java");
+        writeClass(tests, "org/acme/Invoice", "Invoice.java");
+        var roots = List.of(other.getParent(), test.getParent(), main.getParent());
+        assertEquals(main.resolve("Invoice.java"), BytecodeSourceMapper.map(
+                ClassFileSnapshot.capture(List.of(classes)), roots).get("org.acme.Invoice"));
+        assertEquals(test.resolve("Invoice.java"), BytecodeSourceMapper.map(
+                ClassFileSnapshot.capture(List.of(tests)), roots).get("org.acme.Invoice"));
+    }
+
+    @Test
+    void leavesMovedJavaDuplicatesUnresolved(@TempDir Path project) throws Exception {
+        Path root = project.resolve("src/main/java");
+        for (String directory : List.of("one", "two")) {
+            Files.createDirectories(root.resolve(directory));
+            Files.writeString(root.resolve(directory).resolve("Invoice.java"), "package org.acme; class Invoice {}");
+        }
+        Path classes = project.resolve("target/classes");
+        writeClass(classes, "org/acme/Invoice", "Invoice.java");
+        assertFalse(BytecodeSourceMapper.map(ClassFileSnapshot.capture(List.of(classes)), List.of(root))
+                .containsKey("org.acme.Invoice"));
+    }
+
+    @Test
+    void retainsConventionalJavaMappingsWhenHeaderNeedsCompilerTranslation(@TempDir Path project) throws Exception {
+        Path root = project.resolve("src/main/java");
+        Files.createDirectories(root.resolve("org/acme"));
+        Files.writeString(root.resolve("org/acme/Invoice.java"), "package org." + '\\' + "u0061cme; class Invoice {}");
+        Files.writeString(root.resolve("Default.java"), "class Default {}");
+        Path classes = project.resolve("target/classes");
+        writeClass(classes, "org/acme/Invoice", "Invoice.java");
+        writeClass(classes, "Default", "Default.java");
+        var mapping = BytecodeSourceMapper.map(ClassFileSnapshot.capture(List.of(classes)), List.of(root));
+        assertEquals(root.resolve("org/acme/Invoice.java"), mapping.get("org.acme.Invoice"));
+        assertEquals(root.resolve("Default.java"), mapping.get("Default"));
+    }
+
+    @Test
+    void doesNotMapJavaWithWrongDeclaredPackageAtConventionalPath(@TempDir Path project) throws Exception {
+        Path root = project.resolve("src/main/java");
+        Files.createDirectories(root.resolve("org/acme"));
+        Files.writeString(root.resolve("org/acme/Invoice.java"), "package other; class Invoice {}");
+        Path classes = project.resolve("target/classes");
+        writeClass(classes, "org/acme/Invoice", "Invoice.java");
+        assertFalse(BytecodeSourceMapper.map(ClassFileSnapshot.capture(List.of(classes)), List.of(root))
+                .containsKey("org.acme.Invoice"));
+    }
+
+    @Test
     void mapsShortenedPackageLayoutAndIgnoresFakePackageInComments(@TempDir Path project) throws Exception {
         Path classes = project.resolve("build/classes/kotlin/main");
         Path root = project.resolve("src/main/kotlin");

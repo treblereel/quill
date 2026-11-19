@@ -13,12 +13,8 @@ import org.jetbrains.kotlin.cli.common.messages.GroupingMessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
-import org.jetbrains.kotlin.cli.pipeline.ArgumentsPipelineArtifact
-import org.jetbrains.kotlin.cli.pipeline.jvm.JvmConfigurationPipelinePhase
 import org.jetbrains.kotlin.cli.pipeline.jvm.JvmFrontendPipelinePhase
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
-import org.jetbrains.kotlin.config.Services
-import org.jetbrains.kotlin.cli.common.diagnosticsCollector
 import org.jetbrains.kotlin.fir.*
 import org.jetbrains.kotlin.fir.backend.jvm.FirJvmTypeMapper
 import org.jetbrains.kotlin.fir.declarations.*
@@ -37,15 +33,17 @@ import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
 import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
-import org.jetbrains.kotlin.util.PerformanceManagerImpl
 
-/** Runs the compiler's K2 frontend only. FIR never reaches IR/code generation. */
+/**
+ * Runs the compiler's K2 frontend only. FIR never reaches IR/code generation.
+ *
+ * Shared by every worker module; what differs between compiler versions lives in each module's [K2Compat].
+ */
 object K2Analyzer {
     private val json = ObjectMapper()
     @JvmStatic fun response(status: String): ObjectNode = json.createObjectNode().apply {
         put("status", status); put("backend", "kotlin_k2_fir")
-        put("language_version", "2.4"); put("compiler_version", "2.4.21")
+        put("language_version", K2Compat.LANGUAGE_VERSION); put("compiler_version", K2Compat.COMPILER_VERSION)
     }
 
     private data class AnalyzedFile(val file: FirFile, val session: FirSession)
@@ -89,7 +87,7 @@ object K2Analyzer {
             if (!request.path("plugin_classpath").isEmpty || !request.path("plugin_options").isEmpty) {
                 if (!request.path("allow_compiler_plugins").asBoolean(false)) return response("compiler_plugins_disabled")
                 val compilerVersion = request.path("compilerVersion").asText()
-                if (compilerVersion != "2.4.21" && !compilerVersion.startsWith("2.4.21-")) return response("compiler_plugin_version_mismatch")
+                if (compilerVersion != K2Compat.COMPILER_VERSION && !compilerVersion.startsWith(K2Compat.COMPILER_VERSION + "-")) return response("compiler_plugin_version_mismatch")
             }
             val inputs = timings.measure("capture_before") { CompilerInputs.capture(request) }
             key = CacheKey(inputs.moduleHome(), inputs.sourceSet())
@@ -140,7 +138,7 @@ object K2Analyzer {
                 jdkHome = inputs.jdkHome()
                 kotlinHome = inputs.moduleHome()
                 noStdlib = true; noReflect = true
-                languageVersion = request.path("languageVersion").asText("2.4")
+                languageVersion = request.path("languageVersion").asText(K2Compat.LANGUAGE_VERSION)
                 apiVersion = request.path("apiVersion").asText(languageVersion)
                 jvmTarget = request.path("jvmTarget").asText("1.8")
                 val extras = request.path("compiler_arguments").map { it.asText() }
@@ -171,26 +169,23 @@ object K2Analyzer {
                 allowAnyScriptsInSourceRoots = !disableDefaultScriptingPlugin
                 useFirLT = false
             }
-            val configuration = timings.measure("configuration") {
-                JvmConfigurationPipelinePhase.executePhase(ArgumentsPipelineArtifact(
-                    arguments, Services.EMPTY, disposable, messages, PerformanceManagerImpl(JvmPlatforms.defaultJvmPlatform, "quill")))
-            }
             fun invalid(): Snapshot {
                 messages.flush()
-                return Snapshot(inputs, null, emptyMap(), "analysis_error", revision, arguments.languageVersion ?: "2.4", errors.toList())
+                return Snapshot(inputs, null, emptyMap(), "analysis_error", revision, arguments.languageVersion ?: K2Compat.LANGUAGE_VERSION, errors.toList())
             }
+            val configuration = timings.measure("configuration") { K2Compat.configure(arguments, disposable, messages) } ?: return invalid()
             if (messages.hasErrors()) return invalid()
             val frontend = timings.measure("frontend") { JvmFrontendPipelinePhase.executePhase(configuration) } ?: return invalid()
-            if (configuration.configuration.diagnosticsCollector.hasErrors || messages.hasErrors()) {
-                configuration.configuration.diagnosticsCollector.diagnostics.filter { it.severity == org.jetbrains.kotlin.diagnostics.Severity.ERROR }
-                    .take(5).forEach { errors.add(it.renderMessage().take(2048)) }
+            val diagnostics = K2Compat.errorDiagnostics(configuration)
+            if (diagnostics.isNotEmpty() || messages.hasErrors()) {
+                diagnostics.take(5).forEach { errors.add(it.take(2048)) }
                 return invalid()
             }
-            val files = frontend.frontendOutput.outputs.flatMap { output -> output.fir.map { file ->
-                File(file.sourceFile?.path ?: "").absoluteFile.normalize().path to AnalyzedFile(file, output.session)
+            val files = K2Compat.analyzedFiles(frontend).flatMap { (firFiles, session) -> firFiles.map { file ->
+                File(file.sourceFile?.path ?: "").absoluteFile.normalize().path to AnalyzedFile(file, session)
             } }.toMap()
             retained = true
-            return Snapshot(inputs, disposable, files, null, revision, arguments.languageVersion ?: "2.4")
+            return Snapshot(inputs, disposable, files, null, revision, arguments.languageVersion ?: K2Compat.LANGUAGE_VERSION)
         } finally { if (!retained) Disposer.dispose(disposable) }
     }
 
@@ -210,8 +205,8 @@ object K2Analyzer {
             override fun visitElement(element: FirElement) {
                 val candidate = when (element) {
                     is FirResolvedNamedReference -> element.resolvedSymbol
-                    is FirResolvedQualifier -> element.qualifierSymbol
-                    is FirResolvedTypeRef -> element.toRegularClassSymbol(session)
+                    is FirResolvedQualifier -> K2Compat.qualifierSymbol(element)
+                    is FirResolvedTypeRef -> K2Compat.classSymbol(element, session)
                     else -> null
                 }
                 val source = element.source
@@ -226,7 +221,7 @@ object K2Analyzer {
         val raw = target ?: return response("unresolved")
         val symbol = if (raw is FirCallableSymbol<*>) raw.unwrapFakeOverrides() else raw
         val declaration = symbol.fir
-        if (declaration is FirValueParameter || declaration.isLocal) return response("local")
+        if (K2Compat.isLocal(symbol, declaration)) return response("local")
         val result = response("resolved")
         if (symbol is FirFunctionSymbol<*>) {
             val function = declaration as FirFunction

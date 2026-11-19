@@ -1,18 +1,20 @@
 package org.treblereel.mcp.command;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.Callable;
-import org.treblereel.mcp.mcp.ReadOnlyToolNames;
+import org.treblereel.mcp.mcp.server.ReadOnlyToolNames;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceRepositoryStateStore;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
+import org.treblereel.mcp.core.Json;
 
 @Command(name = "permissions", mixinStandardHelpOptions = true,
         description = "Inspect or manage Quill's local Claude tool permissions",
@@ -56,7 +58,7 @@ public final class ClientPermissionsCommand implements Callable<Integer> {
             for (int i = 0; i < targets.size(); i++) {
                 Path target = targets.get(i);
                 if (operation.equals("grant") && !before.get(i).missing_tools().isEmpty()
-                        && !ClaudeSettingsInstaller.allowTools(target, ReadOnlyToolNames.all())) {
+                        && !ClaudeSettingsInstaller.allowTools(target, List.of(ReadOnlyToolNames.SERVER_RULE))) {
                     throw new java.io.IOException("Could not grant permissions in " + target);
                 }
                 if (operation.equals("revoke") && Files.exists(target.resolve(".claude/quill-permissions.json"))
@@ -68,10 +70,10 @@ public final class ClientPermissionsCommand implements Callable<Integer> {
                     : targets.stream().map(ClaudePermissionStatus::inspect).toList();
             var out = spec.commandLine().getOut();
             if (json) {
-                var document = new ObjectMapper().createObjectNode();
+                var document = Json.MAPPER.createObjectNode();
                 document.put("schema_version", 1);
                 document.put("operation", operation);
-                document.set("projects", new ObjectMapper().valueToTree(reports));
+                document.set("projects", Json.MAPPER.valueToTree(reports));
                 out.println(document);
             } else {
                 for (var report : reports) {

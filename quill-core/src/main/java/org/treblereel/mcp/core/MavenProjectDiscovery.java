@@ -14,6 +14,7 @@ import org.apache.maven.model.Model;
 import org.apache.maven.model.Profile;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Reads the raw Maven reactor structure without embedding Maven itself. */
 public final class MavenProjectDiscovery {
@@ -87,6 +88,7 @@ public final class MavenProjectDiscovery {
         try (Reader reader = Files.newBufferedReader(pom, StandardCharsets.UTF_8)) {
             return new MavenXpp3Reader().read(reader);
         } catch (IOException | XmlPullParserException | RuntimeException e) {
+            QuillLog.swallowed(e);
             return null;
         }
     }
@@ -99,6 +101,7 @@ public final class MavenProjectDiscovery {
         try {
             path = base.resolve(resolved).normalize();
         } catch (RuntimeException e) {
+            QuillLog.swallowed(e);
             return null;
         }
         if (Files.isRegularFile(path) && path.getFileName().toString().endsWith(".xml")) {

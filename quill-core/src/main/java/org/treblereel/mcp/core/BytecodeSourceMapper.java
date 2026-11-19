@@ -13,9 +13,13 @@ import java.util.stream.Stream;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Opcodes;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Maps JVM classes to sources using the compiler-emitted SourceFile attribute. */
 final class BytecodeSourceMapper {
+    private static final String JAVA_IDENTIFIER = "\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}*";
+    private static final java.util.regex.Pattern JAVA_PACKAGE = java.util.regex.Pattern.compile(
+            "\\bpackage\\s+(" + JAVA_IDENTIFIER + "(?:\\s*\\.\\s*" + JAVA_IDENTIFIER + ")*)\\s*;");
 
     private BytecodeSourceMapper() {}
 
@@ -58,6 +62,7 @@ final class BytecodeSourceMapper {
                     ? sourceFile[0] : packagePath + "/" + sourceFile[0];
             return new ClassSource(className, relative);
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             // The regular indexer reports malformed bytecode; source mapping stays best effort.
             return null;
         }
@@ -83,6 +88,12 @@ final class BytecodeSourceMapper {
                                     String pkg = KotlinSourceText.packageName(Files.readString(path));
                                     relative = (pkg.isEmpty() ? "" : pkg.replace('.', '/') + "/")
                                             + path.getFileName();
+                                } catch (IOException ignored) { return; }
+                            } else {
+                                try {
+                                    var declaration = JAVA_PACKAGE.matcher(KotlinSourceText.code(Files.readString(path)));
+                                    if (declaration.find()) relative = declaration.group(1).replaceAll("\\s", "")
+                                            .replace('.', '/') + "/" + path.getFileName();
                                 } catch (IOException ignored) { return; }
                             }
                             result.computeIfAbsent(relative, key -> new ArrayList<>()).add(path);

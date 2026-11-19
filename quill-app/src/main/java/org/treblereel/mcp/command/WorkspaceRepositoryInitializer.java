@@ -1,5 +1,10 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildIntegrationInstaller;
+import org.treblereel.mcp.index.ProjectConfiguration;
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;

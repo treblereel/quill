@@ -30,6 +30,7 @@ import org.eclipse.aether.util.repository.DefaultAuthenticationSelector;
 import org.eclipse.aether.util.repository.DefaultMirrorSelector;
 import org.eclipse.aether.util.repository.DefaultProxySelector;
 import org.treblereel.mcp.QuillTopCommand;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** One pinned compiler runtime for every build system. Only preparation performs resolution. */
 public final class KotlinRuntime {
@@ -78,7 +79,7 @@ public final class KotlinRuntime {
     public static List<Path> available(String selected) {
         if (selectVersion(selected) == null) return List.of();
         try { return read(directory(cacheRoot(), selected), selected); }
-        catch (IOException | RuntimeException failure) { return List.of(); }
+        catch (IOException | RuntimeException failure) { QuillLog.swallowed(failure); return List.of(); }
     }
 
     static String workerIdentity() throws IOException { return workerIdentity(version()); }
@@ -186,7 +187,7 @@ public final class KotlinRuntime {
             }
             if (!paths.getFirst().equals(directory.resolve("worker.jar"))) return List.of();
             return List.copyOf(paths);
-        } catch (RuntimeException malformed) { return List.of(); }
+        } catch (RuntimeException malformed) { QuillLog.swallowed(malformed); return List.of(); }
     }
 
     private static void atomicWrite(Path destination, byte[] bytes) throws IOException {

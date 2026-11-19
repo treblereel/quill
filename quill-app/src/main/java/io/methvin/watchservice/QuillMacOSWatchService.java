@@ -36,6 +36,7 @@ public final class QuillMacOSWatchService extends MacOSXListeningWatchService {
         Pointer queue();
         FSEventStreamRef create(Path root, CarbonAPI.FSEventStreamCallback callback, Pointer queue);
         boolean start(FSEventStreamRef stream);
+        void flush(FSEventStreamRef stream);
         void stop(FSEventStreamRef stream);
         void invalidate(FSEventStreamRef stream);
         void drain(Pointer queue);
@@ -93,6 +94,12 @@ public final class QuillMacOSWatchService extends MacOSXListeningWatchService {
         for (var key : keys) { key.cancel(); key.signal(); }
     }
 
+    public synchronized void flushPendingEvents() {
+        checkOpen();
+        for (var stream : streams) platform.flush(stream.ref());
+        platform.drain(queue);
+    }
+
     @Override public synchronized void close() {
         if (disposed) return;
         disposed = true; super.close();
@@ -107,6 +114,7 @@ public final class QuillMacOSWatchService extends MacOSXListeningWatchService {
     public interface EventsAPI extends CarbonAPI {
         void FSEventStreamSetDispatchQueue(FSEventStreamRef stream, Pointer queue);
         void CFRelease(Pointer value);
+        void FSEventStreamFlushSync(FSEventStreamRef stream);
     }
     public interface DispatchAPI extends Library {
         Pointer dispatch_queue_create(String label, Pointer attributes);
@@ -137,6 +145,7 @@ public final class QuillMacOSWatchService extends MacOSXListeningWatchService {
             } finally { api.CFRelease(paths.getPointer()); api.CFRelease(string.getPointer()); }
         }
         public boolean start(FSEventStreamRef stream) { return NativeLibraries.EVENTS.FSEventStreamStart(stream); }
+        public void flush(FSEventStreamRef stream) { NativeLibraries.EVENTS.FSEventStreamFlushSync(stream); }
         public void stop(FSEventStreamRef stream) { NativeLibraries.EVENTS.FSEventStreamStop(stream); }
         public void invalidate(FSEventStreamRef stream) { NativeLibraries.EVENTS.FSEventStreamInvalidate(stream); }
         public void drain(Pointer queue) { NativeLibraries.DISPATCH.dispatch_sync_f(queue, null, NativeLibraries.BARRIER); }

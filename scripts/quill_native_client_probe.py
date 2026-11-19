@@ -156,7 +156,8 @@ def main():
             capture = {"version": loop.run([client, "--version"], project).stdout.strip()}
             report["clients"][client] = capture
             scope = "Work only in this fixture. Do not access credentials, other projects, " \
-                    "or unrelated services. Do not delegate. "
+                    "or unrelated services. Do not delegate. Do not copy or clone the fixture " \
+                    "or start your own code-analysis servers; use only configured tools. "
             smoke = scope + "Assess the change workflow for org.example.GreetingService: " + \
                     loop.CHANGE + ". Do not edit or execute build commands. " \
                     "Return phase, primary action and verified from current tool evidence."

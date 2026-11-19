@@ -189,6 +189,13 @@ class SpringResolverTest {
     }
 
     @Test
+    void everyBeanRecordsThatSpringDiscoveredIt() {
+        var result = SpringResolver.resolve(index);
+        assertFalse(result.beans().isEmpty());
+        assertTrue(result.beans().stream().allMatch(BeanRecord::spring), result.beans().toString());
+    }
+
+    @Test
     void scopeAnnotationHonored() {
         var result = SpringResolver.resolve(index);
         var requestContext = result.beans().stream()
@@ -376,7 +383,7 @@ class SpringResolverTest {
                 candidate.disposition()
                         == org.treblereel.mcp.model.CandidateDisposition.EXCLUDED));
         assertTrue(r.trace().candidates().stream().allMatch(candidate ->
-                candidate.reason().equals("QUALIFIER_MISMATCH")));
+                candidate.reason() == ResolutionReason.QUALIFIER_MISMATCH));
     }
 
     @Test
@@ -389,7 +396,7 @@ class SpringResolverTest {
         var r = SpringResolver.resolveByType("com.Iface", List.of("@Default"), candidates);
         assertEquals(2, r.beanId());
         assertFalse(r.isAmbiguous());
-        assertEquals("PRIMARY_CANDIDATE", r.trace().candidates().stream()
+        assertEquals(ResolutionReason.PRIMARY_CANDIDATE, r.trace().candidates().stream()
                 .filter(candidate -> candidate.beanId() == 2)
                 .findFirst().orElseThrow().reason());
     }

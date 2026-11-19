@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import org.treblereel.mcp.core.Json;
 
 /** Reads and atomically publishes workspace configuration. */
 public final class WorkspaceManifestStore {
@@ -18,7 +19,7 @@ public final class WorkspaceManifestStore {
     public static final String DIRECTORY = ".quill-workspace";
     public static final String MANIFEST = "workspace.json";
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final List<String> DEFAULT_EXCLUDES = List.of(
             ".git", ".quill", ".quill-workspace", "target", "build", "node_modules");
 

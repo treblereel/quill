@@ -39,25 +39,18 @@ class WorktreeSnapshotCacheTest {
         assertEquals(2, inspections.get());
     }
 
-    @Test
-    void expiredSnapshotIsServedWhileOneRefreshRuns() {
-        AtomicLong clock = new AtomicLong();
-        AtomicInteger inspections = new AtomicInteger();
-        List<Runnable> refreshes = new ArrayList<>();
-        WorktreeSnapshotCache cache = new WorktreeSnapshotCache(
-                Duration.ofMillis(500), ignored -> snapshot("commit-" + inspections.incrementAndGet()),
-                clock::get, refreshes::add);
-
-        WorktreeInspector.Snapshot first = cache.get(tempDir);
-        clock.set(Duration.ofMillis(500).toNanos());
-        for (int i = 0; i < 16; i++) {
-            assertSame(first, cache.get(tempDir));
-        }
-
-        assertEquals(1, inspections.get());
-        assertEquals(1, refreshes.size());
-        refreshes.getFirst().run();
-        assertEquals("commit-2", cache.get(tempDir).currentCommit());
+    @Test void expiredSnapshotRefreshesBeforeItCanClaimFreshEvidence() {
+        AtomicLong clock=new AtomicLong();AtomicInteger inspections=new AtomicInteger();
+        var cache=new WorktreeSnapshotCache(Duration.ofMillis(500),ignored->snapshot("commit-"+inspections.incrementAndGet()),clock::get);
+        assertEquals("commit-1",cache.get(tempDir).currentCommit());clock.set(Duration.ofMillis(500).toNanos());
+        assertEquals("commit-2",cache.get(tempDir).currentCommit());assertEquals(2,inspections.get());
+    }
+    @Test void symlinkAndCanonicalRootUseTheSameInvalidationKey() throws Exception {
+        Path link=tempDir.resolve("alias");Path root=java.nio.file.Files.createDirectory(tempDir.resolve("repo"));
+        java.nio.file.Files.createSymbolicLink(link,root);
+        AtomicInteger inspections=new AtomicInteger();
+        var cache=new WorktreeSnapshotCache(Duration.ofSeconds(1),ignored->{inspections.incrementAndGet();return snapshot("value");},System::nanoTime);
+        cache.get(link);cache.get(root);assertEquals(1,inspections.get());cache.invalidate(link);cache.get(root);assertEquals(2,inspections.get());
     }
 
     @Test

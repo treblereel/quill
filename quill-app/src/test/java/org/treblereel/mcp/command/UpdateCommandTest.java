@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectUpdater;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,10 +28,10 @@ class UpdateCommandTest {
             Path stale = database(false);
             Path compiled = database(true);
 
-            assertTrue(UpdateCommand.requiresPostCompileRefresh(project, stale),
+            assertTrue(ProjectUpdater.requiresPostCompileRefresh(project, stale),
                     "a successful build must clear stale structural metadata even when the "
                             + "compiled-class fingerprint did not change");
-            assertFalse(UpdateCommand.requiresPostCompileRefresh(project, compiled),
+            assertFalse(ProjectUpdater.requiresPostCompileRefresh(project, compiled),
                     "an already compiled snapshot does not require a metadata-only refresh");
         }
     }

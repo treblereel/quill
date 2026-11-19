@@ -167,6 +167,11 @@ public final class KotlinGradleCapture {
                         output.parentFile.mkdirs()
                         def previous = new Properties()
                         if (output.isFile()) output.withReader('UTF-8') { reader -> previous.load(reader) }
+                        if (previous.getProperty('compilationProtocol') == '1') {
+                            previous.each { key, value -> if (key.toString().startsWith('compilation') || key.toString().startsWith('compiled') || key == 'buildVariantSha256') values.setProperty(key.toString(), value.toString()) }
+                            values.setProperty('evidence', previous.getProperty('evidence'))
+                            values.setProperty('sourceSet', previous.getProperty('sourceSet'))
+                        }
                         if (previous == values) return
                         def temporary = File.createTempFile('.kotlin-settings-', '.tmp', output.parentFile)
                         try {

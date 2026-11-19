@@ -1,0 +1,2800 @@
+{
+  "schema_version": 1,
+  "kind": "project_agnostic_cdi_quarkus_scenario_templates",
+  "name": "CDI / Quarkus: 50 transferable user scenarios",
+  "base_revision": "572fe89a612d53d7660541bc5bbd43ed246a545c",
+  "state": "definitions_only",
+  "scenario_count": 50,
+  "categories": [
+    {
+      "id": "orientation",
+      "title": "Устройство приложения",
+      "count": 5
+    },
+    {
+      "id": "injection",
+      "title": "Разрешение инъекций",
+      "count": 5
+    },
+    {
+      "id": "qualifiers",
+      "title": "Qualifiers и выбор реализации",
+      "count": 5
+    },
+    {
+      "id": "producers",
+      "title": "Producers и lifecycle",
+      "count": 5
+    },
+    {
+      "id": "activation",
+      "title": "Условия и динамические beans",
+      "count": 5
+    },
+    {
+      "id": "crosscutting",
+      "title": "Interceptors, транзакции и события",
+      "count": 5
+    },
+    {
+      "id": "entrypoints",
+      "title": "Точки входа Quarkus",
+      "count": 5
+    },
+    {
+      "id": "configuration",
+      "title": "Конфигурация",
+      "count": 5
+    },
+    {
+      "id": "refactoring",
+      "title": "Радиус рефакторинга",
+      "count": 5
+    },
+    {
+      "id": "verification",
+      "title": "Тесты и изменение кода",
+      "count": 5
+    }
+  ],
+  "binding_parameters": {
+    "project": "Identity of the target checkout, never an absolute path in the user prompt.",
+    "module": "One production module or bounded package/source scope, chosen before model execution.",
+    "bean": "A discovered class bean, identified by qualified symbol; not restricted to Singleton.",
+    "external_type": "A dependency-provided or extension-provided bean type.",
+    "field_site": "Qualified owner, field name and file location of a real field injection.",
+    "constructor_site": "Qualified owner and constructor signature of a real constructor injection.",
+    "initializer_site": "Qualified owner and initializer method signature.",
+    "profile": "Pinned build/test/runtime profile in the case context.",
+    "other_profile": "Second actual supported profile, selected before running.",
+    "config_context": "Sanitized, explicit profile and config-source context with values or redactions.",
+    "new_config_key": "Collision-free hypothetical replacement, unrelated to a known answer.",
+    "new_method_name": "Collision-free replacement preserving method semantics.",
+    "new_qualifier": "Existing compatible qualifier or isolated hypothetical annotation contract.",
+    "new_scope": "A supported CDI scope distinct from the selected bean scope.",
+    "property_value": "Explicit sanitized alternate controlling value.",
+    "typed_site": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "qualified_site": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "default_site": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "lookup_site": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "alternative_site": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "producer_method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "producer_field": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "disposer_method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "conditional_bean": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "property_bean": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "runtime_lookup": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "synthetic_type": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "async_method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "intercepted_method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "transactional_method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "event_site": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "decorated_type": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "cycle_root": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "endpoint": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "secured_endpoint": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "scheduled_method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "message_handler": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "startup_hook": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "config_key": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "config_mapping": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "qualified_bean": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "interface": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "change_target": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "test_class": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "generated_type": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "rename_method": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable.",
+    "flow_anchor": "Qualified symbol/site selected from the target project satisfying this scenario capability; identity includes signature/location where applicable."
+  },
+  "protocol": {
+    "purpose": "Project-agnostic user-task benchmark definitions; no assumptions about preferred Quill tools or prompt-specific routes.",
+    "status": "templates_unbound; not an executable scored project suite until binding and independent oracle are frozen",
+    "project_binding": {
+      "required": [
+        "project_revision",
+        "dirty_source_patch_hash",
+        "source_and_resource_manifest",
+        "build_input_and_dependency_lock_hashes",
+        "language_and_toolchain",
+        "framework_and_CDI_versions",
+        "annotation_namespace",
+        "profiles",
+        "redacted_config_contexts",
+        "capabilities_with_evidence",
+        "case_bindings",
+        "oracle_manifest_hash",
+        "selection_seed"
+      ],
+      "selection": "Build the eligible anchor inventory independently of Quill and model runs. Use stable seeded selection stratified by scope, kind, module, annotation complexity and graph size; record the entire candidate pool and exclusions. No swapping after seeing outcomes.",
+      "scope": "Apply to Maven or Gradle, single or multi-module, Java/Kotlin as present. Honor the project CDI version and javax/jakarta namespace; do not assume latest Quarkus defaults.",
+      "no_universal_feature_claim": "All 50 definitions transfer; not all 50 features exist in every application. Publish applicable/50 and blocked/50. No fabricated anchors or production mutations to fill absent features.",
+      "oracle_separation": "Keep full oracle, selectors, expected_fields and scoring private. Only rendered user prompt and neutral public context reach the tested model. Compile a separate bound suite rather than passing this template document to the old runner.",
+      "refuse_unbound": true
+    },
+    "comparison": {
+      "arms": [
+        "without_quill",
+        "with_native_quill"
+      ],
+      "same_inputs": [
+        "project snapshot",
+        "public prompt wording",
+        "model and reasoning settings",
+        "CLI version",
+        "available ordinary tools",
+        "initial public instructions",
+        "sanitized environment"
+      ],
+      "without_quill": "No MCP, Quill index, managed Quill instructions/hooks, oracle files, prior-run helpers or shared mutable CLI homes. Same source, normal build artifacts and standard toolchain are available.",
+      "with_native_quill": "Wait for full index readiness and capture its source/compiled hashes, warnings and build state. Use real end-user opt-in hooks and direct tools; do not inject handpicked facts. One native MCP initialization per CLI session; no restart/prewarm between linked turns.",
+      "isolation": "Fresh disposable checkouts and private CLI/session/config/helper directories per arm and repeat. Freeze original config and restore it. Session histories never cross arms. Model-generated temporary scripts never cross cases.",
+      "runner": "No forced tool calls, question-dependent schema catalogs, answer projection, hidden evidence queries, fact/format repair prompts or passing gold answers. Record native tool outputs unchanged.",
+      "order": "Freeze randomized balanced arm order before running; planned repeats remain attempts, not retries selected for best result. No paid run is authorized by this definition."
+    },
+    "prompt_robustness": {
+      "languages": [
+        "ru",
+        "en"
+      ],
+      "rule": "Two natural wordings per independent task; use the same chosen variant in both paired arms. Reserve additional independent paraphrases as holdout before patch work. Do not alter Quill to recognize these exact strings.",
+      "identities": "Mix short unambiguous names, fully qualified names, overloaded method signatures and truly ambiguous names via preflight strata. A clarification is correct only for actual ambiguity; both arms receive the same clarification information.",
+      "no_magic_output": "Do not require boilerplate English text, .class files under target/classes, particular JSON keys or a literal tool name merely to activate prefetch."
+    },
+    "sessions": {
+      "independent": "CQ-001..CQ-048 each starts a fresh session; CQ-049 a fresh disposable coding session. Selectors may bind the same symbol, but never reuse prior conversation or helpers.",
+      "linked": "CQ-050 is six turns on one connected flow. One MCP/session, no clearing/reindexing between turns. All follow-ups prewritten and identical in paired arms, with anchors from the same flow. Russian follow-ups are the initial linked language; English independent prompts are supplied, not a claim of an already translated linked holdout.",
+      "count": "50 scenario definitions; at most 55 user turns per arm per repeat if all are applicable, because CQ-050 has six turns. Not 50 independent prompts.",
+      "cache": "Record provider cache creation/read and raw request prefix fingerprints. Cold/warm are separate strata; AB/BA alone does not prove equal cache state. Do not compare independent latency to amortized linked latency."
+    },
+    "scoring": {
+      "statuses": [
+        "applicable",
+        "not_applicable",
+        "blocked_preflight",
+        "blocked_oracle",
+        "completed",
+        "failed_transport",
+        "failed_answer"
+      ],
+      "correctness": "Frozen per-field independent facts; exact symbol/signature identity, set precision/recall and explicit evidence boundaries. Whole-case correct requires all mandatory claims and no conflicting claim. Parse presentation separately; method-name questions may accept parentheses, signature questions remain strict.",
+      "negative_cases": "An empty proven result is valid. Unknown is correct only when the oracle marks a specific unknown and the answer explains it; generic uncertainty is not a free pass.",
+      "oracle_readiness": "Each bound case needs reviewed expected values, allowed alternatives, disallowed overclaims and evidence locations before model calls. Runtime questions without a safe independent oracle are blocked, not accepted from plausible reasoning.",
+      "patch": "CQ-049 additionally requires patch application on the frozen checkout, production/test compilation and focused behavior tests; passing the same tests before/after is insufficient if changed behavior is untested. Never mutate production repository during case binding.",
+      "failures": "Save all started attempts, partial responses and billable usage. Never replace a failed answer or transport incident silently; incomplete usage blocks unconditional acceptance.",
+      "decision": "Compare clients, cache strata and independent/linked tracks separately. Require no correctness drop and no increase of total or uncached input tokens; report output separately. No overall acceptance if any mandatory stratum is missing/unknown. Publish per-case regressions even if aggregate passes.",
+      "efficiency": "Token factor = sum(input cached+new + output) without / same sum with; uncached factor computed separately. Cost uses actual version-pinned rates for cache read/write/new input/output or actual billed usage; unknown cost is null. Never average per-case factors or multiply gains from different experiments.",
+      "time": "Report index preparation, CLI/MCP readiness, model time and total wall time separately; end-to-end includes readiness. Source-only receives equivalent ordinary build preparation.",
+      "target": "4x is a hypothesis, not a selection criterion for removing difficult or unfavorable cases."
+    },
+    "sources": [
+      {
+        "url": "https://quarkus.io/guides/cdi-reference/",
+        "purpose": "Version-specific discovery, supported features, unused bean removal, types, qualifiers and scopes."
+      },
+      {
+        "url": "https://quarkus.io/guides/cdi-integration/",
+        "purpose": "Deployment phases, extensions and synthetic components."
+      },
+      {
+        "url": "https://quarkus.io/guides/getting-started-testing/",
+        "purpose": "Test contexts, mocks and profiles."
+      },
+      {
+        "url": "https://quarkus.io/guides/config-reference/",
+        "purpose": "Config contexts, profiles and precedence."
+      }
+    ],
+    "source_policy": "Guides checked 2026-10-28. Links are conceptual references to latest docs; bind rules to the target project version before oracle creation."
+  },
+  "tasks": [
+    {
+      "id": "CQ-001",
+      "category": "orientation",
+      "title": "Модули и запуск",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "repository",
+      "anchor": "project",
+      "parameters": [],
+      "prompts": {
+        "ru": "Какие модули образуют приложение, где его точка сборки и какие зависимости включают CDI/Quarkus?",
+        "en": "Map the application modules, build entry points and dependencies enabling CDI or Quarkus."
+      },
+      "expected_fields": [
+        "modules",
+        "build_entrypoints",
+        "framework_version",
+        "extensions"
+      ],
+      "oracle": {
+        "derivation": "Разобрать build descriptors и разрешенное дерево зависимостей; сверить effective build/BOM, отделить application от deployment/test modules.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible repository anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-002",
+      "category": "orientation",
+      "title": "Beans в ограниченной области",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "bean_inventory",
+      "anchor": "module",
+      "parameters": [
+        "module"
+      ],
+      "prompts": {
+        "ru": "Какие beans объявлены в {module}? Раздели классы, producer-методы и producer-поля, укажи их scope.",
+        "en": "List the beans declared in {module}, separating classes, producer methods and producer fields, with their scopes."
+      },
+      "expected_fields": [
+        "beans",
+        "bean_kind",
+        "effective_scope",
+        "scope_boundary"
+      ],
+      "oracle": {
+        "derivation": "Compiler/annotation inventory в фиксированном модуле; применить discovery rules версии приложения, сверить augmentation metadata при наличии.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible bean_inventory anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-003",
+      "category": "orientation",
+      "title": "Почему класс является bean",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "class_bean",
+      "anchor": "bean",
+      "parameters": [
+        "bean"
+      ],
+      "prompts": {
+        "ru": "Почему {bean} попадает в CDI: какие аннотации, stereotypes или правила discovery это обеспечивают?",
+        "en": "Explain why {bean} is discovered as a CDI bean, including stereotypes and framework discovery rules."
+      },
+      "expected_fields": [
+        "discovery_reasons",
+        "stereotypes",
+        "effective_scope"
+      ],
+      "oracle": {
+        "derivation": "Раскрыть meta-annotations транзитивно; проверить bean archive/discovery и версионные правила, не считать любой Java-класс bean.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible class_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-004",
+      "category": "orientation",
+      "title": "Bean из зависимости",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "external_bean",
+      "anchor": "external_type",
+      "parameters": [
+        "external_type"
+      ],
+      "prompts": {
+        "ru": "Откуда берётся bean типа {external_type}: какой dependency или extension его предоставляет и как он становится доступен приложению?",
+        "en": "Trace the origin of the {external_type} bean to its dependency or extension and explain how it becomes available."
+      },
+      "expected_fields": [
+        "artifact",
+        "registration_mechanism",
+        "evidence_level"
+      ],
+      "oracle": {
+        "derivation": "Зафиксировать dependency coordinates, проверить JAR/source metadata и extension registration; classpath presence само по себе недостаточно.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible external_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-005",
+      "category": "orientation",
+      "title": "Удаление неиспользуемых beans",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "quarkus_bean_removal",
+      "anchor": "bean",
+      "parameters": [
+        "bean"
+      ],
+      "prompts": {
+        "ru": "Может ли Quarkus удалить {bean} при сборке? Покажи основания сохранения или удаления и ограничения такого вывода.",
+        "en": "Could Quarkus remove {bean} as unused? Give retention or removal evidence and the limits of that conclusion."
+      },
+      "expected_fields": [
+        "retention_roots",
+        "removal_state",
+        "dynamic_lookup_limits"
+      ],
+      "oracle": {
+        "derivation": "Сверить remove-unused-beans config и build diagnostics/removal metadata для фиксированного профиля; искать programmatic lookup и unremovable roots.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible quarkus_bean_removal anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-006",
+      "category": "injection",
+      "title": "Разрешение поля",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "field_injection",
+      "anchor": "field_site",
+      "parameters": [
+        "field_site",
+        "profile"
+      ],
+      "prompts": {
+        "ru": "Что будет внедрено в {field_site} при профиле {profile}? Покажи кандидатов и почему выбран именно этот bean.",
+        "en": "Which bean satisfies {field_site} under {profile}, and why are the other candidates excluded?"
+      },
+      "expected_fields": [
+        "required_type",
+        "qualifiers",
+        "candidates",
+        "resolution",
+        "exclusions"
+      ],
+      "oracle": {
+        "derivation": "Compiler type assignability, qualifiers, alternatives и activation; сверить deployment validation или отдельный container probe.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible field_injection anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-007",
+      "category": "injection",
+      "title": "Инъекция конструктора",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "constructor_injection",
+      "anchor": "constructor_site",
+      "parameters": [
+        "constructor_site"
+      ],
+      "prompts": {
+        "ru": "Как CDI создаёт {constructor_site} и какие beans удовлетворяют каждому параметру конструктора?",
+        "en": "How does CDI construct {constructor_site}, and which beans satisfy each constructor parameter?"
+      },
+      "expected_fields": [
+        "constructor_signature",
+        "parameters",
+        "resolutions"
+      ],
+      "oracle": {
+        "derivation": "Прочитать все конструкторы и их parameter annotations; применить правила implicit injection точной версии; проверить контейнером при неоднозначности.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible constructor_injection anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-008",
+      "category": "injection",
+      "title": "Initializer method",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "initializer_injection",
+      "anchor": "initializer_site",
+      "parameters": [
+        "initializer_site"
+      ],
+      "prompts": {
+        "ru": "Разбери инъекцию через {initializer_site}: параметры, qualifiers и beans, которые будут переданы.",
+        "en": "Resolve the initializer injection at {initializer_site}, including parameter types, qualifiers and supplied beans."
+      },
+      "expected_fields": [
+        "method_signature",
+        "parameter_sites",
+        "resolutions"
+      ],
+      "oracle": {
+        "derivation": "Сопоставить @Inject method и параметры с deployment injection metadata; не считать обычный setter injection point без основания.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible initializer_injection anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-009",
+      "category": "injection",
+      "title": "Наследуемые injection points",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "inherited_injection",
+      "anchor": "bean",
+      "parameters": [
+        "bean"
+      ],
+      "prompts": {
+        "ru": "Какие зависимости {bean} получает из своих superclass, а какие объявлены непосредственно? Учти переопределения.",
+        "en": "Separate the inherited and directly declared injection points of {bean}, taking overrides into account."
+      },
+      "expected_fields": [
+        "declared_sites",
+        "inherited_sites",
+        "override_effects"
+      ],
+      "oracle": {
+        "derivation": "Пройти type hierarchy compiler-ом и правила наследования CDI; сохранить declaring owner и полный site identity.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible inherited_injection anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-010",
+      "category": "injection",
+      "title": "Generic-типы и @Typed",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "generic_or_typed_injection",
+      "anchor": "typed_site",
+      "parameters": [
+        "typed_site"
+      ],
+      "prompts": {
+        "ru": "Какие реализации реально подходят для {typed_site}? Отдели Java-наследование от CDI bean types, generic-ограничений и @Typed.",
+        "en": "Which implementations can satisfy {typed_site}? Distinguish Java inheritance from CDI bean types, generics and @Typed restrictions."
+      },
+      "expected_fields": [
+        "java_candidates",
+        "bean_types",
+        "eligible_candidates",
+        "resolution"
+      ],
+      "oracle": {
+        "derivation": "Проверить generic assignability, actual type arguments и effective @Typed; подтвердить container metadata, не сравнивать только имена классов.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible generic_or_typed_injection anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-011",
+      "category": "qualifiers",
+      "title": "Потребители bean",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "bean_consumers",
+      "anchor": "bean",
+      "parameters": [
+        "bean"
+      ],
+      "prompts": {
+        "ru": "Где внедряется {bean} и через какие qualifiers? Отдельно покажи прямые injection sites и динамические обращения.",
+        "en": "Find the consumers of {bean}, distinguishing direct injection sites, qualifiers and programmatic lookups."
+      },
+      "expected_fields": [
+        "direct_sites",
+        "qualifier_constraints",
+        "dynamic_sites",
+        "completeness"
+      ],
+      "oracle": {
+        "derivation": "Полный bounded injection inventory и source symbol references; resolve type+qualifier, не использовать простой grep по имени как эталон полноты.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible bean_consumers anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-012",
+      "category": "qualifiers",
+      "title": "Значения qualifier",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "qualifier_members",
+      "anchor": "qualified_site",
+      "parameters": [
+        "qualified_site"
+      ],
+      "prompts": {
+        "ru": "Почему qualifier у {qualified_site} совпадает или не совпадает с qualifiers кандидатов? Учти значения annotation members и @Nonbinding.",
+        "en": "Explain qualifier matching for {qualified_site}, including annotation member values and @Nonbinding."
+      },
+      "expected_fields": [
+        "qualifier_fqcn",
+        "binding_members",
+        "nonbinding_members",
+        "matches"
+      ],
+      "oracle": {
+        "derivation": "Разрешить annotation identity, defaults и member values compiler-ом; проверить CDI equivalence, массивы и nonbinding members.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible qualifier_members anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-013",
+      "category": "qualifiers",
+      "title": "Неявные qualifiers",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "default_qualifiers",
+      "anchor": "default_site",
+      "parameters": [
+        "default_site"
+      ],
+      "prompts": {
+        "ru": "Какие явные и неявные qualifiers действуют у {default_site} и его кандидатов? Объясни влияние @Default, @Any и @Named.",
+        "en": "Determine the explicit and implicit qualifiers of {default_site} and its candidates, including @Default, @Any and @Named."
+      },
+      "expected_fields": [
+        "explicit_qualifiers",
+        "implicit_qualifiers",
+        "resolution"
+      ],
+      "oracle": {
+        "derivation": "Использовать правила bean/injection point qualifiers нужной CDI версии; не приравнивать @Any к @Default.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible default_qualifiers anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-014",
+      "category": "qualifiers",
+      "title": "Программный выбор bean",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "programmatic_lookup",
+      "anchor": "lookup_site",
+      "parameters": [
+        "lookup_site"
+      ],
+      "prompts": {
+        "ru": "Какие beans может вернуть {lookup_site}? Проследи select/qualifiers и условия, из-за которых выбор зависит от runtime.",
+        "en": "Which beans can {lookup_site} return? Trace select qualifiers and identify runtime-dependent choices."
+      },
+      "expected_fields": [
+        "lookup_type",
+        "selection_constraints",
+        "candidate_set",
+        "unknown_inputs"
+      ],
+      "oracle": {
+        "derivation": "Разобрать Instance/Provider/CDI lookup и qualifier literals; при runtime-параметрах зафиксировать условное множество, а не выдумывать единственного кандидата.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible programmatic_lookup anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-015",
+      "category": "qualifiers",
+      "title": "Alternatives и fallback",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "alternative_or_default_bean",
+      "anchor": "alternative_site",
+      "parameters": [
+        "alternative_site",
+        "profile"
+      ],
+      "prompts": {
+        "ru": "Как выбирается реализация для {alternative_site} при {profile}: alternatives, priorities или fallback/default bean?",
+        "en": "Explain implementation selection for {alternative_site} under {profile}, including alternatives, priorities and fallback beans."
+      },
+      "expected_fields": [
+        "enabled_candidates",
+        "priorities",
+        "fallback_rules",
+        "resolution"
+      ],
+      "oracle": {
+        "derivation": "Сверить annotations, beans configuration и augmentation в выбранном профиле; различать CDI alternative и Quarkus DefaultBean semantics.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible alternative_or_default_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-016",
+      "category": "producers",
+      "title": "Producer method",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "producer_method",
+      "anchor": "producer_method",
+      "parameters": [
+        "producer_method"
+      ],
+      "prompts": {
+        "ru": "Что создаёт {producer_method}, какие у результата type, qualifiers и scope? Не смешивай их со scope declaring class.",
+        "en": "Describe the bean produced by {producer_method}: types, qualifiers and scope, separately from the declaring bean."
+      },
+      "expected_fields": [
+        "produced_types",
+        "qualifiers",
+        "product_scope",
+        "declaring_scope"
+      ],
+      "oracle": {
+        "derivation": "Прочитать method annotations, return type и defaults; сверить producer bean metadata отдельно от declaring bean.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible producer_method anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-017",
+      "category": "producers",
+      "title": "Producer field",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "producer_field",
+      "anchor": "producer_field",
+      "parameters": [
+        "producer_field"
+      ],
+      "prompts": {
+        "ru": "Как устроен bean, объявленный полем {producer_field}, и где его потребители?",
+        "en": "Explain the bean produced by {producer_field} and identify its consumers."
+      },
+      "expected_fields": [
+        "field_type",
+        "qualifiers",
+        "scope",
+        "consumer_sites"
+      ],
+      "oracle": {
+        "derivation": "Разобрать @Produces field и его metadata; resolve consumers по produced type/qualifiers, не по declaring class.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible producer_field anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-018",
+      "category": "producers",
+      "title": "Зависимости producer",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "producer_with_dependencies",
+      "anchor": "producer_method",
+      "parameters": [
+        "producer_method"
+      ],
+      "prompts": {
+        "ru": "Какие зависимости нужны {producer_method}, чтобы создать результат? Покажи параметры producer и зависимости его declaring bean.",
+        "en": "Trace the dependencies needed by {producer_method}, including producer parameters and declaring-bean injection points."
+      },
+      "expected_fields": [
+        "producer_parameter_sites",
+        "declaring_bean_dependencies",
+        "resolutions"
+      ],
+      "oracle": {
+        "derivation": "Сопоставить producer parameter injection с отдельной инъекцией declaring bean; указать обе границы и возможные runtime branches.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible producer_with_dependencies anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-019",
+      "category": "producers",
+      "title": "Disposer",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "disposer",
+      "anchor": "disposer_method",
+      "parameters": [
+        "disposer_method"
+      ],
+      "prompts": {
+        "ru": "Какой producer связан с {disposer_method}? Какие qualifiers обеспечивают связь и какие дополнительные зависимости есть у disposer?",
+        "en": "Match {disposer_method} to its producer and explain qualifier matching and additional disposer dependencies."
+      },
+      "expected_fields": [
+        "disposed_parameter",
+        "matching_producer",
+        "qualifiers",
+        "other_parameters"
+      ],
+      "oracle": {
+        "derivation": "Найти @Disposes parameter, проверить type/qualifier matching и deployment diagnostics; не выводить связь по одному названию.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible disposer anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-020",
+      "category": "producers",
+      "title": "Lifecycle и уничтожение",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "class_bean",
+      "anchor": "bean",
+      "parameters": [
+        "bean"
+      ],
+      "prompts": {
+        "ru": "Когда создаётся и уничтожается {bean}, какие lifecycle callbacks объявлены или наследуются? Где статического анализа недостаточно?",
+        "en": "Explain creation and destruction of {bean}, its declared or inherited lifecycle callbacks, and runtime uncertainties."
+      },
+      "expected_fields": [
+        "scope",
+        "lifecycle_callbacks",
+        "ownership",
+        "conditional_timing"
+      ],
+      "oracle": {
+        "derivation": "Прочитать scope и lifecycle annotations/hierarchy; сверить framework rules. Точный момент создания подтверждать probe только если требуется конкретный execution.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible class_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-021",
+      "category": "activation",
+      "title": "Build profile",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "build_profile_condition",
+      "anchor": "conditional_bean",
+      "parameters": [
+        "conditional_bean",
+        "other_profile",
+        "profile"
+      ],
+      "prompts": {
+        "ru": "В каких профилях доступен {conditional_bean}? Сравни {profile} и {other_profile}, учитывая его потребителей.",
+        "en": "Compare availability of {conditional_bean} and its consumers under {profile} and {other_profile}."
+      },
+      "expected_fields": [
+        "conditions",
+        "enabled_by_profile",
+        "affected_sites"
+      ],
+      "oracle": {
+        "derivation": "Зафиксировать effective profile/config и build conditions, при необходимости отдельная augmentation на каждый профиль; не смешивать с runtime switch.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible build_profile_condition anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-022",
+      "category": "activation",
+      "title": "Build property",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "build_property_condition",
+      "anchor": "property_bean",
+      "parameters": [
+        "property_bean",
+        "property_value"
+      ],
+      "prompts": {
+        "ru": "От какого build-time свойства зависит {property_bean}, и что изменится при {property_value}?",
+        "en": "Identify the build-time property controlling {property_bean} and the effect of setting it to {property_value}."
+      },
+      "expected_fields": [
+        "property_key",
+        "default",
+        "condition",
+        "required_rebuild",
+        "consumers"
+      ],
+      "oracle": {
+        "derivation": "Проверить условные annotations/extension logic и effective build config; подтвердить раздельными build snapshots, если они доступны.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible build_property_condition anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-023",
+      "category": "activation",
+      "title": "Runtime-условия lookup",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "runtime_lookup_condition",
+      "anchor": "runtime_lookup",
+      "parameters": [
+        "runtime_lookup"
+      ],
+      "prompts": {
+        "ru": "Как runtime-конфигурация влияет на {runtime_lookup}? Что известно заранее, а что определяется только при запуске?",
+        "en": "How does runtime configuration affect {runtime_lookup}, and which choices cannot be determined before execution?"
+      },
+      "expected_fields": [
+        "runtime_inputs",
+        "possible_targets",
+        "activation_checks",
+        "uncertainty"
+      ],
+      "oracle": {
+        "derivation": "Разобрать lookup conditions и runtime config provenance; probe с явно заданными публичными значениями, без чтения или публикации секретов.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible runtime_lookup_condition anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-024",
+      "category": "activation",
+      "title": "Synthetic bean",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "synthetic_bean",
+      "anchor": "synthetic_type",
+      "parameters": [
+        "synthetic_type"
+      ],
+      "prompts": {
+        "ru": "Кто регистрирует {synthetic_type}, какие у synthetic bean типы, qualifiers и зависимости?",
+        "en": "Trace registration, types, qualifiers and dependencies of the synthetic bean {synthetic_type}."
+      },
+      "expected_fields": [
+        "extension_origin",
+        "registration",
+        "types",
+        "qualifiers",
+        "dependencies"
+      ],
+      "oracle": {
+        "derivation": "Исследовать extension source/bytecode и post-synthesis deployment metadata; отсутствие @ApplicationScoped класса не является отсутствием bean.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible synthetic_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-025",
+      "category": "activation",
+      "title": "Контекст и async",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "async_context",
+      "anchor": "async_method",
+      "parameters": [
+        "async_method"
+      ],
+      "prompts": {
+        "ru": "Может ли {async_method} обращаться к своим contextual beans в этом async-пути? Покажи границы контекста и что требует runtime-проверки.",
+        "en": "Can {async_method} access its contextual beans along this asynchronous path? Identify context boundaries and required runtime checks."
+      },
+      "expected_fields": [
+        "async_boundary",
+        "required_context",
+        "propagation",
+        "risks"
+      ],
+      "oracle": {
+        "derivation": "Прочитать scopes, context activation/propagation и async API extensions; bounded runtime test для ветвей, которые нельзя доказать из деклараций.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible async_context anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-026",
+      "category": "crosscutting",
+      "title": "Interceptors",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "interceptor",
+      "anchor": "intercepted_method",
+      "parameters": [
+        "intercepted_method"
+      ],
+      "prompts": {
+        "ru": "Какие interceptors применимы к {intercepted_method}, в каком порядке и за счёт каких bindings?",
+        "en": "Determine the interceptors applicable to {intercepted_method}, their ordering and binding provenance."
+      },
+      "expected_fields": [
+        "bindings",
+        "interceptors",
+        "priorities",
+        "invocation_limits"
+      ],
+      "oracle": {
+        "derivation": "Раскрыть class/method/meta bindings, exclusions и priority; учитывать self-invocation и правила конкретной Quarkus версии, не предполагать proxy семантику другого framework.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible interceptor anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-027",
+      "category": "crosscutting",
+      "title": "Транзакционная граница",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "transaction",
+      "anchor": "transactional_method",
+      "parameters": [
+        "transactional_method"
+      ],
+      "prompts": {
+        "ru": "Где начинается и заканчивается транзакция на пути через {transactional_method}, и какие вызовы могут изменить propagation?",
+        "en": "Trace transaction boundaries through {transactional_method}, including propagation-changing calls."
+      },
+      "expected_fields": [
+        "transaction_attributes",
+        "bounded_calls",
+        "propagation",
+        "conditional_paths"
+      ],
+      "oracle": {
+        "derivation": "Проверить method/class annotations и прямой bounded call graph; отдельно runtime-dispatch branches и extension semantics, не доказывать выполнение статическим ребром.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible transaction anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-028",
+      "category": "crosscutting",
+      "title": "CDI events",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "cdi_event",
+      "anchor": "event_site",
+      "parameters": [
+        "event_site"
+      ],
+      "prompts": {
+        "ru": "Какие observers могут получить событие из {event_site}? Учти event type, qualifiers, sync/async и transaction phase.",
+        "en": "Find observers eligible for the event fired at {event_site}, including qualifiers, sync or async mode and transaction phase."
+      },
+      "expected_fields": [
+        "event_type",
+        "qualifiers",
+        "observer_sites",
+        "delivery_conditions"
+      ],
+      "oracle": {
+        "derivation": "Compiler type matching event/observer plus qualifiers and observer annotations; runtime fire type/transaction state фиксируются отдельно.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible cdi_event anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-029",
+      "category": "crosscutting",
+      "title": "Decorators",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "decorator",
+      "anchor": "decorated_type",
+      "parameters": [
+        "decorated_type"
+      ],
+      "prompts": {
+        "ru": "Какие decorators применяются к {decorated_type}, как выбран delegate и что определяет порядок?",
+        "en": "Identify decorators of {decorated_type}, delegate resolution and decoration order."
+      },
+      "expected_fields": [
+        "decorators",
+        "delegate_site",
+        "qualifiers",
+        "enabled_order"
+      ],
+      "oracle": {
+        "derivation": "Проверить @Decorator/@Delegate и enablement/priority в данной реализации CDI; отсутствие поддержки framework отмечать capability evidence.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible decorator anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-030",
+      "category": "crosscutting",
+      "title": "Циклы зависимостей",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "bean_graph",
+      "anchor": "cycle_root",
+      "parameters": [
+        "cycle_root"
+      ],
+      "prompts": {
+        "ru": "Есть ли циклы в зависимостях от {cycle_root}? Отдели цикл CDI-графа от реально недопустимого создания объектов.",
+        "en": "Find dependency cycles reachable from {cycle_root}, distinguishing CDI graph cycles from invalid object construction."
+      },
+      "expected_fields": [
+        "cycles",
+        "edge_kinds",
+        "scope_proxy_effects",
+        "validation_state"
+      ],
+      "oracle": {
+        "derivation": "Построить bounded resolved dependency graph независимо; для каждого цикла учесть producer/constructor/proxy/lookup и container validation.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible bean_graph anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-031",
+      "category": "entrypoints",
+      "title": "HTTP endpoint до DI",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "rest_endpoint",
+      "anchor": "endpoint",
+      "parameters": [
+        "endpoint"
+      ],
+      "prompts": {
+        "ru": "Как запрос к {endpoint} доходит до бизнес-метода и CDI-зависимости? Покажи один прямой путь, не добавляя все транзитивные зависимости.",
+        "en": "Trace one direct path from {endpoint} to its business method and CDI dependency without expanding unrelated transitive dependencies."
+      },
+      "expected_fields": [
+        "route",
+        "http_method",
+        "resource_method",
+        "direct_calls",
+        "injection_sites"
+      ],
+      "oracle": {
+        "derivation": "Разрешить REST class/method paths и annotations, проверить source call edges и bound bean; route condition/runtime dispatch указывать отдельно.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible rest_endpoint anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-032",
+      "category": "entrypoints",
+      "title": "Защита endpoint",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "secured_endpoint",
+      "anchor": "secured_endpoint",
+      "parameters": [
+        "secured_endpoint"
+      ],
+      "prompts": {
+        "ru": "Какие проверки доступа действуют для {secured_endpoint}, откуда берутся роли или permissions и где меняется поведение по конфигурации?",
+        "en": "Explain access checks for {secured_endpoint}, role or permission provenance and configuration-dependent behavior."
+      },
+      "expected_fields": [
+        "security_annotations",
+        "policy_inputs",
+        "checks",
+        "unknown_runtime_identity"
+      ],
+      "oracle": {
+        "derivation": "Сверить annotations и HTTP/security configuration; негативные/позитивные HTTP тесты только с тестовыми identities, без утверждения результатов без запуска.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible secured_endpoint anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-033",
+      "category": "entrypoints",
+      "title": "Scheduled job",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "scheduled_job",
+      "anchor": "scheduled_method",
+      "parameters": [
+        "scheduled_method"
+      ],
+      "prompts": {
+        "ru": "Что запускает {scheduled_method}, какие CDI-зависимости используются и какие настройки управляют расписанием или отключением?",
+        "en": "Explain how {scheduled_method} is scheduled, its CDI dependencies and configuration controlling schedule or disablement."
+      },
+      "expected_fields": [
+        "trigger",
+        "config_keys",
+        "dependencies",
+        "execution_conditions"
+      ],
+      "oracle": {
+        "derivation": "Проверить scheduling annotations/config, inheritance и extension settings; не считать cron строку доказательством фактического исполнения.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible scheduled_job anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-034",
+      "category": "entrypoints",
+      "title": "Messaging consumer",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "messaging",
+      "anchor": "message_handler",
+      "parameters": [
+        "message_handler"
+      ],
+      "prompts": {
+        "ru": "Как сообщение попадает в {message_handler}, какие channel/config и CDI-зависимости участвуют, где ack или failure handling?",
+        "en": "Trace message delivery to {message_handler}, including channel configuration, CDI dependencies and acknowledgement or failure handling."
+      },
+      "expected_fields": [
+        "channels",
+        "handler",
+        "config_keys",
+        "dependencies",
+        "ack_failure_paths"
+      ],
+      "oracle": {
+        "derivation": "Сопоставить messaging annotations и channel config, исходники handler и connector metadata; runtime delivery нуждается в отдельном тесте.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible messaging anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-035",
+      "category": "entrypoints",
+      "title": "Startup и shutdown",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "startup_lifecycle",
+      "anchor": "startup_hook",
+      "parameters": [
+        "startup_hook"
+      ],
+      "prompts": {
+        "ru": "Что делает {startup_hook} при старте или остановке и какие beans затрагивает? Укажи доказанный порядок и неизвестные отношения.",
+        "en": "Trace {startup_hook} during startup or shutdown, its bean dependencies and the ordering that can actually be established."
+      },
+      "expected_fields": [
+        "lifecycle_event",
+        "observer",
+        "dependencies",
+        "ordering_constraints"
+      ],
+      "oracle": {
+        "derivation": "Проверить lifecycle/event annotations, observer priority и bounded calls; не создавать полный порядок там, где задан только частичный.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible startup_lifecycle anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-036",
+      "category": "configuration",
+      "title": "Определение и потребители key",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "configuration_usage",
+      "anchor": "config_key",
+      "parameters": [
+        "config_key",
+        "profile"
+      ],
+      "prompts": {
+        "ru": "Где задаётся и читается {config_key}? Покажи default, overrides по профилю {profile} и места использования.",
+        "en": "Find definitions and consumers of {config_key}, including defaults and overrides under {profile}."
+      },
+      "expected_fields": [
+        "definitions",
+        "consumers",
+        "defaults",
+        "profile_overrides"
+      ],
+      "oracle": {
+        "derivation": "Разобрать properties/YAML/config mappings и symbol uses; не читать секреты из окружения. Значение без полного config context может остаться условным.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible configuration_usage anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-037",
+      "category": "configuration",
+      "title": "ConfigMapping",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "config_mapping",
+      "anchor": "config_mapping",
+      "parameters": [
+        "config_mapping"
+      ],
+      "prompts": {
+        "ru": "Какие ключи описывает {config_mapping}, включая вложенные группы, optional/list/map и значения по умолчанию?",
+        "en": "Expand the keys of {config_mapping}, including nested groups, optional values, collections and defaults."
+      },
+      "expected_fields": [
+        "prefix",
+        "property_paths",
+        "value_types",
+        "defaults",
+        "open_map_segments"
+      ],
+      "oracle": {
+        "derivation": "Compiler parse config mapping hierarchy/annotations и версионные naming rules; открытые map segments обозначать шаблонами, не выдумывать полный список.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible config_mapping anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-038",
+      "category": "configuration",
+      "title": "Приоритет источников",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "configuration_usage",
+      "anchor": "config_key",
+      "parameters": [
+        "config_context",
+        "config_key"
+      ],
+      "prompts": {
+        "ru": "Какое значение {config_key} получится в контексте {config_context}? Покажи приоритет источников и не раскрывай секретные значения.",
+        "en": "Resolve {config_key} for {config_context}, explaining source precedence without revealing secrets."
+      },
+      "expected_fields": [
+        "effective_value_or_redacted",
+        "winning_source",
+        "overridden_sources",
+        "unknown_sources"
+      ],
+      "oracle": {
+        "derivation": "Зафиксировать sanitized config snapshot с source ordinals/profiles; использовать независимый Config probe в изоляции, не копировать ambient user secrets.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible configuration_usage anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-039",
+      "category": "configuration",
+      "title": "Build-time против runtime",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "configuration_usage",
+      "anchor": "config_key",
+      "parameters": [
+        "config_key"
+      ],
+      "prompts": {
+        "ru": "Можно ли изменить {config_key} без пересборки? Покажи доказательства build-time/runtime поведения для используемой версии.",
+        "en": "Can {config_key} change without rebuilding? Establish build-time versus runtime behavior for the installed version."
+      },
+      "expected_fields": [
+        "phase",
+        "extension_definition",
+        "requires_rebuild",
+        "version_evidence"
+      ],
+      "oracle": {
+        "derivation": "Проверить version-matched extension config definition/metadata и документацию; одинаковый префикс ключа не доказывает фазу.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible configuration_usage anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-040",
+      "category": "configuration",
+      "title": "Переименование config key",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "configuration_usage",
+      "anchor": "config_key",
+      "parameters": [
+        "config_key",
+        "new_config_key"
+      ],
+      "prompts": {
+        "ru": "Что надо изменить при переименовании {config_key} в {new_config_key}? Отдели код, конфигурацию, deployment descriptors и тесты.",
+        "en": "Plan renaming {config_key} to {new_config_key}, separating code, configuration, deployment descriptors and tests."
+      },
+      "expected_fields": [
+        "must_edit",
+        "verify_only",
+        "external_contracts",
+        "dynamic_key_limits"
+      ],
+      "oracle": {
+        "derivation": "Compiler/source references плюс properties/YAML/deployment/test fixtures и динамическое формирование key; внешний deployment не объявлять полностью известным.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible configuration_usage anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-041",
+      "category": "refactoring",
+      "title": "Изменение сигнатуры метода",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "method_with_callers",
+      "anchor": "method",
+      "parameters": [
+        "method"
+      ],
+      "prompts": {
+        "ru": "Каков прямой радиус изменения сигнатуры {method}? Отдели callers, overrides, интерфейсы, тесты и косвенные зависимости.",
+        "en": "Determine the direct blast radius of changing {method}, separating callers, overrides, interfaces, tests and indirect dependencies."
+      },
+      "expected_fields": [
+        "direct_callers",
+        "overrides",
+        "contracts",
+        "must_edit",
+        "verify_only"
+      ],
+      "oracle": {
+        "derivation": "Независимые compiler-resolved usages и override hierarchy; method identity со строгой сигнатурой, source reflection/string lookups отдельной категорией.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible method_with_callers anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-042",
+      "category": "refactoring",
+      "title": "Изменение qualifier",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "qualified_bean",
+      "anchor": "qualified_bean",
+      "parameters": [
+        "new_qualifier",
+        "qualified_bean"
+      ],
+      "prompts": {
+        "ru": "Если изменить qualifier у {qualified_bean} на {new_qualifier}, какие injection sites и producers придётся проверить или изменить?",
+        "en": "Assess changing the qualifier of {qualified_bean} to {new_qualifier}, including affected injection points and producers."
+      },
+      "expected_fields": [
+        "binding_sites",
+        "must_edit",
+        "verify_only",
+        "ambiguity_risks"
+      ],
+      "oracle": {
+        "derivation": "Сравнить resolution до/после на изолированном snapshot; учитывать qualifier values/defaults, programmatic literals и конкурирующие beans.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible qualified_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-043",
+      "category": "refactoring",
+      "title": "Изменение интерфейса",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "interface_with_implementations",
+      "anchor": "interface",
+      "parameters": [
+        "interface"
+      ],
+      "prompts": {
+        "ru": "Что затронет изменение контракта {interface}: реализации, injection sites, decorators/producers и прямые пользователи методов?",
+        "en": "Assess a contract change to {interface}, covering implementations, injection points, decorators, producers and direct method users."
+      },
+      "expected_fields": [
+        "implementations",
+        "di_sites",
+        "producer_decorator_sites",
+        "method_users",
+        "boundary"
+      ],
+      "oracle": {
+        "derivation": "Compiler type/override/use graph плюс CDI assignability и producer return types; внешние API consumers явно за границей snapshot.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible interface_with_implementations anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-044",
+      "category": "refactoring",
+      "title": "Class bean в producer",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "class_bean",
+      "anchor": "bean",
+      "parameters": [
+        "bean"
+      ],
+      "prompts": {
+        "ru": "Как заменить class bean {bean} producer-методом, не потеряв qualifiers, scope, lifecycle и совместимость потребителей?",
+        "en": "Plan replacing the class bean {bean} with a producer while preserving qualifiers, scope, lifecycle and consumer compatibility."
+      },
+      "expected_fields": [
+        "preserved_contract",
+        "producer_dependencies",
+        "must_edit",
+        "lifecycle_risks",
+        "verification"
+      ],
+      "oracle": {
+        "derivation": "Независимый bean contract до/после, deployment resolution и lifecycle obligations; не считать producer и class annotations взаимозаменяемыми.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible class_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-045",
+      "category": "refactoring",
+      "title": "Изменение scope",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "class_bean",
+      "anchor": "bean",
+      "parameters": [
+        "bean",
+        "new_scope"
+      ],
+      "prompts": {
+        "ru": "Что изменится, если перевести {bean} в {new_scope}? Проверь состояние, proxy, lifetime зависимостей и контекст вызова.",
+        "en": "Assess changing {bean} to {new_scope}, including mutable state, proxies, dependency lifetimes and calling contexts."
+      },
+      "expected_fields": [
+        "state_risks",
+        "proxy_constraints",
+        "lifetime_changes",
+        "affected_consumers"
+      ],
+      "oracle": {
+        "derivation": "Прочитать поля и scopes resolved dependencies, contexts/calls; runtime concurrency и destruction проверять targeted tests, не объявлять потокобезопасность по scope.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible class_bean anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-046",
+      "category": "verification",
+      "title": "Какие тесты затронуты",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "production_symbol",
+      "anchor": "change_target",
+      "parameters": [
+        "change_target"
+      ],
+      "prompts": {
+        "ru": "Какие тесты следует запустить после изменения {change_target} и почему? Отдели прямое покрытие от эвристически релевантных тестов.",
+        "en": "Select tests for a change to {change_target}, separating direct evidence from heuristic relevance and coverage gaps."
+      },
+      "expected_fields": [
+        "direct_tests",
+        "indirect_tests",
+        "heuristic_tests",
+        "coverage_gaps"
+      ],
+      "oracle": {
+        "derivation": "Compiler test references, route/use assertions и existing coverage если есть; отсутствие textual references не доказывает отсутствие интеграционного покрытия.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible production_symbol anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-047",
+      "category": "verification",
+      "title": "Mocks и test profile",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "cdi_test",
+      "anchor": "test_class",
+      "parameters": [
+        "test_class"
+      ],
+      "prompts": {
+        "ru": "Как {test_class} подменяет CDI-зависимости и конфигурацию? Что отличается от production и что такой тест не проверяет?",
+        "en": "Explain CDI and configuration substitutions in {test_class}, differences from production and resulting coverage limits."
+      },
+      "expected_fields": [
+        "test_profile",
+        "mock_sites",
+        "alternative_beans",
+        "config_overrides",
+        "limits"
+      ],
+      "oracle": {
+        "derivation": "Проверить test annotations/profile/mock setup и test lifecycle; сверить injection resolution в test context отдельно от production.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible cdi_test anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-048",
+      "category": "verification",
+      "title": "Generated против handwritten",
+      "mode": "independent",
+      "turns": 1,
+      "capability": "generated_component",
+      "anchor": "generated_type",
+      "parameters": [
+        "generated_type"
+      ],
+      "prompts": {
+        "ru": "Откуда появился {generated_type}, какой handwritten input или extension им управляет и что надо менять вместо generated-файла?",
+        "en": "Trace {generated_type} to its handwritten inputs or generating extension and identify the correct place to make a change."
+      },
+      "expected_fields": [
+        "generated_artifact",
+        "generator",
+        "source_inputs",
+        "edit_target"
+      ],
+      "oracle": {
+        "derivation": "Build generated-source/classes mapping, processor/extension inputs и source hashes; generated proxy не считать ручной точкой изменения.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible generated_component anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-049",
+      "category": "verification",
+      "title": "Минимальный проверяемый патч",
+      "mode": "patch",
+      "turns": 1,
+      "capability": "safe_method_rename",
+      "anchor": "rename_method",
+      "parameters": [
+        "new_method_name",
+        "rename_method"
+      ],
+      "prompts": {
+        "ru": "Переименуй {rename_method} в {new_method_name}, обнови все необходимые места и добавь или адаптируй узкий тест. Сохрани поведение и покажи проверку.",
+        "en": "Rename {rename_method} to {new_method_name}, update required references and add or adapt a focused test while preserving behavior."
+      },
+      "expected_fields": [
+        "patch",
+        "updated_references",
+        "behavior_preserved",
+        "compile_result",
+        "test_result"
+      ],
+      "oracle": {
+        "derivation": "До опыта скрыто зафиксировать references и acceptance tests; на отдельном checkout применить patch, compile и запуск focused tests; проверить reflection/config/API contracts и отсутствие изменений gold.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible safe_method_rename anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      }
+    },
+    {
+      "id": "CQ-050",
+      "category": "verification",
+      "title": "Связная пользовательская задача",
+      "mode": "linked",
+      "turns": 6,
+      "capability": "connected_flow",
+      "anchor": "flow_anchor",
+      "parameters": [
+        "flow_anchor",
+        "profile"
+      ],
+      "prompts": {
+        "ru": "Разбери одну пользовательскую операцию {flow_anchor}: точку входа, DI-выбор, настройки, радиус изменения и подходящие тесты. Работай по шагам в одной сессии.",
+        "en": "Investigate the user operation {flow_anchor} in one continuous session: entry point, DI selection, configuration, change impact and tests."
+      },
+      "expected_fields": [
+        "step_facts",
+        "consistent_bindings",
+        "cross_step_consistency",
+        "change_plan"
+      ],
+      "oracle": {
+        "derivation": "Выбрать связный flow с независимыми evidence на каждый из шести шагов; все arms получают одинаковые вопросы/anchors, последующие prompts не содержат эталонных ответов.",
+        "allowed_sources": [
+          "pinned_source_and_resources",
+          "resolved_dependency_metadata",
+          "independent_compiler_queries",
+          "version_matched_framework_rules",
+          "isolated_build_or_runtime_probe_if_needed"
+        ],
+        "forbidden_sources": [
+          "quill_responses",
+          "quill_index",
+          "tested_model_answers",
+          "prior_model_generated_helpers"
+        ]
+      },
+      "required_evidence": [
+        "qualified_symbol_or_resource_identity",
+        "repository_relative_location_or_dependency_coordinate",
+        "profile_and_snapshot_boundary",
+        "known_vs_conditional_vs_unproven_claims"
+      ],
+      "inapplicable_when": "Independent preflight proves no eligible connected_flow anchor or the pinned framework does not support this feature. Record evidence; never skip because Quill cannot answer.",
+      "scoring": {
+        "facts": "Per-field identity/set/semantic checks against the frozen independent oracle. Report whole-task correctness separately.",
+        "format": "Separate diagnostic; prose, JSON and fenced JSON are allowed unless the user task explicitly requires a format.",
+        "false_runtime_proof": "Incorrect when static candidates are asserted as observed runtime execution.",
+        "incomplete_oracle": "blocked_oracle, excluded from accuracy and efficiency but included in coverage report."
+      },
+      "steps": [
+        {
+          "step": 1,
+          "prompt": "Найди точку входа операции {flow_anchor} и её непосредственный обработчик."
+        },
+        {
+          "step": 2,
+          "prompt": "Проследи выбор CDI-зависимости в этой операции при {profile}."
+        },
+        {
+          "step": 3,
+          "prompt": "Найди связанные настройки и их определения для этого профиля."
+        },
+        {
+          "step": 4,
+          "prompt": "Раздели прямые вызовы, DI-связи и условные runtime-переходы на этом пути."
+        },
+        {
+          "step": 5,
+          "prompt": "Составь минимальный план изменения контракта этой операции и прямой радиус проверки."
+        },
+        {
+          "step": 6,
+          "prompt": "Выбери узкие тесты для плана; отметь пробелы доказательств и не повторяй весь предыдущий разбор."
+        }
+      ]
+    }
+  ]
+}

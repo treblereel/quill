@@ -1,0 +1,50 @@
+{
+ "AQ-008": {
+  "predicate": "Application-owned @Autowired/@Inject methods (setter or config-method injection; CQ-008 initializer methods)",
+  "matches": [],
+  "scope": "All tracked */src/main Java sources at the pinned revision (530 files); dependencies and tests excluded.",
+  "java_files": 530,
+  "inventory": "git grep over the pinned revision; constructs cross-checked by reading the matching declarations",
+  "counterexamples_not_equivalent": "Field injection exists (@Autowired fields in RefreshableConfig and ApolloServiceRegistryProperties, @Resource in DefaultEmailService) and @Autowired constructors exist (BizDBPropertySource, PortalDBPropertySource); neither is method injection."
+ },
+ "AQ-017": {
+  "predicate": "Application-owned @Lookup method injection (Spring stand-in for CQ-017 producer fields)",
+  "matches": [],
+  "scope": "All tracked */src/main Java sources at the pinned revision (530 files); dependencies and tests excluded.",
+  "java_files": 530,
+  "inventory": "git grep over the pinned revision; constructs cross-checked by reading the matching declarations",
+  "counterexamples_not_equivalent": "ObjectProvider<UserService>/ObjectProvider<UserInfoHolder> lookups and ApplicationContext#getBean in PortalSettings are programmatic lookups, not @Lookup methods."
+ },
+ "AQ-019": {
+  "predicate": "Application-owned explicit @Bean destroyMethod declarations (CQ-019 disposer parameters)",
+  "matches": [],
+  "scope": "All tracked */src/main Java sources at the pinned revision (530 files); dependencies and tests excluded.",
+  "java_files": 530,
+  "inventory": "git grep over the pinned revision; constructs cross-checked by reading the matching declarations",
+  "counterexamples_not_equivalent": "@PreDestroy/DisposableBean callbacks exist (e.g. RefreshableConfig#destroy) and @Bean methods rely on default destroy-method inference; none declares destroyMethod."
+ },
+ "AQ-021": {
+  "predicate": "Application-owned @ConditionalOnExpression bean conditions (CQ-021 build-profile conditions)",
+  "matches": [],
+  "scope": "All tracked */src/main Java sources at the pinned revision (530 files); dependencies and tests excluded.",
+  "java_files": 530,
+  "inventory": "git grep over the pinned revision; constructs cross-checked by reading the matching declarations",
+  "counterexamples_not_equivalent": "@Profile, @ConditionalOnMissingProfile and @ConditionalOnProperty conditions exist; they are not expression conditions."
+ },
+ "AQ-022": {
+  "predicate": "Application-owned @ConditionalOnClass / @ConditionalOnResource bean conditions (CQ-022 build-property conditions)",
+  "matches": [],
+  "scope": "All tracked */src/main Java sources at the pinned revision (530 files); dependencies and tests excluded.",
+  "java_files": 530,
+  "inventory": "git grep over the pinned revision; constructs cross-checked by reading the matching declarations",
+  "counterexamples_not_equivalent": "@ConditionalOnMissingBean and @ConditionalOnProperty are widely used; none checks classpath classes or resources."
+ },
+ "AQ-034": {
+  "predicate": "Application-owned message-broker listeners (@KafkaListener, @RabbitListener, @JmsListener, @StreamListener; CQ-034 reactive messaging handlers)",
+  "matches": [],
+  "scope": "All tracked */src/main Java sources at the pinned revision (530 files); dependencies and tests excluded.",
+  "java_files": 530,
+  "inventory": "git grep over the pinned revision; constructs cross-checked by reading the matching declarations",
+  "counterexamples_not_equivalent": "ReleaseMessageListener callbacks (database-polled release messages) and Spring @EventListener/ApplicationListener beans are in-process mechanisms, not broker listeners; DefaultMQService is a no-op SPI."
+ }
+}

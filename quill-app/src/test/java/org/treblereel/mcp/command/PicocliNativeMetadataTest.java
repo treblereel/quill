@@ -20,6 +20,23 @@ class PicocliNativeMetadataTest {
                     + "quill-app/reflect-config.json";
 
     @Test
+    void databaseSchemaAndCacheConfigurationAreIncludedForNativeImages() throws Exception {
+        ClassLoader loader = getClass().getClassLoader();
+        try (var resources = loader.getResourceAsStream(
+                "META-INF/native-image/org.treblereel.mcp/quill-app/resource-config.json")) {
+            assertNotNull(resources);
+            var patterns = JSON.readTree(resources).path("resources").path("includes");
+            for (String name : Set.of("org/treblereel/mcp/db/schema.sql", "org/treblereel/mcp/db/indexes.sql", "org/treblereel/mcp/db/GitRepository/findHotspots.sql", "org/treblereel/mcp/db/SymbolRepository/searchSymbols.sql", "org/treblereel/mcp/db/UsageRepository/findExactMethodUsages.sql")) {
+                assertNotNull(loader.getResource(name));
+                boolean included = false;
+                for (var pattern : patterns) included |= name.matches(pattern.path("pattern").asText());
+                assertTrue(included, name);
+            }
+        }
+
+    }
+
+    @Test
     void annotationProcessorGeneratesMetadataForEveryCommand() throws Exception {
         JsonNode commands;
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(GENERATED_CONFIG)) {
@@ -35,7 +52,7 @@ class PicocliNativeMetadataTest {
                 "org.treblereel.mcp.command.UpdateCommand",
                 "org.treblereel.mcp.command.StatusCommand",
                 "org.treblereel.mcp.command.DoctorCommand",
-                "org.treblereel.mcp.command.CleanCommand")));
+                "org.treblereel.mcp.command.CleanCommand", "org.treblereel.mcp.command.PrefetchCommand")));
 
         JsonNode init = findCommand(commands, InitCommand.class.getName());
         Set<String> fields = new HashSet<>();
@@ -71,8 +88,8 @@ class PicocliNativeMetadataTest {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(manualConfig)) {
             assertNotNull(input);
             JsonNode entries = JSON.readTree(input);
-            for (String type : Set.of("org.treblereel.mcp.mcp.QuillTools",
-                    "org.treblereel.mcp.mcp.RouterTools")) {
+            for (String type : Set.of("org.treblereel.mcp.mcp.tools.QuillTools",
+                    "org.treblereel.mcp.mcp.server.RouterTools")) {
                 JsonNode entry = findCommand(entries, type);
                 assertTrue(entry.path("allPublicMethods").asBoolean());
                 assertFalse(entry.has("allDeclaredMethods"));

@@ -3,6 +3,10 @@ package org.treblereel.mcp.db;
 import java.util.List;
 import java.util.Map;
 import org.treblereel.mcp.core.ConfigurationScanner;
+import org.treblereel.mcp.core.KotlinSourceDebug;
+import org.treblereel.mcp.model.ExternalBeanRecord;
+import org.treblereel.mcp.model.ModuleClasspathRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
 import org.treblereel.mcp.model.BeanRecord;
 import org.treblereel.mcp.model.CdiProblem;
 import org.treblereel.mcp.model.ClassAnnotationRecord;
@@ -40,23 +44,17 @@ public record IndexSnapshot(
         List<FieldAccessRecord> fieldAccesses,
         ConfigurationScanner.Result configuration,
         List<ResourceUsageRecord> resourceUsages,
-        Map<Integer,String> jvmApi) {
-
-    public IndexSnapshot(List<ClassRecord> classes, List<BeanRecord> beans,
-            List<InjectionPointRecord> injectionPoints, List<DependencyRecord> dependencies,
-            Map<String,String> metadata, List<ExternalDepRecord> externalDependencies,
-            List<CdiProblem> problems, List<GitFileStats> gitFileStats,
-            List<GitCommitRecord> gitCommits, List<GitCommitFile> gitCommitFiles,
-            List<FileRecord> files, List<ClassOccurrenceRecord> classOccurrences,
-            List<ClassAnnotationRecord> classAnnotations, List<ClassMemberRecord> classMembers,
-            List<MethodCallRecord> methodCalls, List<FieldAccessRecord> fieldAccesses,
-            ConfigurationScanner.Result configuration, List<ResourceUsageRecord> resourceUsages) {
-        this(classes,beans,injectionPoints,dependencies,metadata,externalDependencies,problems,
-                gitFileStats,gitCommits,gitCommitFiles,files,classOccurrences,classAnnotations,
-                classMembers,methodCalls,fieldAccesses,configuration,resourceUsages,Map.of());
-    }
+        Map<Integer,String> jvmApi,
+        List<ExternalBeanRecord> externalBeans,
+        List<ModuleClasspathRecord> moduleClasspath,
+        List<KotlinDeclarationRecord> kotlinDeclarations,
+        Map<Integer, KotlinSourceDebug.Info> kotlinSourceDebug) {
 
     public IndexSnapshot {
+        externalBeans = List.copyOf(externalBeans);
+        moduleClasspath = List.copyOf(moduleClasspath);
+        kotlinDeclarations = List.copyOf(kotlinDeclarations);
+        kotlinSourceDebug = Map.copyOf(kotlinSourceDebug);
         jvmApi = Map.copyOf(jvmApi);
         classes = List.copyOf(classes);
         beans = List.copyOf(beans);

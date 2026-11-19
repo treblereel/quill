@@ -50,3 +50,7 @@ __pycache__/
 /.quarkus/cli/plugins/
 # TLS Certificates
 .certs/
+
+# Benchmark runs: captured traffic, repository clones and intermediate data stay local
+benchmarks/results/
+benchmarks/analysis/

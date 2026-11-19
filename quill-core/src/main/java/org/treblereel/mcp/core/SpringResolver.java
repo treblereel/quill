@@ -21,9 +21,8 @@ public final class SpringResolver {
     private static final DotName CONFIGURATION =
             DotName.createSimple("org.springframework.context.annotation.Configuration");
 
-    private static final Set<DotName> BEAN_ANNOTATIONS = Set.of(
-            COMPONENT, SERVICE, REPOSITORY, CONTROLLER, REST_CONTROLLER, CONFIGURATION
-    );
+    private static final Set<DotName> BEAN_ANNOTATIONS =
+            Set.of(COMPONENT, SERVICE, REPOSITORY, CONTROLLER, REST_CONTROLLER, CONFIGURATION);
 
     private static final DotName BEAN_METHOD =
             DotName.createSimple("org.springframework.context.annotation.Bean");
@@ -35,27 +34,24 @@ public final class SpringResolver {
             DotName.createSimple("org.springframework.context.annotation.Profile");
     private static final DotName QUALIFIER =
             DotName.createSimple("org.springframework.beans.factory.annotation.Qualifier");
-    private static final DotName NAMED =
-            DotName.createSimple("jakarta.inject.Named");
-    private static final DotName NAMED_JAVAX =
-            DotName.createSimple("javax.inject.Named");
+    private static final DotName NAMED = DotName.createSimple("jakarta.inject.Named");
+    private static final DotName NAMED_JAVAX = DotName.createSimple("javax.inject.Named");
     private static final DotName AUTOWIRED =
             DotName.createSimple("org.springframework.beans.factory.annotation.Autowired");
-    private static final DotName INJECT =
-            DotName.createSimple("jakarta.inject.Inject");
-    private static final DotName INJECT_JAVAX =
-            DotName.createSimple("javax.inject.Inject");
+    private static final DotName INJECT = DotName.createSimple("jakarta.inject.Inject");
+    private static final DotName INJECT_JAVAX = DotName.createSimple("javax.inject.Inject");
 
     record BeanCandidate(int beanId, int classId, List<String> qualifiers, boolean isPrimary) {}
 
-    record Resolution(Integer beanId, Integer classId, boolean isAmbiguous,
-            ResolutionTrace trace) {
+    record Resolution(Integer beanId, Integer classId, boolean isAmbiguous, ResolutionTrace trace) {
         static Resolution unique(BeanCandidate c, ResolutionTrace trace) {
             return new Resolution(c.beanId(), c.classId(), false, trace);
         }
+
         static Resolution ambiguous(ResolutionTrace trace) {
             return new Resolution(null, null, true, trace);
         }
+
         static Resolution unresolved(ResolutionTrace trace) {
             return new Resolution(null, null, false, trace);
         }
@@ -72,19 +68,22 @@ public final class SpringResolver {
         return resolve(applicationIndex, (IndexView) null);
     }
 
-    public static BeanResolver.ResolutionResult resolve(Index applicationIndex, Index dependencyIndex) {
+    public static BeanResolver.ResolutionResult resolve(
+            Index applicationIndex, Index dependencyIndex) {
         return resolve(applicationIndex, (IndexView) dependencyIndex);
     }
 
-    public static BeanResolver.ResolutionResult resolve(Index applicationIndex, IndexView dependencyIndex) {
+    public static BeanResolver.ResolutionResult resolve(
+            Index applicationIndex, IndexView dependencyIndex) {
         return resolve((IndexView) applicationIndex, dependencyIndex);
     }
 
     public static BeanResolver.ResolutionResult resolve(
             IndexView applicationIndex, IndexView dependencyIndex) {
-        IndexView lookupIndex = dependencyIndex != null
-                ? CompositeIndex.create(applicationIndex, dependencyIndex)
-                : applicationIndex;
+        IndexView lookupIndex =
+                dependencyIndex != null
+                        ? CompositeIndex.create(applicationIndex, dependencyIndex)
+                        : applicationIndex;
 
         Map<String, Integer> classNameToId = new HashMap<>();
         List<BeanRecord> beanRecords = new ArrayList<>();
@@ -107,22 +106,32 @@ public final class SpringResolver {
             DotName beanAnnotation = findBeanAnnotation(ci, lookupIndex);
             if (beanAnnotation == null) continue;
 
-            int classId = classNameToId.computeIfAbsent(
-                    ci.name().toString(), k -> classNameToId.size() + 1);
+            int classId =
+                    classNameToId.computeIfAbsent(
+                            ci.name().toString(), k -> classNameToId.size() + 1);
 
             String scope = extractScope(ci, lookupIndex);
             List<String> qualifiers = extractQualifiers(ci, lookupIndex);
             List<String> profiles = extractProfiles(ci.declaredAnnotations(), lookupIndex);
-            boolean isPrimary = findAnnotationOrMeta(
-                    ci.declaredAnnotations(), PRIMARY, lookupIndex) != null;
+            boolean isPrimary =
+                    findAnnotationOrMeta(ci.declaredAnnotations(), PRIMARY, lookupIndex) != null;
             List<String> beanTypes = extractBeanTypes(ci, lookupIndex);
 
             int beanId = beanIdSeq++;
-            beanRecords.add(new BeanRecord(
-                    beanId, classId, "CLASS", scope, qualifiers, List.of(),
-                    isPrimary, isPrimary ? 0 : null,
-                    profiles.isEmpty() ? null : profiles,
-                    null, null, beanTypes));
+            beanRecords.add(
+                    new BeanRecord(
+                            beanId,
+                            classId,
+                            "CLASS",
+                            scope,
+                            qualifiers,
+                            List.of(),
+                            isPrimary,
+                            isPrimary ? 0 : null,
+                            profiles.isEmpty() ? null : profiles,
+                            null,
+                            null,
+                            beanTypes));
 
             BeanCandidate candidate = new BeanCandidate(beanId, classId, qualifiers, isPrimary);
             for (String type : beanTypes) {
@@ -140,23 +149,38 @@ public final class SpringResolver {
                     int producerBeanId = beanIdSeq++;
                     String producerScope = extractMethodScope(method, scope, lookupIndex);
                     List<String> producerQualifiers = extractMethodQualifiers(method, lookupIndex);
-                    boolean producerPrimary = findAnnotationOrMeta(
-                            methodLevelAnnotations(method), PRIMARY, lookupIndex) != null;
+                    boolean producerPrimary =
+                            findAnnotationOrMeta(
+                                            methodLevelAnnotations(method), PRIMARY, lookupIndex)
+                                    != null;
                     List<String> producerBeanTypes = buildProducerBeanTypes(method, lookupIndex);
-                    List<String> producerProfiles = mergeProfiles(
-                            profiles, extractProfiles(methodLevelAnnotations(method), lookupIndex));
+                    List<String> producerProfiles =
+                            mergeProfiles(
+                                    profiles,
+                                    extractProfiles(methodLevelAnnotations(method), lookupIndex));
 
-                    beanRecords.add(new BeanRecord(
-                            producerBeanId, classId, "PRODUCER_METHOD",
-                            producerScope, producerQualifiers, List.of(),
-                            producerPrimary, producerPrimary ? 0 : null,
-                            producerProfiles.isEmpty() ? null : producerProfiles,
-                            classId, method.name(), producerBeanTypes));
+                    beanRecords.add(
+                            new BeanRecord(
+                                    producerBeanId,
+                                    classId,
+                                    "PRODUCER_METHOD",
+                                    producerScope,
+                                    producerQualifiers,
+                                    List.of(),
+                                    producerPrimary,
+                                    producerPrimary ? 0 : null,
+                                    producerProfiles.isEmpty() ? null : producerProfiles,
+                                    classId,
+                                    method.name(),
+                                    producerBeanTypes));
 
-                    BeanCandidate producerCandidate = new BeanCandidate(
-                            producerBeanId, classId, producerQualifiers, producerPrimary);
+                    BeanCandidate producerCandidate =
+                            new BeanCandidate(
+                                    producerBeanId, classId, producerQualifiers, producerPrimary);
                     for (String type : producerBeanTypes) {
-                        candidatesByType.computeIfAbsent(type, k -> new ArrayList<>()).add(producerCandidate);
+                        candidatesByType
+                                .computeIfAbsent(type, k -> new ArrayList<>())
+                                .add(producerCandidate);
                     }
 
                     producerMethods.add(new ProducerMethod(method, classId, beanId));
@@ -166,134 +190,351 @@ public final class SpringResolver {
 
         // Pass 2: resolve injection points
         for (int i = 0; i < beanClasses.size(); i++) {
-            ipIdSeq = resolveInjectionPoints(beanClasses.get(i), beanClassIds.get(i),
-                    beanIds.get(i), lookupIndex, candidatesByType,
-                    ipRecords, depRecords, ipIdSeq);
+            ipIdSeq =
+                    resolveInjectionPoints(
+                            beanClasses.get(i),
+                            beanClassIds.get(i),
+                            beanIds.get(i),
+                            lookupIndex,
+                            candidatesByType,
+                            ipRecords,
+                            depRecords,
+                            ipIdSeq);
         }
 
         for (ProducerMethod pm : producerMethods) {
-            ipIdSeq = resolveBeanMethodParams(pm.method(), pm.configClassId(), pm.configBeanId(),
-                    lookupIndex, candidatesByType,
-                    ipRecords, depRecords, ipIdSeq);
+            ipIdSeq =
+                    resolveBeanMethodParams(
+                            pm.method(),
+                            pm.configClassId(),
+                            pm.configBeanId(),
+                            lookupIndex,
+                            candidatesByType,
+                            ipRecords,
+                            depRecords,
+                            ipIdSeq);
         }
 
-        BeanResolver.addNonBeanDependencies(applicationIndex, beanRecords, depRecords, classNameToId);
+        BeanResolver.addNonBeanDependencies(
+                applicationIndex, beanRecords, depRecords, classNameToId);
 
+        ipRecords.replaceAll(InjectionPointRecord::asSpringResolvable);
         return new BeanResolver.ResolutionResult(
-                beanRecords, ipRecords, depRecords, classNameToId, problems);
+                beanRecords.stream().map(bean -> bean.withFramework(BeanRecord.SPRING)).toList(),
+                ipRecords,
+                depRecords,
+                classNameToId,
+                problems);
     }
 
-    private static int resolveInjectionPoints(ClassInfo ci, int classId, int beanId,
-            IndexView index, Map<String, List<BeanCandidate>> candidatesByType,
-            List<InjectionPointRecord> ipRecords, List<DependencyRecord> depRecords,
+    private static int resolveInjectionPoints(
+            ClassInfo ci,
+            int classId,
+            int beanId,
+            IndexView index,
+            Map<String, List<BeanCandidate>> candidatesByType,
+            List<InjectionPointRecord> ipRecords,
+            List<DependencyRecord> depRecords,
             int ipIdSeq) {
 
-        for (FieldInfo field : ci.fields()) {
-            if (!isInjectionField(field)) continue;
-
-            int ipId = ipIdSeq++;
-            String targetType = field.type().name().toString();
-            List<String> ipQualifiers = extractFieldQualifiers(field, index);
-            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
-
-            ipRecords.add(InjectionPointRecord.staticAnalysis(
-                    ipId, beanId, "FIELD", targetType, ipQualifiers,
-                    field.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
-                    .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
-
-            if (r.classId() != null) {
-                depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
-            }
-        }
+        ipIdSeq =
+                resolveFieldInjections(
+                        ci,
+                        null,
+                        classId,
+                        beanId,
+                        index,
+                        candidatesByType,
+                        ipRecords,
+                        depRecords,
+                        ipIdSeq);
 
         MethodInfo injectConstructor = findInjectConstructor(ci);
         if (injectConstructor != null) {
             for (int i = 0; i < injectConstructor.parametersCount(); i++) {
                 int ipId = ipIdSeq++;
-                String targetType = injectConstructor.parameterType(i).name().toString();
+                InjectedType injected = injectedType(injectConstructor.parameterType(i));
+                String targetType = injected.declared();
                 List<String> ipQualifiers = extractParamQualifiers(injectConstructor, i, index);
-                Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+                Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
 
-                ipRecords.add(InjectionPointRecord.staticAnalysis(
-                        ipId, beanId, "CONSTRUCTOR_PARAM", targetType, ipQualifiers,
-                        "<init>", r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
-                        .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
+                ipRecords.add(
+                        InjectionPointRecord.staticAnalysis(
+                                        ipId,
+                                        beanId,
+                                        "CONSTRUCTOR_PARAM",
+                                        targetType,
+                                        ipQualifiers,
+                                        "<init>",
+                                        r.beanId(),
+                                        r.isAmbiguous(),
+                                        InjectionPointRecord.STATIC_SPRING)
+                                .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
 
                 if (r.classId() != null) {
-                    depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
+                    depRecords.add(
+                            new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
                 }
             }
         }
 
         for (MethodInfo method : ci.methods()) {
-            if (method.name().equals("<init>") || method.name().equals("<clinit>")) continue;
-            if (!method.hasAnnotation(AUTOWIRED)) continue;
+            if (!isInjectionMethod(method)) continue;
+            ipIdSeq =
+                    resolveMethodInjection(
+                            method,
+                            method.name(),
+                            classId,
+                            beanId,
+                            index,
+                            candidatesByType,
+                            ipRecords,
+                            depRecords,
+                            ipIdSeq);
+        }
 
-            for (int i = 0; i < method.parametersCount(); i++) {
-                int ipId = ipIdSeq++;
-                String targetType = method.parameterType(i).name().toString();
-                List<String> ipQualifiers = extractParamQualifiers(method, i, index);
-                Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
-
-                ipRecords.add(InjectionPointRecord.staticAnalysis(
-                        ipId, beanId, "METHOD_PARAM", targetType, ipQualifiers,
-                        method.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
-                        .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
-
-                if (r.classId() != null) {
-                    depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
-                }
+        // AutowiredAnnotationBeanPostProcessor also injects the annotated fields and methods of
+        // every superclass, skipping methods the subclass overrides.
+        List<ClassInfo> superclasses = InjectionHierarchy.superclasses(ci, index);
+        for (ClassInfo parent : superclasses) {
+            ipIdSeq =
+                    resolveFieldInjections(
+                            parent,
+                            parent,
+                            classId,
+                            beanId,
+                            index,
+                            candidatesByType,
+                            ipRecords,
+                            depRecords,
+                            ipIdSeq);
+            List<ClassInfo> lower = InjectionHierarchy.below(ci, superclasses, parent);
+            for (MethodInfo method : parent.methods()) {
+                if (!isInjectionMethod(method) || InjectionHierarchy.overridden(method, lower))
+                    continue;
+                ipIdSeq =
+                        resolveMethodInjection(
+                                method,
+                                InjectionHierarchy.inheritedMember(parent, method.name()),
+                                classId,
+                                beanId,
+                                index,
+                                candidatesByType,
+                                ipRecords,
+                                depRecords,
+                                ipIdSeq);
             }
         }
 
         return ipIdSeq;
     }
 
-    private static int resolveBeanMethodParams(MethodInfo method, int configClassId, int configBeanId,
-            IndexView index, Map<String, List<BeanCandidate>> candidatesByType,
-            List<InjectionPointRecord> ipRecords, List<DependencyRecord> depRecords,
+    private static boolean isInjectionMethod(MethodInfo method) {
+        if (method.name().equals("<init>") || method.name().equals("<clinit>")) return false;
+        if (java.lang.reflect.Modifier.isStatic(method.flags())) return false;
+        return method.hasAnnotation(AUTOWIRED)
+                || method.hasAnnotation(INJECT)
+                || method.hasAnnotation(INJECT_JAVAX);
+    }
+
+    /**
+     * @param declaring the superclass declaring the fields, or null for the bean class itself
+     */
+    private static int resolveFieldInjections(
+            ClassInfo owner,
+            ClassInfo declaring,
+            int classId,
+            int beanId,
+            IndexView index,
+            Map<String, List<BeanCandidate>> candidatesByType,
+            List<InjectionPointRecord> ipRecords,
+            List<DependencyRecord> depRecords,
+            int ipIdSeq) {
+        for (FieldInfo field : owner.fields()) {
+            if (!isInjectionField(field) || java.lang.reflect.Modifier.isStatic(field.flags()))
+                continue;
+
+            int ipId = ipIdSeq++;
+            InjectedType injected = injectedType(field.type());
+            String targetType = injected.declared();
+            List<String> ipQualifiers = extractFieldQualifiers(field, index);
+            Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
+            String member =
+                    declaring == null
+                            ? field.name()
+                            : InjectionHierarchy.inheritedMember(declaring, field.name());
+
+            ipRecords.add(
+                    InjectionPointRecord.staticAnalysis(
+                                    ipId,
+                                    beanId,
+                                    "FIELD",
+                                    targetType,
+                                    ipQualifiers,
+                                    member,
+                                    r.beanId(),
+                                    r.isAmbiguous(),
+                                    InjectionPointRecord.STATIC_SPRING)
+                            .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
+
+            if (r.classId() != null) {
+                depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
+            }
+        }
+        return ipIdSeq;
+    }
+
+    private static int resolveMethodInjection(
+            MethodInfo method,
+            String member,
+            int classId,
+            int beanId,
+            IndexView index,
+            Map<String, List<BeanCandidate>> candidatesByType,
+            List<InjectionPointRecord> ipRecords,
+            List<DependencyRecord> depRecords,
             int ipIdSeq) {
         for (int i = 0; i < method.parametersCount(); i++) {
             int ipId = ipIdSeq++;
-            String targetType = method.parameterType(i).name().toString();
+            InjectedType injected = injectedType(method.parameterType(i));
+            String targetType = injected.declared();
             List<String> ipQualifiers = extractParamQualifiers(method, i, index);
-            Resolution r = resolveByType(targetType, ipQualifiers, candidatesByType);
+            Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
 
-            ipRecords.add(InjectionPointRecord.staticAnalysis(
-                    ipId, configBeanId, "METHOD_PARAM", targetType, ipQualifiers,
-                    method.name(), r.beanId(), r.isAmbiguous(), InjectionPointRecord.STATIC_SPRING)
-                    .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
+            ipRecords.add(
+                    InjectionPointRecord.staticAnalysis(
+                                    ipId,
+                                    beanId,
+                                    "METHOD_PARAM",
+                                    targetType,
+                                    ipQualifiers,
+                                    member,
+                                    r.beanId(),
+                                    r.isAmbiguous(),
+                                    InjectionPointRecord.STATIC_SPRING)
+                            .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
 
             if (r.classId() != null) {
-                depRecords.add(new DependencyRecord(configClassId, r.classId(), "SPRING_INJECT", ipId));
+                depRecords.add(new DependencyRecord(classId, r.classId(), "SPRING_INJECT", ipId));
             }
         }
         return ipIdSeq;
     }
 
-    static Resolution resolveByType(String targetType, List<String> qualifiers,
+    private static int resolveBeanMethodParams(
+            MethodInfo method,
+            int configClassId,
+            int configBeanId,
+            IndexView index,
+            Map<String, List<BeanCandidate>> candidatesByType,
+            List<InjectionPointRecord> ipRecords,
+            List<DependencyRecord> depRecords,
+            int ipIdSeq) {
+        for (int i = 0; i < method.parametersCount(); i++) {
+            int ipId = ipIdSeq++;
+            InjectedType injected = injectedType(method.parameterType(i));
+            String targetType = injected.declared();
+            List<String> ipQualifiers = extractParamQualifiers(method, i, index);
+            Resolution r = resolveByType(injected.lookup(), ipQualifiers, candidatesByType);
+
+            ipRecords.add(
+                    InjectionPointRecord.staticAnalysis(
+                                    ipId,
+                                    configBeanId,
+                                    "METHOD_PARAM",
+                                    targetType,
+                                    ipQualifiers,
+                                    method.name(),
+                                    r.beanId(),
+                                    r.isAmbiguous(),
+                                    InjectionPointRecord.STATIC_SPRING)
+                            .withResolution(r.beanId(), r.isAmbiguous(), r.trace()));
+
+            if (r.classId() != null) {
+                depRecords.add(
+                        new DependencyRecord(configClassId, r.classId(), "SPRING_INJECT", ipId));
+            }
+        }
+        return ipIdSeq;
+    }
+
+    /**
+     * Lazy Spring lookups resolve against their type argument. Apollo AQ-014/AQ-023:
+     * SpringSecurityUserInfoHolder takes an ObjectProvider<UserService>, and the index kept only
+     * "ObjectProvider", resolved nothing and never said which bean the lookup returns.
+     */
+    private static final Set<String> LAZY_WRAPPERS =
+            Set.of(
+                    "org.springframework.beans.factory.ObjectProvider",
+                    "org.springframework.beans.factory.ObjectFactory",
+                    "jakarta.inject.Provider",
+                    "javax.inject.Provider",
+                    "java.util.Optional");
+
+    /** The declared type as written (wrapper with its argument) and the type a bean must have. */
+    record InjectedType(String declared, String lookup) {}
+
+    /**
+     * The bean type a stored injection target needs: the argument of a lazy wrapper, else itself.
+     */
+    static String lookupType(String declared) {
+        int open = declared.indexOf('<');
+        if (open < 0
+                || !declared.endsWith(">")
+                || !LAZY_WRAPPERS.contains(declared.substring(0, open))) return declared;
+        return declared.substring(open + 1, declared.length() - 1);
+    }
+
+    static InjectedType injectedType(org.jboss.jandex.Type type) {
+        String raw = type.name().toString();
+        if (LAZY_WRAPPERS.contains(raw)
+                && type.kind() == org.jboss.jandex.Type.Kind.PARAMETERIZED_TYPE
+                && type.asParameterizedType().arguments().size() == 1) {
+            org.jboss.jandex.Type argument = type.asParameterizedType().arguments().getFirst();
+            if (argument.kind() == org.jboss.jandex.Type.Kind.WILDCARD_TYPE)
+                argument = argument.asWildcardType().extendsBound();
+            String inner = argument.name().toString();
+            return new InjectedType(raw + "<" + inner + ">", inner);
+        }
+        return new InjectedType(raw, raw);
+    }
+
+    static Resolution resolveByType(
+            String targetType,
+            List<String> qualifiers,
             Map<String, List<BeanCandidate>> candidatesByType) {
         List<BeanCandidate> candidates = candidatesByType.getOrDefault(targetType, List.of());
         Map<Integer, ResolutionCandidate> evidence = new LinkedHashMap<>();
-        List<String> appliedRules = List.of(
-                "TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "PRIMARY_SELECTION");
+        List<ResolutionRule> appliedRules =
+                List.of(
+                        ResolutionRule.TYPE_ASSIGNABILITY,
+                        ResolutionRule.QUALIFIER_MATCHING,
+                        ResolutionRule.PRIMARY_SELECTION);
 
         if (candidates.isEmpty()) {
             return Resolution.unresolved(springTrace(evidence, appliedRules));
         }
 
-        boolean hasNonDefaultQualifier = qualifiers.stream()
-                .anyMatch(q -> !q.equals("@Default"));
+        boolean hasNonDefaultQualifier =
+                qualifiers.stream().anyMatch(q -> !q.equals(BuiltinQualifier.DEFAULT.annotation()));
 
         if (hasNonDefaultQualifier) {
-            List<BeanCandidate> matched = candidates.stream()
-                    .filter(c -> matchesQualifiers(qualifiers, c.qualifiers()))
-                    .toList();
+            List<BeanCandidate> matched =
+                    candidates.stream()
+                            .filter(c -> matchesQualifiers(qualifiers, c.qualifiers()))
+                            .toList();
             for (BeanCandidate candidate : candidates) {
                 boolean matches = matched.contains(candidate);
-                evidence.put(candidate.beanId(), springCandidate(candidate,
-                        matches ? CandidateDisposition.ELIGIBLE : CandidateDisposition.EXCLUDED,
-                        matches ? "QUALIFIERS_MATCHED" : "QUALIFIER_MISMATCH"));
+                evidence.put(
+                        candidate.beanId(),
+                        springCandidate(
+                                candidate,
+                                matches
+                                        ? CandidateDisposition.ELIGIBLE
+                                        : CandidateDisposition.EXCLUDED,
+                                matches
+                                        ? ResolutionReason.QUALIFIERS_MATCHED
+                                        : ResolutionReason.QUALIFIER_MISMATCH));
             }
             if (matched.isEmpty()) {
                 return Resolution.unresolved(springTrace(evidence, appliedRules));
@@ -301,52 +542,79 @@ public final class SpringResolver {
             candidates = matched;
         } else {
             for (BeanCandidate candidate : candidates) {
-                evidence.put(candidate.beanId(), springCandidate(candidate,
-                        CandidateDisposition.ELIGIBLE, "TYPE_MATCHED"));
+                evidence.put(
+                        candidate.beanId(),
+                        springCandidate(
+                                candidate,
+                                CandidateDisposition.ELIGIBLE,
+                                ResolutionReason.TYPE_MATCHED));
             }
         }
 
         if (candidates.size() == 1) {
             BeanCandidate selected = candidates.get(0);
-            evidence.put(selected.beanId(), springCandidate(selected,
-                    CandidateDisposition.SELECTED, "UNIQUE_ELIGIBLE_CANDIDATE"));
+            evidence.put(
+                    selected.beanId(),
+                    springCandidate(
+                            selected,
+                            CandidateDisposition.SELECTED,
+                            ResolutionReason.UNIQUE_ELIGIBLE_CANDIDATE));
             return Resolution.unique(selected, springTrace(evidence, appliedRules));
         }
 
-        List<BeanCandidate> primaries = candidates.stream()
-                .filter(BeanCandidate::isPrimary)
-                .toList();
+        List<BeanCandidate> primaries =
+                candidates.stream().filter(BeanCandidate::isPrimary).toList();
         if (primaries.size() == 1) {
             BeanCandidate selected = primaries.get(0);
             for (BeanCandidate candidate : candidates) {
-                evidence.put(candidate.beanId(), springCandidate(candidate,
-                        candidate.beanId() == selected.beanId()
-                                ? CandidateDisposition.SELECTED : CandidateDisposition.EXCLUDED,
-                        candidate.beanId() == selected.beanId()
-                                ? "PRIMARY_CANDIDATE" : "NON_PRIMARY_CANDIDATE"));
+                evidence.put(
+                        candidate.beanId(),
+                        springCandidate(
+                                candidate,
+                                candidate.beanId() == selected.beanId()
+                                        ? CandidateDisposition.SELECTED
+                                        : CandidateDisposition.EXCLUDED,
+                                candidate.beanId() == selected.beanId()
+                                        ? ResolutionReason.PRIMARY_CANDIDATE
+                                        : ResolutionReason.NON_PRIMARY_CANDIDATE));
             }
             return Resolution.unique(selected, springTrace(evidence, appliedRules));
         }
 
         for (BeanCandidate candidate : candidates) {
-            evidence.put(candidate.beanId(), springCandidate(candidate,
-                    CandidateDisposition.ELIGIBLE,
-                    primaries.isEmpty() ? "MULTIPLE_ELIGIBLE_CANDIDATES"
-                            : "MULTIPLE_PRIMARY_CANDIDATES"));
+            evidence.put(
+                    candidate.beanId(),
+                    springCandidate(
+                            candidate,
+                            CandidateDisposition.ELIGIBLE,
+                            primaries.isEmpty()
+                                    ? ResolutionReason.MULTIPLE_ELIGIBLE_CANDIDATES
+                                    : ResolutionReason.MULTIPLE_PRIMARY_CANDIDATES));
         }
         return Resolution.ambiguous(springTrace(evidence, appliedRules));
     }
 
-    private static ResolutionCandidate springCandidate(BeanCandidate candidate,
-            CandidateDisposition disposition, String reason) {
-        return new ResolutionCandidate(candidate.beanId(), null, disposition, reason,
-                List.of("TYPE_ASSIGNABILITY", "QUALIFIER_MATCHING", "PRIMARY_SELECTION"));
+    private static ResolutionCandidate springCandidate(
+            BeanCandidate candidate, CandidateDisposition disposition, ResolutionReason reason) {
+        return new ResolutionCandidate(
+                candidate.beanId(),
+                null,
+                disposition,
+                reason,
+                List.of(
+                        ResolutionRule.TYPE_ASSIGNABILITY,
+                        ResolutionRule.QUALIFIER_MATCHING,
+                        ResolutionRule.PRIMARY_SELECTION));
     }
 
     private static ResolutionTrace springTrace(
-            Map<Integer, ResolutionCandidate> evidence, List<String> appliedRules) {
-        return new ResolutionTrace(new ArrayList<>(evidence.values()), appliedRules,
-                List.of("CONDITIONAL_BEAN_REGISTRATION", "RUNTIME_BEAN_FACTORY_HOOKS"));
+            Map<Integer, ResolutionCandidate> evidence, List<ResolutionRule> appliedRules) {
+        return new ResolutionTrace(
+                new ArrayList<>(evidence.values()),
+                appliedRules,
+                List.of(
+                        ResolutionRule.CONDITIONAL_BEAN_REGISTRATION,
+                        ResolutionRule.RUNTIME_BEAN_FACTORY_HOOKS));
     }
 
     private static boolean isInjectionField(FieldInfo field) {
@@ -361,7 +629,9 @@ public final class SpringResolver {
         for (MethodInfo m : ci.methods()) {
             if (!"<init>".equals(m.name())) continue;
             if (m.parametersCount() == 0) continue;
-            if (m.hasAnnotation(AUTOWIRED) || m.hasAnnotation(INJECT) || m.hasAnnotation(INJECT_JAVAX)) {
+            if (m.hasAnnotation(AUTOWIRED)
+                    || m.hasAnnotation(INJECT)
+                    || m.hasAnnotation(INJECT_JAVAX)) {
                 autowiredConstructor = m;
             }
             constructors.add(m);
@@ -373,7 +643,7 @@ public final class SpringResolver {
 
     private static boolean matchesQualifiers(List<String> required, List<String> beanQualifiers) {
         for (String req : required) {
-            if (req.equals("@Default")) continue;
+            if (req.equals(BuiltinQualifier.DEFAULT.annotation())) continue;
             if (beanQualifiers.stream().noneMatch(bq -> bq.equals(req))) return false;
         }
         return true;
@@ -403,8 +673,7 @@ public final class SpringResolver {
     }
 
     private static String extractScope(ClassInfo ci, IndexView index) {
-        AnnotationInstance scopeAnn = findAnnotationOrMeta(
-                ci.declaredAnnotations(), SCOPE, index);
+        AnnotationInstance scopeAnn = findAnnotationOrMeta(ci.declaredAnnotations(), SCOPE, index);
         if (scopeAnn != null) {
             AnnotationValue value = scopeAnn.value();
             if (value != null) return mapSpringScope(value.asString());
@@ -412,9 +681,10 @@ public final class SpringResolver {
         return "@Singleton";
     }
 
-    private static String extractMethodScope(MethodInfo method, String defaultScope, IndexView index) {
-        AnnotationInstance scopeAnn = findAnnotationOrMeta(
-                methodLevelAnnotations(method), SCOPE, index);
+    private static String extractMethodScope(
+            MethodInfo method, String defaultScope, IndexView index) {
+        AnnotationInstance scopeAnn =
+                findAnnotationOrMeta(methodLevelAnnotations(method), SCOPE, index);
         if (scopeAnn != null) {
             AnnotationValue value = scopeAnn.value();
             if (value != null) return mapSpringScope(value.asString());
@@ -453,7 +723,7 @@ public final class SpringResolver {
             }
         }
 
-        qualifiers.add("@Default");
+        qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
         for (String beanName : extractClassBeanNames(ci, index)) {
             qualifiers.add("@Qualifier(\"" + beanName + "\")");
         }
@@ -486,7 +756,7 @@ public final class SpringResolver {
             }
         }
 
-        qualifiers.add("@Default");
+        qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
 
         for (String beanName : extractBeanMethodNames(method)) {
             qualifiers.add("@Qualifier(\"" + beanName + "\")");
@@ -515,11 +785,12 @@ public final class SpringResolver {
             }
         }
 
-        if (qualifiers.isEmpty()) qualifiers.add("@Default");
+        if (qualifiers.isEmpty()) qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
         return qualifiers;
     }
 
-    private static List<String> extractParamQualifiers(MethodInfo method, int paramIndex, IndexView index) {
+    private static List<String> extractParamQualifiers(
+            MethodInfo method, int paramIndex, IndexView index) {
         List<String> qualifiers = new ArrayList<>();
 
         for (AnnotationInstance ann : method.annotations()) {
@@ -537,7 +808,7 @@ public final class SpringResolver {
             }
         }
 
-        if (qualifiers.isEmpty()) qualifiers.add("@Default");
+        if (qualifiers.isEmpty()) qualifiers.add(BuiltinQualifier.DEFAULT.annotation());
         return qualifiers;
     }
 
@@ -574,11 +845,15 @@ public final class SpringResolver {
 
     private static boolean isCustomQualifier(DotName annotationName, IndexView index) {
         if (BEAN_ANNOTATIONS.contains(annotationName)) return false;
-        if (annotationName.equals(AUTOWIRED) || annotationName.equals(INJECT)
+        if (annotationName.equals(AUTOWIRED)
+                || annotationName.equals(INJECT)
                 || annotationName.equals(INJECT_JAVAX)) return false;
-        if (annotationName.equals(PRIMARY) || annotationName.equals(SCOPE)
-                || annotationName.equals(PROFILE) || annotationName.equals(BEAN_METHOD)) return false;
-        if (annotationName.equals(QUALIFIER) || annotationName.equals(NAMED)
+        if (annotationName.equals(PRIMARY)
+                || annotationName.equals(SCOPE)
+                || annotationName.equals(PROFILE)
+                || annotationName.equals(BEAN_METHOD)) return false;
+        if (annotationName.equals(QUALIFIER)
+                || annotationName.equals(NAMED)
                 || annotationName.equals(NAMED_JAVAX)) return false;
 
         return hasMetaAnnotation(annotationName, QUALIFIER, index, new HashSet<>());
@@ -596,7 +871,8 @@ public final class SpringResolver {
         return profiles;
     }
 
-    private static List<String> mergeProfiles(List<String> classProfiles, List<String> methodProfiles) {
+    private static List<String> mergeProfiles(
+            List<String> classProfiles, List<String> methodProfiles) {
         Set<String> merged = new LinkedHashSet<>(classProfiles);
         merged.addAll(methodProfiles);
         return new ArrayList<>(merged);
@@ -645,20 +921,21 @@ public final class SpringResolver {
 
     private static List<AnnotationInstance> methodLevelAnnotations(MethodInfo method) {
         return method.annotations().stream()
-                .filter(ann -> ann.target() != null
-                        && ann.target().kind() == AnnotationTarget.Kind.METHOD)
+                .filter(
+                        ann ->
+                                ann.target() != null
+                                        && ann.target().kind() == AnnotationTarget.Kind.METHOD)
                 .toList();
     }
 
     private static AnnotationInstance findAnnotationOrMeta(
-            Collection<AnnotationInstance> annotations, DotName target,
-            IndexView index) {
+            Collection<AnnotationInstance> annotations, DotName target, IndexView index) {
         for (AnnotationInstance ann : annotations) {
             if (ann.name().equals(target)) return ann;
         }
         for (AnnotationInstance ann : annotations) {
-            AnnotationInstance found = findAnnotationOnAnnotationType(
-                    ann.name(), target, index, new HashSet<>());
+            AnnotationInstance found =
+                    findAnnotationOnAnnotationType(ann.name(), target, index, new HashSet<>());
             if (found != null) return found;
         }
         return null;
@@ -673,15 +950,15 @@ public final class SpringResolver {
         AnnotationInstance direct = annotationClass.declaredAnnotation(target);
         if (direct != null) return direct;
         for (AnnotationInstance meta : annotationClass.declaredAnnotations()) {
-            AnnotationInstance found = findAnnotationOnAnnotationType(
-                    meta.name(), target, index, visited);
+            AnnotationInstance found =
+                    findAnnotationOnAnnotationType(meta.name(), target, index, visited);
             if (found != null) return found;
         }
         return null;
     }
 
-    private static boolean hasMetaAnnotation(DotName annotationName, DotName target,
-            IndexView index, Set<DotName> visited) {
+    private static boolean hasMetaAnnotation(
+            DotName annotationName, DotName target, IndexView index, Set<DotName> visited) {
         if (annotationName.equals(target)) return true;
         if (!visited.add(annotationName)) return false;
         ClassInfo annotationClass = index.getClassByName(annotationName);
@@ -692,8 +969,8 @@ public final class SpringResolver {
         return false;
     }
 
-    private static boolean isBeanStereotype(DotName annotationName, IndexView index,
-            Set<DotName> visited) {
+    private static boolean isBeanStereotype(
+            DotName annotationName, IndexView index, Set<DotName> visited) {
         if (BEAN_ANNOTATIONS.contains(annotationName)) return true;
         if (!visited.add(annotationName)) return false;
         ClassInfo annotationClass = index.getClassByName(annotationName);

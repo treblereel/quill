@@ -1,0 +1,1144 @@
+package org.treblereel.mcp.index;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.jdbi.v3.core.Jdbi;
+import org.jboss.jandex.CompositeIndex;
+import org.jboss.jandex.Index;
+import org.jboss.jandex.IndexView;
+import org.treblereel.mcp.core.ApplicationContextResolver;
+import org.treblereel.mcp.core.BeanResolver;
+import org.treblereel.mcp.core.BuildSystem;
+import org.treblereel.mcp.core.BytecodeDependencyScanner;
+import org.treblereel.mcp.core.ClassFileSnapshot;
+import org.treblereel.mcp.core.JvmApiScanner;
+import org.treblereel.mcp.core.ClassOccurrenceScanner;
+import org.treblereel.mcp.core.ConfigurationScanner;
+import org.treblereel.mcp.core.DependencyIndexer;
+import org.treblereel.mcp.core.FileInventory;
+import org.treblereel.mcp.core.ExternalBeanScanner;
+import org.treblereel.mcp.core.GitAnalyzer;
+import org.treblereel.mcp.core.JandexScanner;
+import org.treblereel.mcp.core.KotlinMetadataReader;
+import org.treblereel.mcp.core.ModuleClasspathResolver;
+import org.treblereel.mcp.core.ServiceProviderScanner;
+import org.treblereel.mcp.core.SpringResolver;
+import org.treblereel.mcp.core.WorktreeInspector;
+import org.treblereel.mcp.db.IndexWriter;
+import org.treblereel.mcp.db.IndexSnapshot;
+import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.model.BeanRecord;
+import org.treblereel.mcp.model.CdiProblem;
+import org.treblereel.mcp.model.ClassAnnotationRecord;
+import org.treblereel.mcp.model.ClassMemberRecord;
+import org.treblereel.mcp.model.ClassRecord;
+import org.treblereel.mcp.model.ClassOccurrenceRecord;
+import org.treblereel.mcp.model.DependencyRecord;
+import org.treblereel.mcp.model.ExternalDepRecord;
+import org.treblereel.mcp.model.ExternalBeanRecord;
+import org.treblereel.mcp.model.FieldAccessRecord;
+import org.treblereel.mcp.model.FrameworkEndpointRecord;
+import org.treblereel.mcp.model.InjectionPointRecord;
+import org.treblereel.mcp.model.KotlinDeclarationRecord;
+import org.treblereel.mcp.model.ModuleClasspathRecord;
+import org.treblereel.mcp.model.MethodCallRecord;
+import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
+
+public class ProjectInitializer {
+    private static final int MAX_GIT_COMMITS = 5_000;
+
+    private static final ObjectMapper JSON = Json.MAPPER;
+
+    public enum FailureReason {
+        LOCK_FAILED,
+        NO_COMPILED_CLASSES,
+        MIXED_FRAMEWORKS,
+        HEAD_CHANGED,
+        WORKTREE_CHANGED,
+        INDEX_PUBLICATION_FAILED,
+        INDEXING_FAILED
+    }
+
+    public record InitializationResult(
+            boolean successful, FailureReason reason, String message, long elapsedMillis,
+            Map<String, Long> phaseMillis) {
+
+        public InitializationResult(
+                boolean successful, FailureReason reason, String message, long elapsedMillis) {
+            this(successful, reason, message, elapsedMillis, Map.of());
+        }
+
+        public InitializationResult {
+            phaseMillis = Collections.unmodifiableMap(new LinkedHashMap<>(phaseMillis));
+        }
+
+        static InitializationResult success(long startedAtNanos) {
+            return new InitializationResult(true, null, "Index created successfully",
+                    elapsedMillis(startedAtNanos));
+        }
+
+        static InitializationResult failure(
+                FailureReason reason, String message, long startedAtNanos) {
+            return new InitializationResult(false, reason, message, elapsedMillis(startedAtNanos));
+        }
+
+        public String diagnostic() {
+            if (successful) return message;
+            return "Initialization failed [" + reason + "]: " + message;
+        }
+
+        InitializationResult withPhaseMillis(Map<String, Long> phases) {
+            return new InitializationResult(
+                    successful, reason, message, elapsedMillis, phases);
+        }
+
+        public String timingsDiagnostic() {
+            List<String> values = new ArrayList<>();
+            phaseMillis.forEach((phase, millis) -> values.add(phase + "=" + millis + "ms"));
+            values.add("total=" + elapsedMillis + "ms");
+            return "Timings: " + String.join(", ", values);
+        }
+
+        private static long elapsedMillis(long startedAtNanos) {
+            return Math.max(0, (System.nanoTime() - startedAtNanos) / 1_000_000);
+        }
+    }
+
+    static final class PhaseTimings {
+        private final Map<String, Long> phases = new LinkedHashMap<>();
+        private long phaseStartedAt = System.nanoTime();
+
+        void finish(String phase) {
+            long now = System.nanoTime();
+            phases.merge(phase, Math.max(0, (now - phaseStartedAt) / 1_000_000), Long::sum);
+            phaseStartedAt = now;
+        }
+
+        void record(String phase, long millis) {
+            phases.merge(phase, Math.max(0, millis), Long::sum);
+        }
+
+        void restart() {
+            phaseStartedAt = System.nanoTime();
+        }
+
+        Map<String, Long> snapshot() {
+            return Collections.unmodifiableMap(new LinkedHashMap<>(phases));
+        }
+    }
+
+    private static long elapsedMillis(long startedAtNanos) {
+        return Math.max(0, (System.nanoTime() - startedAtNanos) / 1_000_000);
+    }
+
+    static final class BackgroundTask<T> implements AutoCloseable {
+        private final String threadName;
+        private final ExecutorService executor;
+        private final Future<T> future;
+        private volatile long elapsedNanos;
+
+        private BackgroundTask(String threadName, Callable<T> operation) {
+            this.threadName = threadName;
+            executor = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, threadName);
+                thread.setDaemon(true);
+                return thread;
+            });
+            future = executor.submit(() -> {
+                long startedAt = System.nanoTime();
+                try {
+                    return operation.call();
+                } finally {
+                    elapsedNanos = System.nanoTime() - startedAt;
+                    executor.shutdown();
+                }
+            });
+        }
+
+        static <T> BackgroundTask<T> start(String threadName, Callable<T> operation) {
+            return new BackgroundTask<>(threadName, operation);
+        }
+
+        T await() {
+            try {
+                return future.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(threadName + " was interrupted", e);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof RuntimeException runtime) throw runtime;
+                if (cause instanceof Error error) throw error;
+                throw new IllegalStateException(threadName + " failed", cause);
+            }
+        }
+
+        long elapsedMillis() {
+            if (!future.isDone()) {
+                throw new IllegalStateException(threadName + " has not completed");
+            }
+            return Math.max(0, elapsedNanos / 1_000_000);
+        }
+
+        @Override
+        public void close() {
+            if (!future.isDone()) future.cancel(true);
+            executor.shutdownNow();
+        }
+    }
+
+    public record PersistedResolution(
+            List<BeanRecord> beans,
+            List<InjectionPointRecord> injectionPoints,
+            List<DependencyRecord> dependencies) {}
+
+    public static boolean initialize(Path root) {
+        return initialize(root, false);
+    }
+
+    public static boolean initialize(Path root, boolean indexOnly) {
+        return initializeDetailed(root, indexOnly).successful();
+    }
+
+    public static InitializationResult initializeDetailed(Path root, boolean indexOnly) {
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        long startedAtNanos = System.nanoTime();
+        PhaseTimings timings = new PhaseTimings();
+        try {
+            InitializationResult result = ProjectIndexLock.withLock(normalizedRoot, () -> {
+                timings.finish("lock_wait");
+                return initializeLockedDetailed(normalizedRoot, indexOnly, false,
+                        null, startedAtNanos, timings);
+            });
+            return result.withPhaseMillis(timings.snapshot());
+        } catch (IOException e) {
+            return InitializationResult.failure(FailureReason.LOCK_FAILED,
+                    "Could not lock index for " + normalizedRoot + ": " + rootMessage(e),
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
+        } catch (RuntimeException e) {
+            return InitializationResult.failure(FailureReason.INDEXING_FAILED,
+                    "Unexpected indexing error for " + normalizedRoot + ": " + rootMessage(e),
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
+        }
+    }
+
+    static Map<String, String> quarkusRestScopes(Path root, List<Path> modules, BuildSystem buildSystem,
+            IndexView lookup, List<ClassOccurrenceRecord> occurrences) {
+        Set<Path> confirmed = new HashSet<>();
+        Set<Path> arc = new HashSet<>();
+        Set<Path> captured = new HashSet<>();
+        for (var capture : JavaCompilerSettings.inspect(modules, buildSystem)) {
+            if ("main".equals(capture.path("source_set").asText()) && capture.path("compiled_settings_confirmed").asBoolean())
+                captured.add(Path.of(capture.path("module").asText()).toAbsolutePath().normalize());
+            if ("main".equals(capture.path("source_set").asText())
+                    && capture.path("compiled_settings_confirmed").asBoolean()
+                    && "true".equals(capture.path("settings").path("quarkusRest").asText())) {
+                confirmed.add(Path.of(capture.path("module").asText()).toAbsolutePath().normalize());
+            }
+            if ("main".equals(capture.path("source_set").asText()) && capture.path("compiled_settings_confirmed").asBoolean()
+                    && "true".equals(capture.path("settings").path("quarkusArc").asText()))
+                arc.add(Path.of(capture.path("module").asText()).toAbsolutePath().normalize());
+        }
+        Map<String, Set<Path>> owners = new HashMap<>();
+        for (var occurrence : occurrences) {
+            if (!"main".equals(occurrence.sourceSet())) continue;
+            owners.computeIfAbsent(occurrence.className(), ignored -> new HashSet<>())
+                    .add(root.resolve(occurrence.module()).toAbsolutePath().normalize());
+        }
+        // As for ArC below: without a fresh capture, Quarkus REST on the indexed classpath decides
+        // that resource classes are beans (@Singleton unless annotated otherwise).
+        boolean restRuntime = lookup.getClassByName(org.jboss.jandex.DotName.createSimple(
+                "io.quarkus.resteasy.reactive.server.runtime.ResteasyReactiveRecorder")) != null;
+        Set<String> eligible = new HashSet<>();
+        owners.forEach((name, directories) -> {
+            if (!directories.isEmpty() && (confirmed.containsAll(directories)
+                    || restRuntime && directories.stream().noneMatch(captured::contains))) eligible.add(name);
+        });
+        Map<String,String> scopes = new HashMap<>(org.treblereel.mcp.core.QuarkusRestDiscovery.scopes(lookup, eligible));
+        arc.addAll(confirmed);
+        // Without a fresh capture (stale build inputs, no Quill extension) the ArC runtime on the
+        // indexed classpath still decides: ArC makes a class that only declares producers a
+        // @Dependent bean (quarkus.arc.auto-producer-methods), and calling it NOT_A_BEAN is false.
+        boolean arcRuntime = lookup.getClassByName(org.jboss.jandex.DotName.createSimple("io.quarkus.arc.Arc")) != null;
+        for (var c : lookup.getKnownClasses()) {
+            Set<Path> directories = owners.getOrDefault(c.name().toString(), Set.of());
+            boolean arcModule = arc.containsAll(directories)
+                    || arcRuntime && directories.stream().noneMatch(captured::contains);
+            if (!directories.isEmpty() && arcModule && BeanResolver.quarkusProducerClass(c, lookup))
+                scopes.putIfAbsent(c.name().toString(), "@Dependent");
+        }
+        return Map.copyOf(scopes);
+    }
+
+    public static boolean initializeLocked(Path root, boolean indexOnly) {
+        return initializeLockedDetailed(root, indexOnly, false, null, System.nanoTime(),
+                new PhaseTimings()).successful();
+    }
+
+    public static boolean initializeLocked(Path root, boolean indexOnly, boolean compiledBeforeIndex) {
+        return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, null,
+                System.nanoTime(), new PhaseTimings()).successful();
+    }
+
+    public static InitializationResult initializeLockedDetailed(
+            Path root, boolean indexOnly, boolean compiledBeforeIndex) {
+        long startedAtNanos = System.nanoTime();
+        PhaseTimings timings = new PhaseTimings();
+        try {
+            return initializeLockedDetailed(
+                    root, indexOnly, compiledBeforeIndex, null, startedAtNanos, timings)
+                    .withPhaseMillis(timings.snapshot());
+        } catch (RuntimeException e) {
+            return InitializationResult.failure(FailureReason.INDEXING_FAILED,
+                    "Unexpected indexing error for " + root + ": " + rootMessage(e),
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
+        }
+    }
+
+    public static InitializationResult initializeLockedDetailed(
+            Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase) {
+        return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, incrementalBase, false);
+    }
+
+    static InitializationResult initializeLockedDetailed(Path root, boolean indexOnly,
+            boolean compiledBeforeIndex, Path incrementalBase, boolean commitOnly) {
+        long startedAtNanos = System.nanoTime();
+        PhaseTimings timings = new PhaseTimings();
+        try {
+            return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, incrementalBase,
+                    startedAtNanos, timings, commitOnly).withPhaseMillis(timings.snapshot());
+        } catch (RuntimeException e) {
+            return InitializationResult.failure(FailureReason.INDEXING_FAILED,
+                    "Unexpected indexing error for " + root + ": " + rootMessage(e),
+                    startedAtNanos).withPhaseMillis(timings.snapshot());
+        }
+    }
+
+    static List<ProjectLayout.CompiledOutput> independentOutputs(Path root,List<ProjectLayout.CompiledOutput> outputs) {
+        Path owner=repositoryBoundary(root);
+        return outputs.stream().filter(output -> java.util.Objects.equals(owner,repositoryBoundary(output.moduleDirectory()))).toList();
+    }
+    private static Path repositoryBoundary(Path path) {
+        try {path=path.toRealPath();}catch(java.io.IOException unavailable){path=path.toAbsolutePath().normalize();}
+        for(Path at=path;at!=null;at=at.getParent())
+            if(Files.isDirectory(at.resolve(".git")) || Files.isRegularFile(at.resolve(".git")))return at;
+        return null;
+    }
+
+    private static InitializationResult initializeLockedDetailed(
+            Path root, boolean indexOnly, boolean compiledBeforeIndex, Path incrementalBase,
+            long startedAtNanos, PhaseTimings timings) {
+        return initializeLockedDetailed(root, indexOnly, compiledBeforeIndex, incrementalBase, startedAtNanos, timings, false);
+    }
+
+    private static InitializationResult initializeLockedDetailed(Path root, boolean indexOnly,
+            boolean compiledBeforeIndex, Path incrementalBase, long startedAtNanos, PhaseTimings timings,
+            boolean commitOnly) {
+        ProjectLayout.ClassesDiscovery classesDiscovery =
+                ProjectLayout.discoverClassesDirs(root, true);
+        List<ProjectLayout.CompiledOutput> compiledOutputs = independentOutputs(root,classesDiscovery.outputs());
+        List<Path> classesDirs = compiledOutputs.stream().map(ProjectLayout.CompiledOutput::directory).distinct().toList();
+        timings.finish("class_discovery");
+
+        if (compiledOutputs.stream().allMatch(output -> output.sourceSet().equals("test"))) {
+            return InitializationResult.failure(FailureReason.NO_COMPILED_CLASSES,
+                    "No main .class files or additional JVM source-set outputs were found under " + root
+                            + ". Build the project with Maven or Gradle, then run `quill init` again.",
+                    startedAtNanos);
+        }
+
+        // Keep older generations intact until a replacement has been published successfully.
+
+        // Compilation is a prerequisite and is never started by Quill. Capture the authoritative
+        // commit/worktree snapshot afterwards so generated tracked files do not make a
+        // successful compile look like a concurrent mutation.
+        // Quill's own managed-file changes must also happen before the snapshot; otherwise
+        // the first init would invalidate itself when adding .quill/ to .gitignore.
+        ProjectConfiguration.prepareForIndex(root, indexOnly);
+        String initialHead = GitAnalyzer.resolveHead(root);
+        WorktreeInspector.Snapshot initialWorktree = WorktreeInspector.inspect(root);
+        String initialInputFingerprint = initialWorktree.indexInputFingerprint();
+        timings.finish("worktree_snapshot");
+
+        QuillLog.info("Indexing " + root.getFileName() + " (" + classesDirs.size() + " class dirs)...");
+        BuildSystem buildSystem = BuildSystem.detect(root);
+        Map<Path, Path> classDirectoryOwners = compiledOutputs.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ProjectLayout.CompiledOutput::directory,
+                        ProjectLayout.CompiledOutput::moduleDirectory,
+                        (left, right) -> left, LinkedHashMap::new));
+        Map<Path, String> classDirectorySourceSets = compiledOutputs.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ProjectLayout.CompiledOutput::directory,
+                        ProjectLayout.CompiledOutput::sourceSet,
+                        (left, right) -> left, LinkedHashMap::new));
+        List<Path> moduleDirectories = classDirectoryOwners.values().stream().distinct().toList();
+        List<ModuleClasspathRecord> moduleClasspath = ModuleClasspathResolver.resolve(
+                root, buildSystem, moduleDirectories);
+        List<Path> sourceRoots = ProjectLayout.findSourceRoots(root, moduleDirectories);
+        Map<String, String> jvmSourceHashes = org.treblereel.mcp.core.SourceFileHashes.captureJvmCached(root, sourceRoots);
+        List<Path> inputRoots = ProjectLayout.findIndexInputRoots(root, compiledOutputs);
+        Map<String, String> inputHashes = org.treblereel.mcp.core.SourceFileHashes.captureInputsCached(root, inputRoots);
+        Map<String, String> javaSourceHashes = jvmSourceHashes.entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith(".java"))
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        List<Path> indexingClassDirs = List.copyOf(classesDirs);
+        timings.finish("index_setup");
+        ClassFileSnapshot classFiles;
+        String initialStateFingerprint;
+        JandexScanner.ScanResult scanResult;
+        boolean isSpring;
+        boolean isCdi;
+        DependencyIndexer.DependencyIndexResult depResult;
+        try (BackgroundTask<DependencyIndexer.DependencyIndexResult> dependencyTask =
+                BackgroundTask.start("quill-dependency-index",
+                        () -> DependencyIndexer.buildDependencyIndex(
+                                root, indexingClassDirs, classDirectorySourceSets))) {
+            classFiles = ClassFileSnapshot.capture(indexingClassDirs);
+            if (commitOnly && !ProjectUpdater.compiledInputsMatch(root, incrementalBase, classesDirs,
+                    classFiles.fingerprint(), inputHashes))
+                return InitializationResult.failure(FailureReason.WORKTREE_CHANGED,
+                        "Compiled inputs changed during commit refresh; previous generation retained", startedAtNanos);
+            scanResult = sourceRoots.isEmpty()
+                    ? JandexScanner.scan(classFiles, List.of(),
+                            ProjectIndexStore.sourceTokenCache(root),
+                            ProjectIndexStore.applicationIndexCache(root))
+                    : JandexScanner.scan(classFiles, sourceRoots,
+                            ProjectIndexStore.sourceTokenCache(root),
+                            ProjectIndexStore.applicationIndexCache(root));
+            if (scanResult.cacheHits() > 0) {
+                QuillLog.info("Reusing application index shards "
+                        + scanResult.cacheHits() + "/" + scanResult.cacheShards() + "...");
+            }
+
+            isSpring = SpringResolver.isSpringProject(scanResult.index());
+            isCdi = BeanResolver.isCdiProject(scanResult.index());
+            timings.finish("application_scan");
+
+            depResult = dependencyTask.await();
+            depResult.timings().forEach(timings::record);
+            timings.record("dependency_total", dependencyTask.elapsedMillis());
+        }
+        timings.restart();
+        if (depResult.status() != DependencyIndexer.Status.COMPLETE) {
+            QuillLog.warn("dependency index "
+                    + depResult.status().name().toLowerCase() + " (" + depResult.detail() + ")");
+        }
+
+        List<ClassRecord> classes = new ArrayList<>(scanResult.classes().size());
+        for (ClassRecord cls : scanResult.classes()) classes.add(cls.withId(classes.size() + 1));
+
+        Map<String, Integer> classNameToSqliteId = new HashMap<>();
+        for (int i = 0; i < classes.size(); i++) {
+            classNameToSqliteId.put(classes.get(i).className(), classes.get(i).id());
+        }
+        IndexView annotationLookup = depResult.index() == null
+                ? scanResult.index()
+                : CompositeIndex.create(scanResult.index(), depResult.index());
+        List<ClassAnnotationRecord> classAnnotations =
+                JandexScanner.extractClassAnnotations(
+                        scanResult.index(), annotationLookup, classNameToSqliteId);
+        List<ClassMemberRecord> classMembers =
+                JandexScanner.extractClassMembers(scanResult.index(), annotationLookup, classNameToSqliteId);
+        List<FrameworkEndpointRecord> frameworkEndpoints =
+                JandexScanner.extractFrameworkEndpoints(
+                        scanResult.index(), annotationLookup, classNameToSqliteId);
+        List<ClassOccurrenceRecord> classOccurrences = ClassOccurrenceScanner.scan(
+                root, classFiles, classDirectoryOwners, classDirectorySourceSets,
+                classNameToSqliteId, sourceRoots, scanResult.sourceMappings());
+
+        Map<String, Integer> sourceFileToClassId = new HashMap<>();
+        for (int i = 0; i < classes.size(); i++) {
+            String sf = classes.get(i).sourceFile();
+            if (sf != null) {
+                Path sfPath = Path.of(sf);
+                if (sfPath.isAbsolute() && sfPath.startsWith(root)) {
+                    sf = root.relativize(sfPath).toString();
+                }
+                sourceFileToClassId.put(sf.replace('\\', '/'), classes.get(i).id());
+            }
+        }
+        timings.finish("analysis_setup");
+
+        List<BeanResolver.ResolutionResult> resolutions = new ArrayList<>();
+        if (isSpring) {
+            resolutions.add(SpringResolver.resolve(scanResult.index(), depResult.index()));
+        }
+        if (isCdi || !isSpring) {
+            resolutions.add(BeanResolver.resolve(scanResult.index(), depResult.index(),
+                    quarkusRestScopes(root, moduleDirectories, buildSystem, annotationLookup, classOccurrences)));
+        }
+
+        List<PersistedResolution> persistedParts = new ArrayList<>();
+        for (BeanResolver.ResolutionResult resolution : resolutions) {
+            Map<Integer, Integer> brToSqlite = new HashMap<>();
+            for (var entry : resolution.classNameToId().entrySet()) {
+                Integer sqliteId = classNameToSqliteId.get(entry.getKey());
+                if (sqliteId != null) {
+                    brToSqlite.put(entry.getValue(), sqliteId);
+                }
+            }
+            persistedParts.add(remapForPersistence(resolution, brToSqlite));
+        }
+        PersistedResolution persisted = mergePersistedResolutions(
+                persistedParts, isSpring && isCdi);
+        List<BeanRecord> remappedBeans = persisted.beans();
+        List<ExternalBeanRecord> externalBeans = ExternalBeanScanner.scan(
+                depResult.index(), depResult.jars());
+
+        classes = markBeanClasses(classes, remappedBeans);
+        timings.finish("bean_resolution");
+
+        Map<Integer, org.treblereel.mcp.core.KotlinSourceDebug.Info> kotlinSourceDebug = new LinkedHashMap<>();
+        for (var info : org.treblereel.mcp.core.KotlinSourceDebug.scan(classFiles)) {
+            Integer id = classNameToSqliteId.get(info.className());
+            if (id != null) kotlinSourceDebug.put(id, info);
+        }
+        List<DependencyRecord> remappedDeps = new ArrayList<>(persisted.dependencies());
+        List<ExternalDepRecord> externalDeps;
+        int serviceDescriptorCount;
+        int serviceRegistrationCount;
+        List<ServiceProviderScanner.Registration> serviceRegistrations;
+        List<ExternalDepRecord> bytecodeServiceExternalDeps = new ArrayList<>();
+        List<MethodCallRecord> methodCalls = new ArrayList<>();
+        List<FieldAccessRecord> fieldAccesses = new ArrayList<>();
+        GitAnalyzer.GitAnalysisResult gitResult;
+        try (BackgroundTask<GitAnalyzer.GitAnalysisResult> gitTask =
+                BackgroundTask.start("quill-git-analysis", () -> GitAnalyzer.hasGitRepo(root)
+                        ? GitAnalyzer.analyze(root, MAX_GIT_COMMITS, sourceFileToClassId)
+                        : GitAnalyzer.GitAnalysisResult.empty())) {
+            remapBytecode(BytecodeDependencyScanner.analyze(classFiles, classNameToSqliteId.keySet()),
+                    classNameToSqliteId, remappedDeps, bytecodeServiceExternalDeps, methodCalls,
+                    fieldAccesses);
+            timings.finish("bytecode_analysis");
+
+            ServiceProviderScanner.Result services =
+                    ServiceProviderScanner.scan(root, moduleDirectories);
+            serviceDescriptorCount = services.descriptorCount();
+            serviceRegistrationCount = services.registrations().size();
+            serviceRegistrations = services.registrations();
+            ServiceProviderScanner.ResolvedDependencies serviceDependencies =
+                    ServiceProviderScanner.resolve(services, classNameToSqliteId);
+            remappedDeps.addAll(serviceDependencies.internal());
+            timings.finish("service_analysis");
+
+            externalDeps = new ArrayList<>(JandexScanner.extractExternalDeps(
+                    scanResult.index(), classNameToSqliteId));
+            externalDeps.addAll(bytecodeServiceExternalDeps);
+            externalDeps.addAll(serviceDependencies.external());
+            timings.finish("external_dependency_analysis");
+
+            gitResult = gitTask.await();
+            timings.record("git_analysis", gitTask.elapsedMillis());
+        }
+        timings.restart();
+
+        initialStateFingerprint = ProjectLayout.computeStateFingerprint(root, classesDirs, classFiles.fingerprint());
+        String lastCommit = gitResult.headHash();
+
+        if (!headMatches(root, initialHead)
+                || (initialHead != null && !initialHead.equals(lastCommit))) {
+            return InitializationResult.failure(FailureReason.HEAD_CHANGED,
+                    headChangedMessage("during indexing", initialHead,
+                            GitAnalyzer.resolveHead(root)), startedAtNanos);
+        }
+
+        List<CdiProblem> problems = resolutions.stream()
+                .flatMap(resolution -> resolution.problems().stream())
+                .toList();
+        List<CdiProblem> remappedProblems = problems.stream()
+                .map(p -> new CdiProblem(p.id(),
+                        classNameToSqliteId.get(p.className()),
+                        p.className(), p.problemType(), p.message()))
+                .toList();
+
+        FileInventory.Result inventory = FileInventory.build(root, moduleDirectories, sourceRoots,
+                classes, gitResult.fileStats(), initialWorktree, classOccurrences);
+        classes = inventory.classes();
+        ConfigurationScanner.ScanResult references = ConfigurationScanner.scan(
+                root, moduleDirectories, scanResult.index(), classNameToSqliteId, classes,
+                classFiles);
+        ConfigurationScanner.Result configuration = references.configuration();
+        List<InjectionPointRecord> contextualInjectionPoints = ApplicationContextResolver.refine(
+                persisted.injectionPoints(), remappedBeans, classes, classOccurrences,
+                moduleClasspath);
+        replaceInjectionDependencies(remappedDeps, contextualInjectionPoints, remappedBeans);
+        keepCurrentClassDependencies(remappedDeps, classes);
+        timings.finish("file_inventory");
+
+        String indexId = ProjectIndexStore.createIndexId(lastCommit);
+        Path dbPath = ProjectIndexStore.resolveDbPath(root, indexId);
+        Path stagedDb = dbPath.resolveSibling("." + dbPath.getFileName() + "."
+                + UUID.randomUUID() + ".tmp");
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("indexed_at", Instant.now().toString());
+        metadata.put("index_id", indexId);
+        Set<String> applicationClassNames = new HashSet<>();
+        classes.forEach(cls -> { if (cls.lifecycle().equals("current")) applicationClassNames.add(cls.className()); });
+        String generated = org.treblereel.mcp.core.GeneratedBytecodeScanner.scan(root, applicationClassNames);
+        if (generated != null) metadata.put(org.treblereel.mcp.core.GeneratedBytecodeScanner.METADATA_KEY, generated);
+        metadata.put("project_root", root.toString());
+        metadata.put("last_commit", lastCommit != null ? lastCommit : "unknown");
+        metadata.put("git_scanned_commits", Integer.toString(gitResult.scannedCommits()));
+        metadata.put("git_repository_commits", Integer.toString(gitResult.repositoryCommits()));
+        metadata.put("git_history_complete", Boolean.toString(
+                gitResult.scannedCommits() == gitResult.repositoryCommits()));
+        metadata.put("indexed_worktree_dirty", Boolean.toString(initialWorktree.dirty()));
+        metadata.put("indexed_worktree_changed_files",
+                Integer.toString(initialWorktree.changes().size()));
+        metadata.put("indexed_structure_fingerprint", initialWorktree.structuralFingerprint());
+        metadata.put("indexed_input_fingerprint", initialInputFingerprint);
+        metadata.put("indexed_structural_changed_files",
+                Integer.toString(initialWorktree.structuralChanges().size()));
+        metadata.put("compiled_before_index", Boolean.toString(compiledBeforeIndex));
+        metadata.put("structure_scope", "compiled_snapshot");
+        metadata.put("java_source_hashes", toJson(javaSourceHashes));
+        metadata.put("source_input_hashes", toJson(inputHashes));
+        metadata.put("source_input_roots", toJson(inputRoots.stream().map(root::relativize).map(Path::toString).toList()));
+        metadata.put("java_source_roots", toJson(sourceRoots.stream().map(path -> root.relativize(path.toAbsolutePath().normalize()).toString()).sorted().toList()));
+        metadata.put("module_discovery_scope", classesDiscovery.moduleScope());
+        metadata.put("module_discovery_complete",
+                Boolean.toString(classesDiscovery.complete()));
+        putCompiledOutputMetadata(metadata, root, compiledOutputs, buildSystem);
+        metadata.put("application_index_cache_hits",
+                Integer.toString(scanResult.cacheHits()));
+        metadata.put("application_index_cache_shards",
+                Integer.toString(scanResult.cacheShards()));
+        metadata.put("kotlin_metadata_classes",
+                Integer.toString(scanResult.kotlinMetadata().size()));
+        metadata.put("kotlin_metadata_fallbacks", Long.toString(
+                scanResult.kotlinMetadata().values().stream()
+                        .filter(value -> value.status() != KotlinMetadataReader.Status.PARSED)
+                        .count()));
+        List<KotlinDeclarationRecord> kotlinDeclarations = kotlinDeclarations(
+                scanResult.kotlinMetadata(), classNameToSqliteId);
+        metadata.put("kotlin_declarations", Integer.toString(kotlinDeclarations.size()));
+        if (!indexOnly && (!kotlinDeclarations.isEmpty() || inventory.files().stream()
+                .anyMatch(file -> file.kind().equals("kotlin") && file.lifecycle().equals("current")))) {
+            prepareKotlinRuntimes(moduleDirectories, buildSystem);
+            timings.finish("kotlin_runtime");
+        }
+        metadata.put("class_occurrences", Integer.toString(classOccurrences.size()));
+        metadata.put("module_contexts", Integer.toString(moduleDirectories.size()));
+        metadata.put("discovered_module_count",
+                Integer.toString(classesDiscovery.moduleDirectories().size()));
+        metadata.put("module_classpath_entries", Integer.toString(moduleClasspath.size()));
+        metadata.put("service_descriptors", Integer.toString(serviceDescriptorCount));
+        metadata.put("service_registrations", Integer.toString(serviceRegistrationCount));
+        metadata.put("method_calls", Integer.toString(methodCalls.size()));
+        metadata.put("invokedynamic_evidence_protocol", "2");
+        metadata.put("quarkus_rest_discovery_protocol", "2");
+        metadata.put("field_accesses", Integer.toString(fieldAccesses.size()));
+        metadata.put("framework_endpoints", Integer.toString(frameworkEndpoints.size()));
+        metadata.put("configuration_definitions",
+                Integer.toString(configuration.definitions().size()));
+        metadata.put("configuration_usages", Integer.toString(configuration.usages().size()));
+        metadata.put("resource_usages",
+                Integer.toString(references.resourceUsages().size()));
+        metadata.put("framework_endpoints_detail", frameworkEndpointsJson(frameworkEndpoints));
+        metadata.put("service_registrations_detail", serviceRegistrationsJson(serviceRegistrations));
+        metadata.put("framework", isSpring && isCdi ? "Mixed"
+                : isSpring ? "Spring" : isCdi ? "CDI" : "Plain");
+        metadata.put("dependency_index", depResult.status().name().toLowerCase());
+        metadata.put("dependency_index_detail", depResult.detail());
+        metadata.put("external_beans", Integer.toString(externalBeans.size()));
+        metadata.put("database_write_mode", incrementalBase == null ? "fresh" : "incremental");
+        metadata.put("state_fingerprint", initialStateFingerprint);
+        timings.finish("index_metadata");
+
+        IndexSnapshot snapshot = new IndexSnapshot(classes, remappedBeans,
+                contextualInjectionPoints, remappedDeps, metadata, externalDeps,
+                remappedProblems, gitResult.fileStats(), gitResult.commits(),
+                gitResult.commitFiles(), inventory.files(), classOccurrences,
+                classAnnotations, classMembers, methodCalls, fieldAccesses, configuration,
+                references.resourceUsages(),JvmApiScanner.capture(classFiles,classNameToSqliteId),
+                externalBeans, moduleClasspath, kotlinDeclarations, kotlinSourceDebug);
+
+        long databaseStartedAt = System.nanoTime();
+        try {
+            if (incrementalBase == null) {
+                long schemaStartedAt = System.nanoTime();
+                Jdbi jdbi = QuillDatabase.createForBulkLoad(stagedDb);
+                timings.record("database_schema", elapsedMillis(schemaStartedAt));
+                IndexWriter.WriteTimings writeTimings = IndexWriter.writeFresh(jdbi, snapshot);
+                timings.record("database_inserts", writeTimings.insertsMillis());
+                timings.record("database_indexes", writeTimings.indexesMillis());
+                timings.record("database_transaction_overhead",
+                        writeTimings.transactionOverheadMillis());
+            } else {
+                long cloneStartedAt = System.nanoTime();
+                Files.copy(incrementalBase, stagedDb, StandardCopyOption.COPY_ATTRIBUTES);
+                timings.record("database_clone", elapsedMillis(cloneStartedAt));
+                Jdbi jdbi = QuillDatabase.openWritable(stagedDb);
+                IndexWriter.IncrementalWriteTimings writeTimings =
+                        IndexWriter.writeIncremental(jdbi, snapshot);
+                timings.record("database_delta", writeTimings.deltaMillis());
+                timings.record("database_transaction_overhead",
+                        writeTimings.transactionOverheadMillis());
+                QuillLog.info("SQLite delta: " + writeTimings.rowsInserted()
+                        + " inserted, " + writeTimings.rowsDeleted() + " deleted, "
+                        + writeTimings.rowsUnchanged() + " unchanged.");
+            }
+            long validationStartedAt = System.nanoTime();
+            ProjectIndexStore.validateForPublication(stagedDb);
+            boolean headChanged = !headMatches(root, initialHead);
+            boolean worktreeChanged = !indexInputsMatch(root, initialInputFingerprint,
+                    initialStateFingerprint, classesDirs, inputHashes, inputRoots);
+            timings.record("publication_validation", elapsedMillis(validationStartedAt));
+            if (headChanged || worktreeChanged) {
+                ProjectIndexStore.deleteDatabaseArtifacts(stagedDb);
+                if (headChanged) {
+                    return InitializationResult.failure(FailureReason.HEAD_CHANGED,
+                            headChangedMessage("before index publication", initialHead,
+                                    GitAnalyzer.resolveHead(root)), startedAtNanos);
+                }
+                WorktreeInspector.Snapshot currentWorktree = WorktreeInspector.inspect(root);
+                return InitializationResult.failure(FailureReason.WORKTREE_CHANGED,
+                        "Indexed inputs changed before publication; the staged index was discarded. "
+                                + describeIndexInputs(currentWorktree) + " Retry `quill update` when "
+                                + "concurrent builds or edits have finished.",
+                        startedAtNanos);
+            }
+            long publicationStartedAt = System.nanoTime();
+            ProjectIndexStore.atomicMove(stagedDb, dbPath);
+            timings.record("atomic_publication", elapsedMillis(publicationStartedAt));
+            timings.restart();
+        } catch (RuntimeException | IOException e) {
+            timings.record("database_failed", elapsedMillis(databaseStartedAt));
+            timings.restart();
+            ProjectIndexStore.deleteDatabaseArtifacts(stagedDb);
+            return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
+                    "Could not publish SQLite index at " + dbPath + ": " + rootMessage(e)
+                            + ". The previous index, if any, was left unchanged.",
+                    startedAtNanos);
+        }
+
+        long validationStartedAt = System.nanoTime();
+        boolean headChangedAfterPublication = !headMatches(root, initialHead);
+        timings.record("publication_validation", elapsedMillis(validationStartedAt));
+        if (headChangedAfterPublication) {
+            ProjectIndexStore.deleteDatabaseArtifacts(dbPath);
+            return InitializationResult.failure(FailureReason.HEAD_CHANGED,
+                    headChangedMessage("after index publication", initialHead,
+                            GitAnalyzer.resolveHead(root))
+                            + " The unpublished generation was removed; retry `quill update`.",
+                    startedAtNanos);
+        }
+
+        long activationStartedAt = System.nanoTime();
+        try {
+            ProjectIndexStore.updateRefs(root, lastCommit, indexId);
+        } catch (RuntimeException e) {
+            timings.record("activation", elapsedMillis(activationStartedAt));
+            return InitializationResult.failure(FailureReason.INDEX_PUBLICATION_FAILED,
+                    "Could not activate immutable index generation " + dbPath + ": "
+                            + rootMessage(e)
+                            + ". Existing refs were preserved; the completed generation was retained for recovery.",
+                    startedAtNanos);
+        }
+
+        ProjectConfiguration.finishInitialization(root, indexOnly);
+        timings.record("activation", elapsedMillis(activationStartedAt));
+        timings.restart();
+
+        String depStatus = depResult.status() == DependencyIndexer.Status.COMPLETE
+                ? "" : " [deps: " + depResult.status().name().toLowerCase() + "]";
+        QuillLog.info("Done: " + classes.size() + " classes, "
+                + remappedBeans.size() + " beans"
+                + (gitResult.isEmpty() ? "" : ", " + gitResult.commits().size() + " git commits")
+                + depStatus + ".");
+        return InitializationResult.success(startedAtNanos);
+    }
+
+    /** Maps bytecode facts onto SQLite class ids; edges whose ends are not indexed classes are dropped. */
+    private static void remapBytecode(BytecodeDependencyScanner.ScanResult bytecode,
+            Map<String, Integer> classIds, List<DependencyRecord> dependencies,
+            List<ExternalDepRecord> serviceExternalDependencies, List<MethodCallRecord> methodCalls,
+            List<FieldAccessRecord> fieldAccesses) {
+        for (BytecodeDependencyScanner.StaticDependency dependency : bytecode.dependencies()) {
+            Integer from = classIds.get(dependency.fromClass());
+            Integer to = classIds.get(dependency.toClass());
+            if (from != null && to != null) {
+                dependencies.add(new DependencyRecord(from, to, dependency.kind(), null,
+                        dependency.occurrences(), dependency.evidenceLines()));
+            } else if (from != null && dependency.kind().startsWith("SERVICE_")) {
+                serviceExternalDependencies.add(new ExternalDepRecord(
+                        from, dependency.toClass(), dependency.kind()));
+            }
+        }
+        for (BytecodeDependencyScanner.StaticMethodCall call : bytecode.methodCalls()) {
+            Integer from = classIds.get(call.fromClass());
+            Integer to = classIds.get(call.toClass());
+            if (from != null && to != null) {
+                methodCalls.add(new MethodCallRecord(from, call.fromMethod(),
+                        call.fromDescriptor(), to, call.toMethod(), call.toDescriptor(),
+                        call.invocationKind(), call.occurrences(), call.evidenceLines(),
+                        call.instructionOrdinals(), call.callerBranchCount(),
+                        call.callerExceptionHandlerCount(), call.callerControlFlowEdges(),
+                        call.callerAsyncBoundaries(), call.callerExternalCalls()));
+            }
+        }
+        for (BytecodeDependencyScanner.StaticFieldAccess access : bytecode.fieldAccesses()) {
+            Integer from = classIds.get(access.fromClass());
+            Integer to = classIds.get(access.toClass());
+            if (from != null && to != null) {
+                fieldAccesses.add(new FieldAccessRecord(from, access.fromMethod(),
+                        access.fromDescriptor(), to, access.fieldName(),
+                        access.fieldDescriptor(), access.accessKind(), access.occurrences(),
+                        access.evidenceLines(), access.instructionOrdinals()));
+            }
+        }
+    }
+
+    /** Sets each class's bean flag from the resolved beans. */
+    private static List<ClassRecord> markBeanClasses(List<ClassRecord> classes, List<BeanRecord> beans) {
+        Set<Integer> beanClassIds = new HashSet<>();
+        for (BeanRecord bean : beans) beanClassIds.add(bean.classId());
+        List<ClassRecord> corrected = new ArrayList<>(classes.size());
+        for (ClassRecord cls : classes) {
+            boolean isBean = beanClassIds.contains(cls.id());
+            corrected.add(isBean != cls.isBean() ? cls.withBean(isBean) : cls);
+        }
+        return corrected;
+    }
+
+    /** Replaces injection edges with those of the context-refined injection points. */
+    private static void replaceInjectionDependencies(List<DependencyRecord> dependencies,
+            List<InjectionPointRecord> injectionPoints, List<BeanRecord> beans) {
+        Map<Integer, BeanRecord> beansById = new HashMap<>();
+        beans.forEach(bean -> beansById.put(bean.id(), bean));
+        dependencies.removeIf(dependency -> dependency.injectionPointId() != null);
+        for (InjectionPointRecord point : injectionPoints) {
+            BeanRecord owner = beansById.get(point.beanId());
+            BeanRecord target = point.resolvedBeanId() == null
+                    ? null : beansById.get(point.resolvedBeanId());
+            if (owner != null && target != null) {
+                dependencies.add(new DependencyRecord(owner.classId(), target.classId(),
+                        InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy())
+                                ? "SPRING_INJECT" : "CDI_INJECT",
+                        point.id()));
+            }
+        }
+    }
+
+    /** Drops dependency edges touching removed or orphaned classes. */
+    private static void keepCurrentClassDependencies(List<DependencyRecord> dependencies,
+            List<ClassRecord> classes) {
+        Set<Integer> currentClassIds = new HashSet<>();
+        for (ClassRecord cls : classes) {
+            if (cls.lifecycle().equals("current") && !cls.origin().equals("orphan_output")) {
+                currentClassIds.add(cls.id());
+            }
+        }
+        dependencies.removeIf(dependency -> !currentClassIds.contains(dependency.fromClassId())
+                || !currentClassIds.contains(dependency.toClassId()));
+    }
+
+    private static void putCompiledOutputMetadata(Map<String, String> metadata, Path root,
+            List<ProjectLayout.CompiledOutput> compiledOutputs, BuildSystem buildSystem) {
+        metadata.put("compiled_main_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("main")).count()));
+        metadata.put("compiled_additional_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> !output.sourceSet().equals("main") && !output.sourceSet().equals("test")).count()));
+        metadata.put("compiled_source_sets", toJson(compiledOutputs.stream()
+                .map(ProjectLayout.CompiledOutput::sourceSet).distinct().sorted().toList()));
+        metadata.put("compiled_test_output_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test")).count()));
+        metadata.put("compiled_test_module_count", Long.toString(compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory).distinct().count()));
+        Set<Path> testModules = compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<Path> mainModules = compiledOutputs.stream()
+                .filter(output -> output.sourceSet().equals("main"))
+                .map(ProjectLayout.CompiledOutput::moduleDirectory)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        metadata.put("compiled_test_modules", toJson(testModules.stream()
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        metadata.put("missing_test_output_modules", toJson(mainModules.stream()
+                .filter(ProjectLayout::hasTestSources)
+                .filter(module -> !testModules.contains(module.toAbsolutePath().normalize()))
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        Set<Path> testClasspathModules = testModules.stream()
+                .filter(module -> Files.isRegularFile(buildSystem.testClasspathFile(module)))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        metadata.put("test_classpath_module_count",
+                Integer.toString(testClasspathModules.size()));
+        metadata.put("missing_test_classpath_modules", toJson(testModules.stream()
+                .filter(module -> !testClasspathModules.contains(module))
+                .map(module -> relativeModule(root, module)).sorted().toList()));
+        metadata.put("stale_test_output_modules", toJson(
+                ProjectLayout.staleTestOutputModules(compiledOutputs).stream()
+                        .map(module -> relativeModule(root, module)).sorted().toList()));
+    }
+
+    /** Prepares the K2 runtime for each captured compiler version, or the bundled one. */
+    private static void prepareKotlinRuntimes(List<Path> moduleDirectories, BuildSystem buildSystem) {
+        var versions = new java.util.LinkedHashSet<String>();
+        boolean capturedVersion = false;
+        for (Path module : moduleDirectories) {
+            BuildSystem moduleBuild = BuildSystem.hasGradleMarker(module) ? BuildSystem.GRADLE
+                    : Files.isRegularFile(module.resolve("pom.xml")) ? BuildSystem.MAVEN : buildSystem;
+            Path output = moduleBuild.classpathFile(module).getParent();
+            if (!Files.isDirectory(output)) continue;
+            try (var settings = Files.newDirectoryStream(output, "quill-kotlin-*.properties")) {
+                for (Path file : settings) {
+                    var properties = new java.util.Properties();
+                    try (var input = Files.newInputStream(file)) { properties.load(input); }
+                    String captured = properties.getProperty("compilerVersion", "");
+                    if (!captured.isBlank()) {
+                        capturedVersion = true;
+                        String selected = org.treblereel.mcp.kotlin.KotlinRuntime.selectVersion(captured);
+                        if (selected == null) QuillLog.info("K2 " + captured + " is unsupported; semantic analysis will use indexed fallback");
+                        else versions.add(selected);
+                    }
+                }
+            } catch (IOException failure) {
+                QuillLog.info("Could not read captured Kotlin compiler settings: " + failure.getMessage());
+            }
+        }
+        if (!capturedVersion) versions.add(org.treblereel.mcp.kotlin.KotlinRuntime.version());
+        for (String selected : versions) {
+            try {
+                org.treblereel.mcp.kotlin.KotlinRuntime.prepareVersion(selected);
+                QuillLog.info("K2 " + selected + " runtime ready");
+            } catch (IOException failure) {
+                QuillLog.info("K2 " + selected + " runtime unavailable; Kotlin metadata analysis remains available. "
+                        + failure.getMessage());
+            }
+        }
+    }
+
+    private static List<KotlinDeclarationRecord> kotlinDeclarations(
+            Map<String, KotlinMetadataReader.Result> metadata,
+            Map<String, Integer> classIds) {
+        List<KotlinDeclarationRecord> result = new ArrayList<>();
+        metadata.forEach((className, value) -> {
+            Integer classId = classIds.get(className);
+            if (classId == null || value.status() != KotlinMetadataReader.Status.PARSED) return;
+            String name = value.kotlinName() == null ? className : value.kotlinName();
+            result.add(new KotlinDeclarationRecord(classId, kotlinDeclarationKind(value), name,
+                    className, "", "kotlin_metadata", false, false, false,
+                    false, false, false,
+                    value.kind() == KotlinMetadataReader.Kind.SYNTHETIC, null, value.declarationTypes().get("CLASS")));
+            value.functions().forEach(function -> result.add(new KotlinDeclarationRecord(
+                    classId, "FUNCTION", function.name(), function.jvmName(),
+                    function.descriptor() == null ? "" : function.descriptor(),
+                    "kotlin_metadata", function.suspend(), function.extension(),
+                    function.hasDefaultParameters(), false, false, false,
+                    function.synthesized(), function.valueParameters(), value.declarationTypes().get(
+                            "FUNCTION|" + function.jvmName() + "|" + function.descriptor()))));
+            value.constructors().forEach(constructor -> result.add(new KotlinDeclarationRecord(
+                    classId, "CONSTRUCTOR", name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1), "<init>",
+                    constructor.descriptor() == null ? "" : constructor.descriptor(),
+                    "kotlin_metadata", false, false,
+                    constructor.valueParameters().stream().anyMatch(parameter -> parameter.hasDefault()),
+                    false, false, false, false, constructor.valueParameters(), value.declarationTypes().get(
+                            "CONSTRUCTOR|<init>|" + constructor.descriptor()))));
+            value.properties().forEach(property -> {
+                int before = result.size();
+                addPropertyDeclaration(result, classId, property, property.fieldName(),
+                        property.fieldDescriptor());
+                addPropertyDeclaration(result, classId, property, property.getterName(),
+                        property.getterDescriptor());
+                addPropertyDeclaration(result, classId, property, property.setterName(),
+                        property.setterDescriptor());
+                if (result.size() == before) {
+                    addPropertyDeclaration(result, classId, property, null, null);
+                }
+                for (int i = before; i < result.size(); i++) {
+                    var d = result.get(i);
+                    result.set(i, new KotlinDeclarationRecord(d.classId(), d.kind(), d.name(), d.jvmName(), d.descriptor(),
+                            d.semanticModel(), d.isSuspend(), d.extension(), d.hasDefaultParameters(), d.mutable(),
+                            d.lateinit(), d.delegated(), d.synthetic(), d.valueParameters(),
+                            value.declarationTypes().get("PROPERTY|" + property.name())));
+                }
+            });
+        });
+        return List.copyOf(result);
+    }
+
+    private static void addPropertyDeclaration(List<KotlinDeclarationRecord> result, int classId,
+            KotlinMetadataReader.Property property, String jvmName, String descriptor) {
+        if (jvmName == null && descriptor != null) return;
+        if (jvmName == null && result.stream().anyMatch(value -> value.classId() == classId
+                && "PROPERTY".equals(value.kind()) && property.name().equals(value.name()))) {
+            return;
+        }
+        result.add(new KotlinDeclarationRecord(
+                classId, "PROPERTY", property.name(), jvmName,
+                descriptor == null ? "" : descriptor,
+                "kotlin_metadata", false, property.extension(), false,
+                property.mutable(), property.lateinit(), property.delegated(), false));
+    }
+
+    private static String kotlinDeclarationKind(KotlinMetadataReader.Result value) {
+        if (value.kind() == KotlinMetadataReader.Kind.CLASS && value.data()) return "DATA_CLASS";
+        if (value.kind() == KotlinMetadataReader.Kind.CLASS && value.value()) return "VALUE_CLASS";
+        if (value.kind() == KotlinMetadataReader.Kind.INTERFACE && value.funInterface()) {
+            return "FUN_INTERFACE";
+        }
+        return value.kind().name();
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("Could not serialize index metadata", error);
+        }
+    }
+
+    private static String relativeModule(Path root, Path module) {
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path normalizedModule = module.toAbsolutePath().normalize();
+        if (normalizedModule.equals(normalizedRoot)) return ".";
+        return normalizedModule.startsWith(normalizedRoot)
+                ? normalizedRoot.relativize(normalizedModule).toString().replace('\\', '/')
+                : normalizedModule.toString().replace('\\', '/');
+    }
+
+    public static String serviceRegistrationsJson(
+            List<ServiceProviderScanner.Registration> registrations) {
+        List<Map<String, Object>> rows = registrations.stream()
+                .map(registration -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("serviceType", registration.serviceType());
+                    row.put("providerType", registration.providerType());
+                    row.put("descriptorPath", registration.descriptorPath());
+                    row.put("line", registration.line());
+                    return row;
+                })
+                .toList();
+        return toJson(rows);
+    }
+
+    public static String frameworkEndpointsJson(List<FrameworkEndpointRecord> endpoints) {
+        List<Map<String, Object>> rows = endpoints.stream().map(endpoint -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("classId", endpoint.classId());
+            row.put("className", endpoint.className());
+            row.put("methodName", endpoint.methodName());
+            row.put("signature", endpoint.signature());
+            row.put("descriptor", endpoint.descriptor());
+            row.put("framework", endpoint.framework());
+            row.put("httpMethods", endpoint.httpMethods());
+            row.put("classPaths", endpoint.classPaths());
+            row.put("methodPaths", endpoint.methodPaths());
+            row.put("annotations", endpoint.annotations());
+            row.put("declaringClassId", endpoint.declaringClassId());
+            row.put("declaringClassName", endpoint.declaringClassName());
+            row.put("mappingSources", endpoint.mappingSources());
+            return row;
+        }).toList();
+        return toJson(rows);
+    }
+
+    public static CodexConfigInstaller.Result ensureCodexConfig(Path root, boolean indexOnly) {
+        return ProjectConfiguration.ensureCodexConfig(root, indexOnly);
+    }
+
+    public static PersistedResolution remapForPersistence(
+            BeanResolver.ResolutionResult resolution, Map<Integer, Integer> classIds) {
+        return ResolutionPersistenceMapper.remap(resolution, classIds);
+    }
+
+    public static PersistedResolution mergePersistedResolutions(
+            List<PersistedResolution> parts, boolean mixedFrameworks) {
+        return ResolutionPersistenceMapper.merge(parts, mixedFrameworks);
+    }
+
+    public static List<Path> findClassesDirs(Path root) {
+        return independentOutputs(root,ProjectLayout.discoverClassesDirs(root,false).outputs()).stream().map(ProjectLayout.CompiledOutput::directory).distinct().toList();
+    }
+
+    public static List<Path> findIndexableClassesDirs(Path root) {
+        return independentOutputs(root,ProjectLayout.discoverClassesDirs(root,false).outputs()).stream()
+                .filter(output -> !output.sourceSet().equals("test"))
+                .map(ProjectLayout.CompiledOutput::directory).toList();
+    }
+
+    public static List<Path> findMainClassesDirs(Path root) {
+        return independentOutputs(root,ProjectLayout.discoverClassesDirs(root,false).outputs()).stream()
+                .filter(output -> output.sourceSet().equals("main"))
+                .map(ProjectLayout.CompiledOutput::directory).toList();
+    }
+
+    public static String computeStateFingerprint(Path root, List<Path> classesDirs) {
+        return ProjectLayout.computeStateFingerprint(root, classesDirs);
+    }
+
+    public static boolean headMatches(Path root, String expectedHead) {
+        return java.util.Objects.equals(expectedHead, GitAnalyzer.resolveHead(root));
+    }
+
+    static boolean indexInputsMatch(Path root, String expectedInputs, String expectedState,
+            List<Path> classesDirs, Map<String,String> jvmSources, List<Path> sourceRoots) {
+        boolean worktreeMatches = expectedInputs.equals(WorktreeInspector.inspect(root).indexInputFingerprint());
+        boolean stateMatches = expectedState.equals(ProjectLayout.computeStateFingerprint(root, classesDirs));
+        boolean sourcesMatch = jvmSources.equals(org.treblereel.mcp.core.SourceFileHashes.captureInputsCached(root, sourceRoots));
+        if (!worktreeMatches || !stateMatches || !sourcesMatch)
+            QuillLog.info("Publication input checks: worktree=" + worktreeMatches
+                    + ", compiled state=" + stateMatches + ", JVM sources=" + sourcesMatch);
+        return worktreeMatches && stateMatches && sourcesMatch;
+    }
+
+    private static String headChangedMessage(String phase, String expected, String actual) {
+        return "Git HEAD changed " + phase + " (expected " + displayCommit(expected)
+                + ", found " + displayCommit(actual)
+                + "); the stale index was not activated. Retry `quill update`.";
+    }
+
+    private static String displayCommit(String commit) {
+        if (commit == null || commit.isBlank()) return "no commit";
+        return commit.length() > 12 ? commit.substring(0, 12) : commit;
+    }
+
+    private static String describeIndexInputs(WorktreeInspector.Snapshot snapshot) {
+        var changes = snapshot.changes().stream().filter(change -> WorktreeInspector.isIndexInputPath(change.projectPath())).toList();
+        if (changes.isEmpty()) {
+            return "No dirty indexed paths are visible; compiled outputs or ignored sources may have changed.";
+        }
+        int limit = Math.min(10, changes.size());
+        String paths = changes.stream()
+                .limit(limit)
+                .map(change -> change.status() + ":" + change.projectPath())
+                .collect(java.util.stream.Collectors.joining(", "));
+        int remaining = changes.size() - limit;
+        return "Current dirty indexed paths: " + paths
+                + (remaining > 0 ? " (and " + remaining + " more)." : ".");
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
+    }
+
+}

@@ -18,7 +18,7 @@ class BuildIntegrationProtocolTest {
     @Test void writesVersionedCapabilitiesAndCompilerSchemaIndependentlyFromQuill() throws Exception {
         BuildIntegrationProtocol.write(root);
         var values = new Properties(); try (var reader = Files.newBufferedReader(root.resolve(".quill/build-integration.properties"))) { values.load(reader); }
-        assertEquals("0.1.3", values.getProperty("producerVersion")); assertEquals("1", values.getProperty("manifestVersion"));
+        assertEquals("0.1.6-SNAPSHOT", values.getProperty("producerVersion")); assertEquals("1", values.getProperty("manifestVersion"));
         assertEquals("3", values.getProperty("buildEventProtocol")); assertEquals("4", values.getProperty("capability.count"));
         assertEquals("absent", values.getProperty("configuration.sha256"));
         var compiler = new Properties(); BuildIntegrationProtocol.compilerSettings(compiler);

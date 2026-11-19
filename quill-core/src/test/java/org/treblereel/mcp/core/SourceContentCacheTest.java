@@ -10,6 +10,21 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SourceContentCacheTest {
     @TempDir Path root;
+    private SourceContentCache.Volume readyVolume() throws InterruptedException {
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(1);
+        var volume=SourceContentCache.volume(root);
+        while(!volume.supported() && System.nanoTime()<deadline){Thread.sleep(10);volume=SourceContentCache.volume(root);}
+        return volume;
+    }
+    @Test void blockedVolumeProbeFallsBackWithoutPoisoningLaterEvidence() {
+        var pending=new CompletableFuture<Boolean>();
+        var volume=assertTimeout(java.time.Duration.ofSeconds(1),()->SourceContentCache.awaitVolume(42,pending));
+        assertFalse(volume.supported());
+        assertFalse(pending.isCancelled());
+        pending.complete(true);
+        assertTrue(SourceContentCache.awaitVolume(42,pending).supported());
+    }
+
     @Test void warmReuseDetectsSameSizeEditsWithRestoredMtime() throws Exception {
         Path file=root.resolve("sample.java");Files.writeString(file,"aaa");var original=Files.getLastModifiedTime(file);
         var volume=SourceContentCache.volume(root);AtomicInteger reads=new AtomicInteger();
@@ -35,7 +50,7 @@ class SourceContentCacheTest {
         finally {Files.deleteIfExists(outside);}
     }
     @Test void concurrentMissesCoalesceAndFailuresDoNotPoisonFutureReads() throws Exception {
-        var volume=SourceContentCache.volume(root);org.junit.jupiter.api.Assumptions.assumeTrue(volume.supported());
+        var volume=readyVolume();org.junit.jupiter.api.Assumptions.assumeTrue(volume.supported());
         Path file=root.resolve("shared.java");Files.writeString(file,"abc");AtomicInteger reads=new AtomicInteger();
         var entered=new CountDownLatch(1);var release=new CountDownLatch(1);var executor=Executors.newFixedThreadPool(4);
         SourceContentCache.Reader reader=p->{reads.incrementAndGet();entered.countDown();try{assertTrue(release.await(2,TimeUnit.SECONDS));}catch(InterruptedException e){throw new java.io.IOException(e);}return SourceFileHashes.hash(p);};
@@ -49,7 +64,7 @@ class SourceContentCacheTest {
         assertEquals(SourceFileHashes.hash(file),SourceContentCache.hash(file,volume));
     }
     @Test void writeDuringHashingIsNotCachedAsVerifiedContent() throws Exception {
-        var volume=SourceContentCache.volume(root);org.junit.jupiter.api.Assumptions.assumeTrue(volume.supported());
+        var volume=readyVolume();org.junit.jupiter.api.Assumptions.assumeTrue(volume.supported());
         Path file=root.resolve("race.java");Files.writeString(file,"before");
         assertThrows(java.io.IOException.class,()->SourceContentCache.hash(file,volume,p->{String hash=SourceFileHashes.hash(p);Files.writeString(p,"after!");return hash;}));
         assertEquals(SourceFileHashes.hash(file),SourceContentCache.hash(file,volume));

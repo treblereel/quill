@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
@@ -7,12 +9,13 @@ import java.util.concurrent.Callable;
 import org.treblereel.mcp.core.ProjectRootFinder;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import org.treblereel.mcp.core.Json;
 
 @Command(name = "status", mixinStandardHelpOptions = true,
         description = "Show index state and diagnostics")
 public class StatusCommand implements Callable<Integer> {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     @Option(names = "--project", description = "Path to project root")
     Path projectPath;

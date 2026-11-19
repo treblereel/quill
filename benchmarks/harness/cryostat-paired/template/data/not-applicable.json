@@ -1,0 +1,50 @@
+{
+  "CQ-008": {
+    "predicate": "Application-owned initializer @Inject methods",
+    "matches": [],
+    "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+    "java_files": 199,
+    "inventory": "javac-facts.json.gz",
+    "counterexamples_not_equivalent": "Four @Inject constructors are present; they are not initializer methods."
+  },
+  "CQ-017": {
+    "predicate": "Application-owned CDI producer fields",
+    "matches": [],
+    "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+    "java_files": 199,
+    "inventory": "javac-facts.json.gz",
+    "counterexamples_not_equivalent": "Fifteen CDI producer methods and REST @Produces exist; neither is a producer field."
+  },
+  "CQ-019": {
+    "predicate": "Application-owned disposer parameters",
+    "matches": [],
+    "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+    "java_files": 199,
+    "inventory": "javac-facts.json.gz",
+    "counterexamples_not_equivalent": "@PreDestroy callbacks exist; they are not @Disposes parameters."
+  },
+  "CQ-021": {
+    "predicate": "Application-owned build-profile bean conditions",
+    "matches": [],
+    "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+    "java_files": 199,
+    "inventory": "javac-facts.json.gz",
+    "counterexamples_not_equivalent": "TestProfile and %profile config do not imply @IfBuildProfile bean conditions."
+  },
+  "CQ-022": {
+    "predicate": "Application-owned build-property bean conditions",
+    "matches": [],
+    "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+    "java_files": 199,
+    "inventory": "javac-facts.json.gz",
+    "counterexamples_not_equivalent": "@LookupIfProperty is runtime programmatic lookup filtering, not @IfBuildProperty."
+  },
+  "CQ-034": {
+    "predicate": "Application-owned MicroProfile Reactive Messaging handlers",
+    "matches": [],
+    "scope": "All tracked src/main Java declarations and parameters, attributed with zero compiler errors; dependency/test components excluded by declared application-owned scope.",
+    "java_files": 199,
+    "inventory": "javac-facts.json.gz",
+    "counterexamples_not_equivalent": "Vert.x @ConsumeEvent and WebSockets exist; they are not Reactive Messaging @Incoming/@Outgoing channels."
+  }
+}

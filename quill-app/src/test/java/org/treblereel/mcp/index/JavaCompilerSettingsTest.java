@@ -1,0 +1,163 @@
+package org.treblereel.mcp.index;
+
+import org.treblereel.mcp.index.JavaCompilerSettings;
+
+import static org.junit.jupiter.api.Assertions.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
+import org.treblereel.mcp.core.BuildSystem;
+
+class JavaCompilerSettingsTest {
+    @TempDir Path root;
+    Properties values() throws Exception {
+        Path pom = Files.writeString(root.resolve("pom.xml"), "aaaa");
+        var values = new Properties(); values.setProperty("sourceSet", "main"); values.setProperty("evidence", "successful_mojo");
+        values.setProperty("release", "17"); values.setProperty("argument.count", "1"); values.setProperty("argument.0", "-Avalue=with spaces");
+        values.setProperty("buildInput.count", "1"); values.setProperty("buildInput.path.0", pom.toString());
+        values.setProperty("buildInput.sha256.0", HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(pom))));
+        return values;
+    }
+    Path save(Properties values) throws Exception {
+        Path file = root.resolve("target/quill-java-main.properties"); Files.createDirectories(file.getParent());
+        try (var writer = Files.newBufferedWriter(file)) { values.store(writer, "test"); } return file;
+    }
+    @Test void readsConfirmedMainAndSeparatelyReportsMissingTest() throws Exception {
+        save(values()); var report = JavaCompilerSettings.inspect(List.of(root, root), BuildSystem.MAVEN);
+        assertEquals(2, report.size()); assertEquals("captured", report.get(0).path("status").asText());
+        assertTrue(report.get(0).path("compiled_settings_confirmed").asBoolean());
+        assertEquals("-Avalue=with spaces", report.get(0).path("settings").path("argument").get(0).asText());
+        assertEquals("missing", report.get(1).path("status").asText());
+    }
+    @Test void detectsContentChangesWithRestoredMetadataAndDeletion() throws Exception {
+        Path file = save(values()); Path pom = root.resolve("pom.xml"); var time = Files.getLastModifiedTime(pom);
+        Files.writeString(pom, "bbbb"); Files.setLastModifiedTime(pom, time);
+        assertEquals("stale", JavaCompilerSettings.read(root, "main", file).path("status").asText());
+        Files.delete(pom); assertEquals("stale", JavaCompilerSettings.read(root, "main", file).path("status").asText());
+    }
+    @Test void reusesValidationOnlyWithinOneObservation() throws Exception {
+        Path capture = save(values());
+        var observed = new HashMap<Path, com.fasterxml.jackson.databind.node.ObjectNode>();
+        var first = JavaCompilerSettings.inspect(List.of(root), BuildSystem.MAVEN, observed);
+        var again = JavaCompilerSettings.inspect(List.of(root), BuildSystem.MAVEN, observed);
+        assertSame(first.get(0), again.get(0));
+        assertSame(observed.get(capture), again.get(0));
+        Path pom = root.resolve("pom.xml");
+        var time = Files.getLastModifiedTime(pom);
+        Files.writeString(pom, "bbbb");
+        Files.setLastModifiedTime(pom, time);
+        var next = JavaCompilerSettings.inspect(List.of(root), BuildSystem.MAVEN);
+        assertEquals("stale", next.get(0).path("status").asText());
+        assertEquals("captured", first.get(0).path("status").asText());
+    }
+    @Test void distinguishesConfiguredTaskAndCapturesCustomSourceSet() throws Exception {
+        var values = values(); values.setProperty("evidence", "configured_task"); values.setProperty("sourceSet", "integrationTest");
+        Path file = root.resolve("build/quill-java-integrationTest.properties"); Files.createDirectories(file.getParent());
+        try (var writer = Files.newBufferedWriter(file)) { values.store(writer, "test"); }
+        var report = JavaCompilerSettings.inspect(List.of(root), BuildSystem.GRADLE);
+        var custom = Stream.of(report.get(0), report.get(1), report.get(2)).filter(node -> node.path("source_set").asText().equals("integrationTest")).findFirst().orElseThrow();
+        assertEquals("configuration_only", custom.path("status").asText()); assertFalse(custom.path("compiled_settings_confirmed").asBoolean());
+    }
+    @Test void acceptsLegacyAndV1ButDoesNotConsumeFutureCompilerSchema() throws Exception {
+        var values = values(); values.setProperty("compilerSettingsProtocol", "1"); Path file = save(values);
+        assertEquals("captured", JavaCompilerSettings.read(root, "main", file).path("status").asText());
+        values.setProperty("compilerSettingsProtocol", "99"); save(values);
+        var future = JavaCompilerSettings.read(root, "main", file);
+        assertEquals("unsupported_protocol", future.path("status").asText()); assertFalse(future.has("settings"));
+    }
+
+    @Test void frameworkDiscoveryRequiresFreshMainCaptureAndUnambiguousModuleOwnership() throws Exception {
+        Path src = Files.createDirectories(root.resolve("src/fixture"));
+        Files.writeString(src.resolve("Resource.java"), "package fixture; @jakarta.ws.rs.Path public class Resource {}");
+        Path annotation = Files.createDirectories(root.resolve("src/jakarta/ws/rs")).resolve("Path.java");
+        Files.writeString(annotation, "package jakarta.ws.rs; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Path {}");
+        Path classes = Files.createDirectories(root.resolve("classes"));
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null,
+                "-d", classes.toString(), annotation.toString(), src.resolve("Resource.java").toString()));
+        var indexer = new org.jboss.jandex.Indexer();
+        try (var input = Files.newInputStream(classes.resolve("fixture/Resource.class"))) { indexer.index(input); }
+        var index = indexer.complete();
+        var occurrence = new org.treblereel.mcp.model.ClassOccurrenceRecord(1, 1, "fixture.Resource", ".", "main", "classes", "Resource.class", "Resource.java", "application");
+        var values = values(); values.setProperty("quarkusRest", "true"); save(values);
+        assertEquals(Map.of("fixture.Resource", "@Singleton"), ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)));
+        var duplicate = new org.treblereel.mcp.model.ClassOccurrenceRecord(2, 1, "fixture.Resource", "plain", "main", "classes", "Resource.class", "Resource.java", "application");
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence, duplicate)).isEmpty());
+        values.setProperty("evidence", "configured_task"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+        values.setProperty("evidence", "successful_mojo"); values.setProperty("quarkusRest", "false"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+        values.setProperty("quarkusRest", "true"); save(values); Files.writeString(root.resolve("pom.xml"), "changed");
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+    }
+
+    @Test void restResourceIsBeanWhenQuarkusRestRuntimeIsIndexedWithoutFreshCapture() throws Exception {
+        Path src = Files.createDirectories(root.resolve("src/fixture"));
+        Files.writeString(src.resolve("Resource.java"), "package fixture; @jakarta.ws.rs.Path(\"/r\") public class Resource {}");
+        Path path = Files.createDirectories(root.resolve("src/jakarta/ws/rs")).resolve("Path.java");
+        Files.writeString(path, "package jakarta.ws.rs; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Path { String value(); }");
+        Path recorder = Files.createDirectories(root.resolve("src/io/quarkus/resteasy/reactive/server/runtime")).resolve("ResteasyReactiveRecorder.java");
+        Files.writeString(recorder, "package io.quarkus.resteasy.reactive.server.runtime; public class ResteasyReactiveRecorder {}");
+        Path classes = Files.createDirectories(root.resolve("classes"));
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(),
+                path.toString(), recorder.toString(), src.resolve("Resource.java").toString()));
+        var occurrence = new org.treblereel.mcp.model.ClassOccurrenceRecord(1, 1, "fixture.Resource", ".", "main", "classes", "Resource.class", "Resource.java", "application");
+        var withRuntime = new org.jboss.jandex.Indexer();
+        for (String name : List.of("fixture/Resource.class", "io/quarkus/resteasy/reactive/server/runtime/ResteasyReactiveRecorder.class"))
+            try (var input = Files.newInputStream(classes.resolve(name))) { withRuntime.index(input); }
+        var withoutRuntime = new org.jboss.jandex.Indexer();
+        try (var input = Files.newInputStream(classes.resolve("fixture/Resource.class"))) { withoutRuntime.index(input); }
+
+        assertEquals(Map.of("fixture.Resource", "@Singleton"),
+                ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, withRuntime.complete(), List.of(occurrence)));
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, withoutRuntime.complete(), List.of(occurrence)).isEmpty());
+        // A fresh capture without Quarkus REST still wins over the classpath.
+        var values = values(); values.setProperty("quarkusRest", "false"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, withRuntime.complete(), List.of(occurrence)).isEmpty());
+    }
+
+    @Test void producerOnlyClassIsDependentWhenArcRuntimeIsIndexedWithoutFreshCapture() throws Exception {
+        Path src = Files.createDirectories(root.resolve("src/fixture"));
+        Files.writeString(src.resolve("Producers.java"), "package fixture; public class Producers { "
+                + "@jakarta.enterprise.inject.Produces java.time.Clock clock() { return null; } }");
+        Path produces = Files.createDirectories(root.resolve("src/jakarta/enterprise/inject")).resolve("Produces.java");
+        Files.writeString(produces, "package jakarta.enterprise.inject; @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Produces {}");
+        Path arcRuntime = Files.createDirectories(root.resolve("src/io/quarkus/arc")).resolve("Arc.java");
+        Files.writeString(arcRuntime, "package io.quarkus.arc; public final class Arc {}");
+        Path classes = Files.createDirectories(root.resolve("classes"));
+        assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", classes.toString(),
+                produces.toString(), arcRuntime.toString(), src.resolve("Producers.java").toString()));
+        var indexer = new org.jboss.jandex.Indexer();
+        for (String name : List.of("fixture/Producers.class", "io/quarkus/arc/Arc.class"))
+            try (var input = Files.newInputStream(classes.resolve(name))) { indexer.index(input); }
+        var index = indexer.complete();
+        var occurrence = new org.treblereel.mcp.model.ClassOccurrenceRecord(1, 1, "fixture.Producers", ".", "main", "classes", "Producers.class", "Producers.java", "application");
+
+        assertEquals(Map.of("fixture.Producers", "@Dependent"),
+                ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)));
+        // A fresh capture that says the module has no ArC still wins over the classpath.
+        var values = values(); values.setProperty("quarkusArc", "false"); save(values);
+        assertTrue(ProjectInitializer.quarkusRestScopes(root, List.of(root), BuildSystem.MAVEN, index, List.of(occurrence)).isEmpty());
+    }
+
+    @TestFactory Stream<DynamicTest> malformedMetadataCannotAppearUsable() {
+        return Stream.of("negative", "excessive", "incomplete", "bad_sha", "identity", "no_inputs", "unknown_evidence", "bad_count", "unicode")
+                .map(label -> DynamicTest.dynamicTest(label, () -> {
+                    var values = values();
+                    switch (label) {
+                        case "negative" -> values.setProperty("argument.count", "-1");
+                        case "excessive" -> values.setProperty("argument.count", "9999999");
+                        case "incomplete" -> values.remove("argument.0");
+                        case "bad_sha" -> values.setProperty("buildInput.sha256.0", "xyz");
+                        case "identity" -> values.setProperty("sourceSet", "../test");
+                        case "no_inputs" -> values.setProperty("buildInput.count", "0");
+                        case "unknown_evidence" -> values.setProperty("evidence", "anything");
+                        case "bad_count" -> values.setProperty("buildInput.count", "x");
+                    }
+                    Path file = save(values); if (label.equals("unicode")) Files.writeString(file, "broken=\\uZZZZ");
+                    var result = JavaCompilerSettings.read(root, "main", file);
+                    assertEquals("invalid", result.path("status").asText()); assertFalse(result.path("usable").asBoolean());
+                }));
+    }
+}

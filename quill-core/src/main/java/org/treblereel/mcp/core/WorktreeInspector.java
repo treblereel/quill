@@ -1,7 +1,6 @@
 package org.treblereel.mcp.core;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,12 +22,19 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 /** Reads the live worktree state that is intentionally absent from commit history. */
 public final class WorktreeInspector {
 
+    private static final SourceContentCache.Store CONTENT_HASHES = new SourceContentCache.Store(1 << 18);
+
     private WorktreeInspector() {}
 
     public record Change(String projectPath, String repositoryPath, String status) {}
 
     public record Snapshot(String currentCommit, Path repositoryRoot, List<Change> changes,
             String fingerprint, List<Change> structuralChanges, String structuralFingerprint) {
+        public String indexInputFingerprint() {
+            return WorktreeInspector.fingerprint(repositoryRoot == null ? Path.of(".") : repositoryRoot,
+                    changes.stream().filter(change -> isIndexInputPath(change.projectPath())).toList());
+        }
+
         public boolean dirty() {
             return !changes.isEmpty();
         }
@@ -49,7 +55,9 @@ public final class WorktreeInspector {
         }
     }
 
-    public static Snapshot inspect(Path projectRoot) {
+    public static Snapshot inspect(Path projectRoot) {return inspect(projectRoot,0);}
+
+    static Snapshot inspect(Path projectRoot,int submoduleDepth) {
         Path gitDir = GitAnalyzer.findGitDir(projectRoot);
         if (gitDir == null) return Snapshot.empty();
 
@@ -74,6 +82,15 @@ public final class WorktreeInspector {
             putAll(statuses, status.getUntracked(), "untracked");
             putAll(statuses, status.getConflicting(), "conflicting");
 
+            var submodules=SubmoduleInventory.inspect(repository,submoduleDepth);
+            Map<String,String> gitlinks=new LinkedHashMap<>(),structuralGitlinks=new LinkedHashMap<>();
+            java.util.Set<String> structuralModules=new java.util.HashSet<>();
+            for(var module:submodules) {
+                gitlinks.put(module.path(),module.fingerprint());
+                structuralGitlinks.put(module.path(),module.structuralFingerprint());
+                if(module.structuralDirty())structuralModules.add(module.path());
+                if(!"clean".equals(module.status())) statuses.put(module.path(),"modified");
+            }
             List<Change> changes = new ArrayList<>();
             for (var entry : statuses.entrySet()) {
                 String repositoryPath = normalize(Path.of(entry.getKey()));
@@ -89,13 +106,13 @@ public final class WorktreeInspector {
             }
             changes.sort(Comparator.comparing(Change::repositoryPath));
             List<Change> structuralChanges = changes.stream()
-                    .filter(change -> isStructuralPath(change.projectPath()))
+                    .filter(change -> isStructuralPath(change.projectPath()) || structuralModules.contains(change.repositoryPath()))
                     .toList();
 
             ObjectId head = repository.resolve("HEAD");
             return new Snapshot(head != null ? head.getName() : null, repositoryRoot,
-                    List.copyOf(changes), fingerprint(repositoryRoot, changes),
-                    structuralChanges, fingerprint(repositoryRoot, structuralChanges));
+                    List.copyOf(changes), fingerprint(repositoryRoot, changes, gitlinks),
+                    structuralChanges, fingerprint(repositoryRoot, structuralChanges, structuralGitlinks));
         } catch (IOException | GitAPIException e) {
             return Snapshot.empty();
         }
@@ -175,18 +192,19 @@ public final class WorktreeInspector {
         return remainder.isBlank() ? "" : content;
     }
 
-    private static String fingerprint(Path repositoryRoot, List<Change> changes) {
+    private static String fingerprint(Path repositoryRoot, List<Change> changes) {return fingerprint(repositoryRoot,changes,Map.of());}
+    private static String fingerprint(Path repositoryRoot, List<Change> changes,Map<String,String> gitlinks) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            var volume = changes.isEmpty() ? new SourceContentCache.Volume(null, false) : SourceContentCache.volume(repositoryRoot);
             for (Change change : changes) {
                 update(digest, change.repositoryPath());
                 update(digest, change.status());
+                if(gitlinks.containsKey(change.repositoryPath()))update(digest,gitlinks.get(change.repositoryPath()));
                 Path file = repositoryRoot.resolve(change.repositoryPath()).normalize();
                 if (!file.startsWith(repositoryRoot) || !Files.isRegularFile(file)) continue;
-                try (InputStream input = Files.newInputStream(file)) {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+                try {
+                    update(digest, SourceContentCache.hash(file, volume, SourceFileHashes::hash, CONTENT_HASHES));
                 } catch (IOException e) {
                     update(digest, "unreadable");
                 }
@@ -202,15 +220,24 @@ public final class WorktreeInspector {
         return fingerprint(Path.of("."), List.of());
     }
 
+    public static boolean isIndexInputPath(String projectPath) {
+        String path = projectPath.replace('\\', '/');
+        return isStructuralPath(path) || path.startsWith("src/") || path.contains("/src/")
+                || path.endsWith(".java") || path.endsWith(".kt") || path.endsWith(".kts")
+                || path.endsWith(".class") || path.endsWith(".jar")
+                || path.startsWith("target/generated-test-sources/") || path.contains("/target/generated-test-sources/");
+    }
+
     public static boolean isStructuralPath(String projectPath) {
         String path = projectPath.replace('\\', '/');
         String name = path.substring(path.lastIndexOf('/') + 1);
-        if (name.equals("pom.xml") || name.equals("build.gradle")
+        if (name.equals(".gitmodules") || name.equals("pom.xml") || name.equals("build.gradle")
                 || name.equals("build.gradle.kts") || name.equals("settings.gradle")
                 || name.equals("settings.gradle.kts") || name.equals("gradle.properties")) {
             return true;
         }
-        return path.startsWith("src/main/") || path.contains("/src/main/")
+        // Custom JVM source roots also affect indexed declarations and test evidence.
+        return path.endsWith(".java") || path.endsWith(".kt") || path.endsWith(".kts") || path.startsWith("src/main/") || path.contains("/src/main/")
                 || path.startsWith("target/generated-sources/")
                 || path.contains("/target/generated-sources/")
                 || path.startsWith("build/generated/") || path.contains("/build/generated/")

@@ -1,1 +1,42 @@
-[{"interfaces":["java.sql.Connection"]}]
+[
+  {
+    "interfaces": [
+      "java.sql.Connection"
+    ]
+  },
+  {
+    "interfaces": [
+      "java.sql.Statement"
+    ]
+  },
+  {
+    "interfaces": [
+      "java.sql.PreparedStatement"
+    ]
+  },
+  {
+    "interfaces": [
+      "java.sql.CallableStatement"
+    ]
+  },
+  {
+    "interfaces": [
+      "java.sql.ResultSet"
+    ]
+  },
+  {
+    "interfaces": [
+      "java.sql.DatabaseMetaData"
+    ]
+  },
+  {
+    "interfaces": [
+      "java.sql.ResultSetMetaData"
+    ]
+  },
+  {
+    "interfaces": [
+      "java.sql.ParameterMetaData"
+    ]
+  }
+]

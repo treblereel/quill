@@ -12,6 +12,7 @@ import org.treblereel.mcp.model.MemberAnnotationRecord;
 import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ExternalDepRecord;
 import org.treblereel.mcp.model.FrameworkEndpointRecord;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public final class JandexScanner {
 
@@ -170,7 +171,7 @@ public final class JandexScanner {
                 matchedSources, sourceTokenCache);
         Map<Path, Integer> tokenCounts = tokenResult.tokenCounts();
         if (sourceTokenCache != null && tokenResult.hits() > 0) {
-            System.err.println("[quill] Reusing source token counts for "
+            QuillLog.info("Reusing source token counts for "
                     + tokenResult.hits() + "/" + matchedSources.size() + " files...");
         }
         for (ClassInfo ci : knownClasses) {
@@ -248,7 +249,8 @@ public final class JandexScanner {
             for (AnnotationInstance annotation : declared) {
                 String directName = annotation.name().toString();
                 addClassAnnotation(result, seen,
-                        new ClassAnnotationRecord(classId, directName, true, null));
+                        new ClassAnnotationRecord(classId, directName, true, null,
+                                AnnotationValues.of(annotation, lookupIndex)));
                 collectMetaAnnotations(classId, annotation.name(), directName, lookupIndex,
                         new HashSet<>(), result, seen);
             }
@@ -287,6 +289,12 @@ public final class JandexScanner {
     /** Extracts declared fields, constructors, and methods for symbol inspection. */
     public static List<ClassMemberRecord> extractClassMembers(
             IndexView index, Map<String, Integer> classNameToId) {
+        return extractClassMembers(index, index, classNameToId);
+    }
+
+    /** @param annotationTypes index used to resolve annotation member defaults */
+    public static List<ClassMemberRecord> extractClassMembers(
+            IndexView index, IndexView annotationTypes, Map<String, Integer> classNameToId) {
         List<ClassMemberRecord> result = new ArrayList<>();
         for (ClassInfo classInfo : index.getKnownClasses().stream()
                 .sorted(Comparator.comparing(value -> value.name().toString())).toList()) {
@@ -303,7 +311,7 @@ public final class JandexScanner {
                         type, List.of(),
                         java.lang.reflect.Modifier.toString(field.flags()),
                         memberAnnotations(field.annotations(), AnnotationTarget.Kind.FIELD),
-                        annotationDetails(field.annotations())));
+                        annotationDetails(field.annotations(), annotationTypes)));
             }
             for (MethodInfo method : classInfo.methods().stream()
                     .filter(value -> !"<clinit>".equals(value.name()))
@@ -331,7 +339,7 @@ public final class JandexScanner {
                                 + (synthetic(method.flags()) ? " synthetic" : "")
                                 + ((method.flags() & 0x0080) != 0 ? " varargs" : ""),
                         methodAnnotations(method.annotations()),
-                        annotationDetails(method.annotations())));
+                        annotationDetails(method.annotations(), annotationTypes)));
             }
         }
         return result;
@@ -382,7 +390,7 @@ public final class JandexScanner {
     }
 
     private static List<MemberAnnotationRecord> annotationDetails(
-            Collection<AnnotationInstance> annotations) {
+            Collection<AnnotationInstance> annotations, IndexView annotationTypes) {
         return annotations.stream()
                 .filter(annotation -> annotation.target() != null)
                 .filter(annotation -> annotation.target().kind() == AnnotationTarget.Kind.FIELD
@@ -395,10 +403,12 @@ public final class JandexScanner {
                         var parameter = annotation.target().asMethodParameter();
                         return new MemberAnnotationRecord(annotation.name().toString(),
                                 "METHOD_PARAMETER", (int) parameter.position(),
-                                parameter.nameOrDefault(), parameter.type().toString());
+                                parameter.nameOrDefault(), parameter.type().toString(),
+                                AnnotationValues.of(annotation, annotationTypes));
                     }
                     return new MemberAnnotationRecord(annotation.name().toString(),
-                            annotation.target().kind().name(), null, null, null);
+                            annotation.target().kind().name(), null, null, null,
+                            AnnotationValues.of(annotation, annotationTypes));
                 })
                 .sorted(Comparator.comparing(MemberAnnotationRecord::annotationName)
                         .thenComparing(MemberAnnotationRecord::targetKind)

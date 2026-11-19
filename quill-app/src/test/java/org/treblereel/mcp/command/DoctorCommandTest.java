@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.McpJsonInstaller;
+import org.treblereel.mcp.index.ProjectConfiguration;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,7 +33,7 @@ class DoctorCommandTest {
         assertEquals("info", initial.get("claude_tool_permissions").path("status").asText());
         assertTrue(initial.get("claude_tool_permissions").path("action").asText().contains("permissions grant"));
         assertTrue(ClaudeSettingsInstaller.allowTools(project,
-                org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+                org.treblereel.mcp.mcp.server.ReadOnlyToolNames.all()));
         var granted = checksById(JSON.readTree(DoctorCommand.toJson(DoctorCommand.inspect(project))));
         assertEquals("pass", granted.get("claude_tool_permissions").path("status").asText());
         Path local = project.resolve(".claude/settings.local.json");
@@ -75,7 +79,7 @@ class DoctorCommandTest {
         assertEquals("pass", checks.get("claude_approval").path("status").asText());
         assertEquals("pass", checks.get("claude_eager_loading").path("status").asText());
         assertTrue(checks.get("claude_tool_profile").path("message").asText()
-                .contains("`full`"));
+                .contains("`claude`"));
     }
 
     @Test

@@ -7,15 +7,15 @@ public record ResolutionCandidate(
         String className,
         Integer relatedBeanId,
         CandidateDisposition disposition,
-        String reason,
-        List<String> rules
+        ResolutionReason reason,
+        List<ResolutionRule> rules
 ) {
     public ResolutionCandidate {
         rules = rules == null ? List.of() : List.copyOf(rules);
     }
 
     public ResolutionCandidate(Integer beanId, String className,
-            CandidateDisposition disposition, String reason, List<String> rules) {
+            CandidateDisposition disposition, ResolutionReason reason, List<ResolutionRule> rules) {
         this(beanId, className, null, disposition, reason, rules);
     }
 

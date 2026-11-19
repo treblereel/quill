@@ -15,6 +15,7 @@ import org.treblereel.mcp.model.ClassRecord;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.FileRecord;
 import org.treblereel.mcp.model.GitFileStats;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Builds stable project/repository path identities for source, generated and historical files. */
 public final class FileInventory {
@@ -103,7 +104,10 @@ public final class FileInventory {
         List<ClassRecord> classifiedClasses = new ArrayList<>();
         for (ClassRecord cls : classes) {
             String source = normalizeSource(root, cls.sourceFile());
-            if (source == null) source = inferTopLevelSource(cls.className(), fileIdsByProjectPath.keySet());
+            if (source == null || !Files.isRegularFile(root.resolve(source))) {
+                String resolved = inferTopLevelSource(root, cls.className(), fileIdsByProjectPath.keySet());
+                if (resolved != null) source = resolved;
+            }
             Integer fileId = source != null ? fileIdsByProjectPath.get(source) : null;
             String classOrigin = source != null ? origin(source) : "orphan_output";
             String lifecycle = fileId != null ? files.get(fileId - 1).lifecycle() : "current";
@@ -146,12 +150,13 @@ public final class FileInventory {
         return normalize(source);
     }
 
-    private static String inferTopLevelSource(String className, Set<String> projectPaths) {
+    private static String inferTopLevelSource(Path root, String className, Set<String> projectPaths) {
         String topLevel = className.contains("$")
                 ? className.substring(0, className.indexOf('$')) : className;
         String base = topLevel.replace('.', '/');
         return projectPaths.stream()
                 .filter(path -> path.endsWith(base + ".java") || path.endsWith(base + ".kt"))
+                .sorted(Comparator.comparing(path -> !Files.isRegularFile(root.resolve(path))))
                 .findFirst().orElse(null);
     }
 
@@ -186,6 +191,7 @@ public final class FileInventory {
         try {
             absolute = projectRoot.resolve(projectPath).toAbsolutePath().normalize();
         } catch (RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return SourceContext.UNKNOWN;
         }
         Path owner = moduleDirectories.stream()

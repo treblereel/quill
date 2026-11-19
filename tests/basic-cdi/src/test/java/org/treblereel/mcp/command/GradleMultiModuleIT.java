@@ -1,5 +1,8 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
@@ -11,7 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.core.GradleProjectDiscovery;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.BeanRepository;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 @Tag("e2e")
@@ -39,15 +44,14 @@ class GradleMultiModuleIT {
         Path db = ProjectIndexStore.findDbForHead(project);
         assertNotNull(db);
         var jdbi = QuillDatabase.open(db);
-        assertEquals(4, IndexReader.findAllClasses(jdbi).size());
-        assertTrue(IndexReader.findAllClasses(jdbi).stream()
+        assertEquals(4, jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findAllClasses()).size());
+        assertTrue(jdbi.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findAllClasses()).stream()
                 .allMatch(record -> record.sourceTokens() > 0));
-        assertEquals(2, IndexReader.findBeans(jdbi, null).size());
+        assertEquals(2, jdbi.withHandle(repositoryHandle3 -> new BeanRepository(repositoryHandle3).findBeans(null)).size());
 
-        var userClass = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.gradle.UserService").orElseThrow();
-        var userBean = IndexReader.findBeanByClassId(jdbi, userClass.id()).orElseThrow();
-        var injection = IndexReader.findInjectionPoints(jdbi, userBean.id()).getFirst();
+        var userClass = jdbi.withHandle(repositoryHandle4 -> new SymbolRepository(repositoryHandle4).findClassByName("org.treblereel.mcp.fixture.gradle.UserService")).orElseThrow();
+        var userBean = jdbi.withHandle(repositoryHandle5 -> new BeanRepository(repositoryHandle5).findBeanByClassId(userClass.id())).orElseThrow();
+        var injection = jdbi.withHandle(repositoryHandle6 -> new BeanRepository(repositoryHandle6).findInjectionPoints(userBean.id())).getFirst();
         assertNotNull(injection.resolvedBeanId(), "Cross-module injection should resolve");
 
         assertTrue(Files.isRegularFile(project.resolve("common/build/quill-classpath.txt")));
@@ -105,34 +109,31 @@ class GradleMultiModuleIT {
         Path db = ProjectIndexStore.findDbForHead(springProject);
         assertNotNull(db);
         var jdbi = QuillDatabase.open(db);
-        var metadata = IndexReader.getMetadata(jdbi);
+        var metadata = jdbi.withHandle(repositoryHandle7 -> new IndexRepository(repositoryHandle7).getMetadata());
         assertEquals("Spring", metadata.get("framework"));
         assertTrue(Integer.parseInt(metadata.get("kotlin_metadata_classes")) > 0);
         assertNotNull(metadata.get("kotlin_metadata_fallbacks"));
-        assertEquals(2, IndexReader.findBeans(jdbi, null).size());
-        assertTrue(IndexReader.findAllClasses(jdbi).stream()
+        assertEquals(2, jdbi.withHandle(repositoryHandle8 -> new BeanRepository(repositoryHandle8).findBeans(null)).size());
+        assertTrue(jdbi.withHandle(repositoryHandle9 -> new SymbolRepository(repositoryHandle9).findAllClasses()).stream()
                 .allMatch(record -> record.sourceTokens() > 0));
 
-        var serviceClass = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.gradlespring.OrderService").orElseThrow();
+        var serviceClass = jdbi.withHandle(repositoryHandle10 -> new SymbolRepository(repositoryHandle10).findClassByName("org.treblereel.mcp.fixture.gradlespring.OrderService")).orElseThrow();
         assertTrue(serviceClass.sourceFile().endsWith("OrderService.kt"));
         assertEquals("source", serviceClass.origin());
-        assertEquals(serviceClass, IndexReader.findClassByPath(jdbi,
-                "src/main/kotlin/org/treblereel/mcp/fixture/gradlespring/OrderService.kt")
+        assertEquals(serviceClass, jdbi.withHandle(repositoryHandle11 -> new SymbolRepository(repositoryHandle11).findClassByPath("src/main/kotlin/org/treblereel/mcp/fixture/gradlespring/OrderService.kt"))
                 .orElseThrow());
-        var serviceBean = IndexReader.findBeanByClassId(jdbi, serviceClass.id()).orElseThrow();
-        assertNotNull(IndexReader.findInjectionPoints(jdbi, serviceBean.id())
+        var serviceBean = jdbi.withHandle(repositoryHandle12 -> new BeanRepository(repositoryHandle12).findBeanByClassId(serviceClass.id())).orElseThrow();
+        assertNotNull(jdbi.withHandle(repositoryHandle13 -> new BeanRepository(repositoryHandle13).findInjectionPoints(serviceBean.id()))
                 .getFirst().resolvedBeanId());
-        var repository = IndexReader.findKotlinDeclarations(jdbi, serviceClass.id()).stream()
+        var repository = jdbi.withHandle(repositoryHandle14 -> new SymbolRepository(repositoryHandle14).findKotlinDeclarations(serviceClass.id())).stream()
                 .filter(value -> value.name().equals("repository"))
                 .findFirst().orElseThrow();
         assertTrue(repository.mutable());
         assertTrue(repository.lateinit());
 
-        var functionsClass = IndexReader.findClassByName(jdbi,
-                "org.treblereel.mcp.fixture.gradlespring.OrderFunctionsKt").orElseThrow();
+        var functionsClass = jdbi.withHandle(repositoryHandle15 -> new SymbolRepository(repositoryHandle15).findClassByName("org.treblereel.mcp.fixture.gradlespring.OrderFunctionsKt")).orElseThrow();
         assertTrue(functionsClass.sourceFile().endsWith("OrderFunctions.kt"));
-        var functions = IndexReader.findKotlinDeclarations(jdbi, functionsClass.id());
+        var functions = jdbi.withHandle(repositoryHandle16 -> new SymbolRepository(repositoryHandle16).findKotlinDeclarations(functionsClass.id()));
         assertEquals("FILE_FACADE", functions.getFirst().kind());
         assertTrue(functions.stream()
                 .filter(value -> value.name().equals("formatOrder"))
@@ -140,8 +141,8 @@ class GradleMultiModuleIT {
         assertTrue(functions.stream()
                 .filter(value -> value.name().equals("loadOrder"))
                 .anyMatch(value -> value.isSuspend()));
-        int declarationCount = IndexReader.findAllClasses(jdbi).stream()
-                .mapToInt(value -> IndexReader.findKotlinDeclarations(jdbi, value.id()).size())
+        int declarationCount = jdbi.withHandle(repositoryHandle17 -> new SymbolRepository(repositoryHandle17).findAllClasses()).stream()
+                .mapToInt(value -> jdbi.withHandle(repositoryHandle18 -> new SymbolRepository(repositoryHandle18).findKotlinDeclarations(value.id())).size())
                 .sum();
         assertEquals(Integer.toString(declarationCount), metadata.get("kotlin_declarations"));
     }
@@ -230,17 +231,15 @@ class GradleMultiModuleIT {
         assertEquals("configured_task", settings.getProperty("evidence"), "Discovery must not claim it executed compilation");
         InitCommand command = new InitCommand(); command.projectPath = project; command.indexOnly = true; command.call();
         var db = QuillDatabase.open(ProjectIndexStore.findDbForHead(project));
-        var probe = IndexReader.findClassByName(db, "custom.IntegrationProbe").orElseThrow();
+        var probe = db.withHandle(repositoryHandle19 -> new SymbolRepository(repositoryHandle19).findClassByName("custom.IntegrationProbe")).orElseThrow();
         assertTrue(probe.sourceTokens() > 0);
-        var occurrence = IndexReader.findClassOccurrencesByClassIds(db, java.util.List.of(probe.id())).get(probe.id()).getFirst();
+        var occurrence = db.withHandle(repositoryHandle20 -> new IndexRepository(repositoryHandle20).findClassOccurrencesByClassIds(java.util.List.of(probe.id()))).get(probe.id()).getFirst();
         assertEquals("service", occurrence.module());
         assertEquals("integrationTest", occurrence.sourceSet());
         assertEquals("service/custom sources ü/java/custom/IntegrationProbe.java", occurrence.sourceFile());
-        assertEquals("integrationTest", IndexReader.findFileByPath(db,
-                "service/custom sources ü/java/custom/IntegrationProbe.java").orElseThrow().sourceSet());
-        var fixtureClass = IndexReader.findClassByName(db, "custom.Fixture").orElseThrow();
-        assertEquals("testFixtures", IndexReader.findClassOccurrencesByClassIds(db,
-                java.util.List.of(fixtureClass.id())).get(fixtureClass.id()).getFirst().sourceSet());
+        assertEquals("integrationTest", db.withHandle(repositoryHandle21 -> new IndexRepository(repositoryHandle21).findFileByPath("service/custom sources ü/java/custom/IntegrationProbe.java")).orElseThrow().sourceSet());
+        var fixtureClass = db.withHandle(repositoryHandle22 -> new SymbolRepository(repositoryHandle22).findClassByName("custom.Fixture")).orElseThrow();
+        assertEquals("testFixtures", db.withHandle(repositoryHandle23 -> new IndexRepository(repositoryHandle23).findClassOccurrencesByClassIds(java.util.List.of(fixtureClass.id()))).get(fixtureClass.id()).getFirst().sourceSet());
     }
 
     @Test
@@ -258,9 +257,9 @@ class GradleMultiModuleIT {
         var result = ProjectInitializer.initializeDetailed(project, true);
         assertTrue(result.successful(), result.message());
         var db = QuillDatabase.open(ProjectIndexStore.findDbForHead(project));
-        assertEquals("isolated", IndexReader.findClassByName(db, "custom.Only").orElseThrow().sourceSet());
-        assertEquals("0", IndexReader.getMetadata(db).get("compiled_main_output_count"));
-        assertEquals("1", IndexReader.getMetadata(db).get("compiled_additional_output_count"));
+        assertEquals("isolated", db.withHandle(repositoryHandle24 -> new SymbolRepository(repositoryHandle24).findClassByName("custom.Only")).orElseThrow().sourceSet());
+        assertEquals("0", db.withHandle(repositoryHandle25 -> new IndexRepository(repositoryHandle25).getMetadata()).get("compiled_main_output_count"));
+        assertEquals("1", db.withHandle(repositoryHandle26 -> new IndexRepository(repositoryHandle26).getMetadata()).get("compiled_additional_output_count"));
         assertEquals(1, ProjectInitializer.findIndexableClassesDirs(project).size());
         assertEquals("PASS", DoctorCommand.inspect(project).checks().stream()
                 .filter(check -> check.id().equals("compiled_outputs")).findFirst().orElseThrow().status().name());
@@ -311,12 +310,12 @@ class GradleMultiModuleIT {
                 .anyMatch(path -> path.toAbsolutePath().normalize().toString().equals(inventoryRoot.toAbsolutePath().normalize().toString())));
         assertTrue(Integer.parseInt(settings.getProperty("compileClasspath.count")) > 0);
         var db = QuillDatabase.open(ProjectIndexStore.findDbForHead(project));
-        var probe = IndexReader.findClassByName(db, "custom.Probe").orElseThrow();
+        var probe = db.withHandle(repositoryHandle27 -> new SymbolRepository(repositoryHandle27).findClassByName("custom.Probe")).orElseThrow();
         assertEquals("integrationTest", probe.sourceSet());
         assertEquals("override sources ü/custom/Probe.kt", probe.sourceFile());
         assertTrue(probe.sourceTokens() > 0);
-        assertFalse(IndexReader.findKotlinDeclarations(db, probe.id()).isEmpty());
-        assertEquals("integrationTest", IndexReader.findFileByPath(db, probe.sourceFile()).orElseThrow().sourceSet());
+        assertFalse(db.withHandle(repositoryHandle28 -> new SymbolRepository(repositoryHandle28).findKotlinDeclarations(probe.id())).isEmpty());
+        assertEquals("integrationTest", db.withHandle(repositoryHandle29 -> new IndexRepository(repositoryHandle29).findFileByPath(probe.sourceFile())).orElseThrow().sourceSet());
     }
 
     private static void assumeGradleAvailable() throws Exception {

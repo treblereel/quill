@@ -14,15 +14,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
+import org.treblereel.mcp.core.Json;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** One serialized, bounded compiler process per Quill session. No analysis results are cached. */
 public final class KotlinWorkerClient implements AutoCloseable {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_FRAME = 1024 * 1024;
     private static final KotlinWorkerClient SHARED = new KotlinWorkerClient(
             new RuntimeProvider(KotlinRuntime::workerCommand, KotlinRuntime::workerIdentity), Duration.ofSeconds(30));
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(SHARED::close, "quill-k2-shutdown"));
+        org.treblereel.mcp.diagnostics.ShutdownHooks.add(SHARED::close, "quill-k2-shutdown");
     }
     @FunctionalInterface interface Command { List<String> get() throws IOException; }
     @FunctionalInterface interface Identity { String get() throws IOException; }
@@ -32,6 +34,11 @@ public final class KotlinWorkerClient implements AutoCloseable {
     private final VersionedCommand command;
     private final VersionedIdentity identity;
     private final long timeoutNanos;
+    /**
+     * Added to the first request of a freshly started worker, whose answer also waits for the JVM and the
+     * compiler to load: otherwise the restart after a timeout could itself time out on a loaded machine.
+     */
+    static final long STARTUP_GRACE_NANOS = TimeUnit.SECONDS.toNanos(15);
     private final ReentrantLock lock = new ReentrantLock();
     private final java.util.concurrent.atomic.AtomicInteger closing = new java.util.concurrent.atomic.AtomicInteger();
     private volatile Process process;
@@ -69,6 +76,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
                 catch (IOException missing) { changed = true; }
                 if (changed) stop();
             }
+            boolean starting = process == null;
             if (process == null) {
                 List<String> args;
                 try { args = new ArrayList<>(command.get(selected)); }
@@ -105,7 +113,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
                     throw new IOException("Invalid worker response");
                 return result;
             });
-            JsonNode result = pending.get(timeoutNanos, TimeUnit.NANOSECONDS);
+            JsonNode result = pending.get(timeoutNanos + (starting ? STARTUP_GRACE_NANOS : 0), TimeUnit.NANOSECONDS);
             if (result.path("reason").asText().equals("StackOverflowError")) stop();
             return result;
         } catch (TimeoutException timeout) {
@@ -114,6 +122,7 @@ public final class KotlinWorkerClient implements AutoCloseable {
             if (acquired) stop();
             Thread.currentThread().interrupt(); return status("interrupted");
         } catch (Exception failure) {
+            QuillLog.swallowed(failure);
             if (acquired) stop();
             return status("worker_failed");
         } finally {

@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.core.ProjectRootFinder;
@@ -26,8 +28,8 @@ public class InitCommand implements Callable<Integer> {
     boolean probeMcp;
 
     @Option(names = "--allow-quill-tools", negatable = true,
-            description = "Allow current read-only Quill tools in local Claude permissions; "
-                    + "--no-allow-quill-tools skips the interactive consent question")
+            description = "Allow current read-only Quill tools in local Claude permissions (default); "
+                    + "--no-allow-quill-tools skips these grants")
     Boolean allowQuillTools;
 
     @Override

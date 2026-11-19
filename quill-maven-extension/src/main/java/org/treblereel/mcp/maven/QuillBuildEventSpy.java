@@ -30,6 +30,12 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
 
     @Override
     public void onEvent(Object event) {
+        if (event instanceof ExecutionEvent execution) {
+            try {
+                if (execution.getType() == ExecutionEvent.Type.MojoStarted) CompilationCapture.started(execution);
+                if (execution.getType() == ExecutionEvent.Type.MojoFailed || execution.getType() == ExecutionEvent.Type.MojoSkipped) CompilationCapture.failed(execution);
+            } catch (Exception error) { System.err.println("[quill] Could not capture compiler inputs: " + error.getMessage()); }
+        }
         if (event instanceof ExecutionEvent kotlinEvent && kotlinEvent.getType() == ExecutionEvent.Type.MojoSucceeded) {
             try { KotlinCompilerCapture.capture(kotlinEvent); }
             catch (Exception error) { System.err.println("[quill] Could not capture Kotlin compiler settings: " + error.getMessage()); }
@@ -38,20 +44,34 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             try { JavaCompilerCapture.capture(javaEvent); }
             catch (Exception error) { System.err.println("[quill] Could not capture Java compiler settings: " + error.getMessage()); }
         }
+        if (event instanceof ExecutionEvent started && started.getType() == ExecutionEvent.Type.SessionStarted
+                && started.getSession() != null && !isInternal(started.getSession().getUserProperties())) {
+            BuildMarker.start(started.getSession(), root(started.getSession()));
+        }
         if (!(event instanceof ExecutionEvent execution)
                 || execution.getType() != ExecutionEvent.Type.SessionEnded) {
             return;
         }
-        MavenSession session = execution.getSession();
-        if (session == null || session.getResult() == null
-                || isInternal(session.getUserProperties())) {
-            return;
-        }
-        Path reactorRoot = session.getRequest().getMultiModuleProjectDirectory() == null
+        // The marker goes only after the build-result event is written, so Quill wakes to a complete result.
+        try { sessionEnded(execution); }
+        finally { BuildMarker.finish(execution.getSession()); }
+    }
+
+    private static Path root(MavenSession session) {
+        Path reactorRoot = session.getRequest() == null || session.getRequest().getMultiModuleProjectDirectory() == null
                 ? null : session.getRequest().getMultiModuleProjectDirectory().toPath();
         Path topLevelRoot = session.getTopLevelProject() == null
                 ? null : session.getTopLevelProject().getBasedir().toPath();
-        Path root = eventRoot(reactorRoot, topLevelRoot);
+        return eventRoot(reactorRoot, topLevelRoot);
+    }
+
+    private static void sessionEnded(ExecutionEvent execution) {
+        MavenSession session = execution.getSession();
+        if (session == null || session.getResult() == null) { CompilationCapture.clear(); return; }
+        try { CompilationCapture.complete(!session.getResult().hasExceptions()); }
+        catch (Exception failure) { System.err.println("[quill] Could not confirm compilation inputs: " + failure.getMessage()); }
+        if (isInternal(session.getUserProperties())) return;
+        Path root = root(session);
         if (root == null) return;
         try { BuildIntegrationProtocol.write(root); }
         catch (Exception error) { System.err.println("[quill] Could not capture integration capabilities: " + error.getMessage()); }
@@ -200,6 +220,8 @@ public final class QuillBuildEventSpy extends AbstractEventSpy {
             if (message == null) continue;
             message.lines().map(String::strip)
                     .filter(line -> line.matches("(?i).+\\.(java|kt|groovy)(?::|:\\[).*"))
+                    // A stack frame names a source line too; a failed test run printed 102 of them in V22.
+                    .filter(line -> !line.matches("at [\\w$.<>/]+\\(.*\\)"))
                     .limit(200 - diagnostics.size()).forEach(diagnostics::add);
             if (diagnostics.size() >= 200) break;
         }

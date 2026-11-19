@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildIntegrationInstaller;
+
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.io.IOException;

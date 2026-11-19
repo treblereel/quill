@@ -1,0 +1,137 @@
+{
+ "key": "cryostat.security.rbac.cache.maximum-size",
+ "class": null,
+ "kind": "all",
+ "module": null,
+ "view": "declared",
+ "resolution_scope": "indexed declarations, not effective runtime values",
+ "references": [
+  {
+   "entry_type": "usage",
+   "key": "cryostat.security.rbac",
+   "kind": "config_prefix",
+   "module": ".",
+   "sourceSet": "main",
+   "classId": 107,
+   "className": "io.cryostat.security.rbac.RbacConfig",
+   "member": null,
+   "parameterIndex": null,
+   "annotation": "io.smallrye.config.ConfigMapping",
+   "source": "src/main/java/io/cryostat/security/rbac/RbacConfig.java",
+   "resolved": true,
+   "resolution_status": "resolved",
+   "resolution_strategy": "annotation_lookup",
+   "confidence": 1.0,
+   "definition_count": 10,
+   "definition_files": [
+    "src/main/resources/application.properties"
+   ]
+  },
+  {
+   "entry_type": "definition",
+   "key": "cryostat.security.rbac.cache.maximum-size",
+   "kind": "property",
+   "module": ".",
+   "sourceSet": "main",
+   "file": "src/main/resources/application.properties",
+   "line": 321,
+   "declared_source": {
+    "source_complete": true,
+    "effective_value_proven": false,
+    "source_sha256": "1da3d0407e8c78e31b271d90060d9aba7c7165663262cbb1accc774da596770f",
+    "basis": "current key at indexed line",
+    "status": "declared_scalar",
+    "declared_value": "1000"
+   },
+   "base_key": "cryostat.security.rbac.cache.maximum-size",
+   "key_profile": "default",
+   "file_profile": "default_or_custom_source"
+  },
+  {
+   "entry_type": "definition",
+   "key": "cryostat.security.rbac.cache.maximum-size",
+   "kind": "quarkus_test_profile",
+   "module": ".",
+   "sourceSet": "test",
+   "file": "src/test/java/io/cryostat/security/rbac/SsarClientCacheDisabledBySizeTest.java",
+   "line": 44,
+   "declaring_class": "io.cryostat.security.rbac.SsarClientCacheDisabledBySizeTest$Profile",
+   "method": "getConfigOverrides()",
+   "status": "static_map",
+   "activation": "unknown",
+   "profile_count": 1,
+   "profile_classes": [
+    "io.cryostat.security.rbac.SsarClientCacheDisabledBySizeTest$Profile"
+   ],
+   "configuration_scope": "test-profile declaration, not a production-profile default or proven active override",
+   "declared_source": {
+    "source_complete": true,
+    "effective_value_proven": false,
+    "source_sha256": "e645bcc557d513969f6339c598e4d085397e5ab586297141b23b1a482a931c7f",
+    "binary_sha256": "ca99ae9517214195a6cf62e8e9c75b958557ed5863b1ea734a7e1082f362a124",
+    "basis": "literal compiled map with matching indexed source and bytecode hashes",
+    "status": "declared_scalar",
+    "declared_value": "0"
+   }
+  }
+ ],
+ "source_definition_limit": 12,
+ "source_file_limit": 5,
+ "effective_runtime_values_proven": false,
+ "key_constants": {
+  "basis": "indexed static final String literals equal to shown keys; source reference binding not proven",
+  "coverage": "captured application source classes only; missing bytecode is not absence",
+  "limit": 8,
+  "truncated": false,
+  "items": []
+ },
+ "configuration_resources": {
+  "status": "ready",
+  "scope": "Listed properties; matches=key-profile:lines (empty=checked absence); custom/external/env/runtime unknown",
+  "truncated": false,
+  "files": {
+   "src/main/resources/application-dev.properties": {
+    "sha256": "7f32e42fa4704a6071b9dbb621c3856c60a57e5e939dc965c76dea1737912efc",
+    "matches": {}
+   },
+   "src/main/resources/application-test.properties": {
+    "sha256": "b7dc36bd48b45538403c0d77ae566b97216b8d274b3cc11f846d4708761b0fbb",
+    "matches": {}
+   },
+   "src/main/resources/application.properties": {
+    "sha256": "1da3d0407e8c78e31b271d90060d9aba7c7165663262cbb1accc774da596770f",
+    "matches": {
+     "default": [
+      321
+     ]
+    }
+   }
+  }
+ },
+ "test_profile_coverage": {
+  "supported": "straight-line literal Map.of/ofEntries, singletonMap and emptyMap declarations",
+  "unknown_declarations": 0,
+  "activation_proven": false,
+  "runtime_values_proven": false
+ },
+ "definition_count": 2,
+ "usage_count": 1,
+ "values_indexed": false,
+ "limitations": [
+  "Values are not indexed; declared view emits only bounded non-sensitive scalar source declarations, never environment or evaluated expressions",
+  "Consumers cover supported annotations and common programmatic APIs",
+  "Environment-variable and YAML list lookups are not resolved",
+  "Dynamic programmatic keys are reported as unknown without guessing their value"
+ ],
+ "showing": 3,
+ "total": 3,
+ "limit": 12,
+ "offset": 0,
+ "has_more": false,
+ "truncated": false,
+ "field_annotations": {
+  "status": "ready",
+  "scope": "Explicit indexed own-field attributes; defaults/inheritance/runtime unknown",
+  "truncated": false
+ }
+}

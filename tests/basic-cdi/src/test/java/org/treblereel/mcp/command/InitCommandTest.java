@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+
+import org.treblereel.mcp.db.IndexSchema;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
@@ -10,7 +14,9 @@ import java.util.stream.Collectors;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.BeanRepository;
+import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class InitCommandTest {
@@ -38,36 +44,36 @@ class InitCommandTest {
         assertNotNull(dbPath, "index db should be created");
 
         Jdbi jdbi = QuillDatabase.open(dbPath);
-        var classes = IndexReader.findAllClasses(jdbi);
+        var classes = jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findAllClasses());
         assertEquals(13, classes.stream().filter(cls -> "main".equals(cls.sourceSet())).count(),
                 "Should index all 13 main fixture classes");
 
-        var beans = IndexReader.findBeans(jdbi, null);
+        var beans = jdbi.withHandle(repositoryHandle2 -> new BeanRepository(repositoryHandle2).findBeans(null));
         assertTrue(beans.size() >= 3, "Should find at least 3 CDI beans (Stripe, Mock, Order), plus non-bean classes");
 
-        var ips = IndexReader.findInjectionPoints(jdbi, beans.stream()
-                .filter(b -> IndexReader.findClassById(jdbi, b.classId())
+        var ips = jdbi.withHandle(repositoryHandle3 -> new BeanRepository(repositoryHandle3).findInjectionPoints(beans.stream()
+                .filter(b -> new SymbolRepository(repositoryHandle3).findClassById(b.classId())
                         .map(c -> c.className().endsWith("OrderService")).orElse(false))
-                .findFirst().orElseThrow().id());
+                .findFirst().orElseThrow().id()));
         assertFalse(ips.isEmpty(), "OrderService should have injection points");
         assertTrue(ips.stream().anyMatch(ip -> ip.targetType().contains("PaymentService")),
                 "OrderService should inject PaymentService");
 
-        var applicationScoped = IndexReader.findAnnotationNames(jdbi, "ApplicationScoped");
+        var applicationScoped = jdbi.withHandle(repositoryHandle4 -> new SymbolRepository(repositoryHandle4).findAnnotationNames("ApplicationScoped"));
         assertEquals(List.of("jakarta.enterprise.context.ApplicationScoped"),
                 applicationScoped);
-        assertTrue(IndexReader.findAnnotatedClasses(jdbi, applicationScoped.getFirst(),
-                        false, 20, 0).stream()
+        assertTrue(jdbi.withHandle(repositoryHandle5 -> new SymbolRepository(repositoryHandle5).findAnnotatedClasses(applicationScoped.getFirst(),
+                        false, 20, 0)).stream()
                 .anyMatch(value -> value.className().endsWith("StripePaymentService")));
 
         var orderService = classes.stream()
                 .filter(value -> value.className().endsWith("OrderService"))
                 .findFirst().orElseThrow();
-        assertTrue(IndexReader.findClassMembers(jdbi, orderService.id()).stream()
+        assertTrue(jdbi.withHandle(repositoryHandle6 -> new SymbolRepository(repositoryHandle6).findClassMembers(orderService.id())).stream()
                 .anyMatch(member -> member.name().equals("createOrder")
                         && member.kind().equals("METHOD")));
 
-        var meta = IndexReader.getMetadata(jdbi);
+        var meta = jdbi.withHandle(repositoryHandle7 -> new IndexRepository(repositoryHandle7).getMetadata());
         assertNotNull(meta.get("indexed_at"));
         assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));
         assertNotNull(meta.get("dependency_index"));
@@ -84,6 +90,9 @@ class InitCommandTest {
             handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', 'outdated')");
             handle.execute("PRAGMA user_version = 7");
         });
+        // Fresher outdated generations may belong to an older server still running; this one is abandoned.
+        Files.setLastModifiedTime(outdated, java.nio.file.attribute.FileTime.from(
+                java.time.Instant.now().minus(java.time.Duration.ofDays(365))));
         Files.writeString(QUILL_DIR.resolve("refs.json"),
                 "{\"@worktree\":\"outdated\"}");
 
@@ -93,8 +102,8 @@ class InitCommandTest {
         assertFalse(Files.exists(outdated));
         Path current = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotNull(current);
-        assertEquals(QuillDatabase.currentSchemaVersion(),
-                QuillDatabase.inspectSchemaVersion(current));
+        assertEquals(IndexSchema.VERSION,
+                IndexSchema.inspectVersion(current));
         assertTrue(ProjectIndexStore.readRefs(QUILL_DIR.resolve("refs.json"))
                 .values().stream().noneMatch("outdated"::equals));
     }
@@ -132,8 +141,8 @@ class InitCommandTest {
 
         Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
-        var beans = IndexReader.findBeans(jdbi, null);
-        var classIds = IndexReader.findAllClasses(jdbi).stream()
+        var beans = jdbi.withHandle(repositoryHandle8 -> new BeanRepository(repositoryHandle8).findBeans(null));
+        var classIds = jdbi.withHandle(repositoryHandle9 -> new SymbolRepository(repositoryHandle9).findAllClasses()).stream()
                 .map(c -> c.id()).collect(Collectors.toSet());
 
         for (var bean : beans) {
@@ -151,8 +160,8 @@ class InitCommandTest {
 
         Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
-        var classes = IndexReader.findAllClasses(jdbi);
-        var beans = IndexReader.findBeans(jdbi, null);
+        var classes = jdbi.withHandle(repositoryHandle10 -> new SymbolRepository(repositoryHandle10).findAllClasses());
+        var beans = jdbi.withHandle(repositoryHandle11 -> new BeanRepository(repositoryHandle11).findBeans(null));
         var beanClassIds = beans.stream().map(b -> b.classId()).collect(Collectors.toSet());
 
         for (var cls : classes) {
@@ -171,13 +180,13 @@ class InitCommandTest {
         cmd.call();
         Path firstDb = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         assertNotNull(firstDb);
-        var firstClasses = IndexReader.findAllClasses(QuillDatabase.open(firstDb)).stream()
+        var firstClasses = QuillDatabase.open(firstDb).withHandle(repositoryHandle12 -> new SymbolRepository(repositoryHandle12).findAllClasses()).stream()
                 .map(InitCommandTest::classIdentity).collect(Collectors.toSet());
         cmd.call();
 
         Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
-        var classes = IndexReader.findAllClasses(jdbi);
+        var classes = jdbi.withHandle(repositoryHandle13 -> new SymbolRepository(repositoryHandle13).findAllClasses());
         var reindexedClasses = classes.stream()
                 .map(InitCommandTest::classIdentity).collect(Collectors.toSet());
         assertEquals(classes.size(), reindexedClasses.size(),
@@ -186,7 +195,7 @@ class InitCommandTest {
                 "Re-index should preserve every main and test class exactly once");
 
         var classIds = classes.stream().map(c -> c.id()).collect(Collectors.toSet());
-        for (var bean : IndexReader.findBeans(jdbi, null)) {
+        for (var bean : jdbi.withHandle(repositoryHandle14 -> new BeanRepository(repositoryHandle14).findBeans(null))) {
             assertTrue(classIds.contains(bean.classId()),
                     "After re-index, bean classId " + bean.classId() + " must be valid");
         }

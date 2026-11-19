@@ -1,0 +1,107 @@
+{
+ "class": "io.cryostat.security.rbac.SsarClientCache",
+ "kind": "CLASS",
+ "superclass": "java.lang.Object",
+ "interfaces": [],
+ "source": "src/main/java/io/cryostat/security/rbac/SsarClientCache.java",
+ "location": {
+  "path": "src/main/java/io/cryostat/security/rbac/SsarClientCache.java",
+  "line": null,
+  "basis": "unknown"
+ },
+ "annotations": [
+  "jakarta.enterprise.context.ApplicationScoped"
+ ],
+ "meta_annotations": [
+  "jakarta.enterprise.context.NormalScope",
+  "java.lang.annotation.Documented",
+  "java.lang.annotation.Inherited",
+  "java.lang.annotation.Retention",
+  "java.lang.annotation.Target"
+ ],
+ "dependency_metrics": {
+  "fan_in": 5,
+  "incoming_occurrences": 29,
+  "fan_out": 3,
+  "outgoing_occurrences": 15
+ },
+ "bean": {
+  "kind": "CLASS",
+  "scope": "@ApplicationScoped",
+  "qualifiers": [
+   "@Default",
+   "@Any"
+  ],
+  "stereotypes": [],
+  "bean_types": [
+   "io.cryostat.security.rbac.SsarClientCache",
+   "java.lang.Object"
+  ],
+  "profiles": [],
+  "alternative": false
+ },
+ "direct_implementation_count": 0,
+ "direct_implementations": [],
+ "direct_implementations_truncated": false,
+ "external_dependency_reference_count": 7,
+ "external_dependency_type_count": 5,
+ "external_dependency_breakdown": {
+  "ANNOTATION": 1,
+  "FIELD": 3,
+  "METHOD": 3
+ },
+ "external_dependencies": [
+  "com.github.benmanes.caffeine.cache.Cache",
+  "com.github.benmanes.caffeine.cache.RemovalCause",
+  "io.fabric8.kubernetes.client.KubernetesClient",
+  "jakarta.enterprise.context.ApplicationScoped",
+  "org.jboss.logging.Logger"
+ ],
+ "external_dependencies_truncated": false,
+ "class_occurrences": [
+  {
+   "module": ".",
+   "source_set": "main",
+   "origin": "source",
+   "output_directory": "target/classes",
+   "class_file": "target/classes/io/cryostat/security/rbac/SsarClientCache.class"
+  }
+ ],
+ "injects": [
+  "CONSTRUCTOR_PARAM <init>: org.jboss.logging.Logger [\"@Default\"] -> not resolved by the application index; dependency providers: io.quarkus.arc.runtime.LoggerProducer#getSimpleLogger from io.quarkus:quarkus-arc:3.40.1.1 [UNKNOWN]",
+  "CONSTRUCTOR_PARAM <init>: io.cryostat.security.rbac.RbacConfig [\"@Default\"] -> io.cryostat.security.rbac.RbacConfig#synthetic:ConfigMappingCreator (SYNTHETIC) [RESOLVED]",
+  "CONSTRUCTOR_PARAM <init>: io.cryostat.security.rbac.SsarClientFactory [\"@Default\"] -> io.cryostat.security.rbac.SsarClientFactory (CLASS) [RESOLVED]"
+ ],
+ "injected_into": [
+  "io.cryostat.security.rbac.SsarAuthorizer#ssarClientCache (FIELD io.cryostat.security.rbac.SsarClientCache) [\"@Default\"] [RESOLVED] owner @ApplicationScoped, uses it in performSsarCheck"
+ ],
+ "test_classes": [
+  "src/test/java/io/cryostat/security/rbac/RbacHttpAuthenticationMechanismTest.java",
+  "src/test/java/io/cryostat/security/rbac/SsarClientCacheDisabledBySizeTest.java",
+  "src/test/java/io/cryostat/security/rbac/SsarClientCacheDisabledByTtlTest.java",
+  "src/test/java/io/cryostat/security/rbac/SsarClientCacheTest.java"
+ ],
+ "related_source_files": [
+  "src/main/java/io/cryostat/security/rbac/SsarAuthorizer.java"
+ ],
+ "generated_creation_evidence": [
+  {
+   "method_calls": {
+    "create(CreationalContext)": "io.cryostat.security.rbac.SsarClientCache#<init>(Logger, RbacConfig, SsarClientFactory)"
+   },
+   "scope": "Direct calls that construct or return the generated method result type; runtime execution not proven",
+   "generated_class": "io.cryostat.security.rbac.SsarClientCache_Bean",
+   "jar_modified": "2026-11-02T21:20:21.352884344Z",
+   "jar_older_than_compiled_classes": false
+  }
+ ],
+ "generated_classes": [
+  "target/quarkus-app/quarkus/generated-bytecode.jar!/io/cryostat/security/rbac/SsarClientCache_Bean.class references io.cryostat.security.rbac.RbacConfig, io.cryostat.security.rbac.SsarClientCache_ClientProxy, io.cryostat.security.rbac.SsarClientFactory, org.jboss.logging.Logger",
+  "target/quarkus-app/quarkus/generated-bytecode.jar!/io/cryostat/security/rbac/SsarClientCache_ClientProxy.class"
+ ],
+ "generated_classes_basis": {
+  "scope": "Quarkus build output generated for this class; edit this class's source, not them",
+  "jar_modified": "2026-11-02T21:20:21.352884344Z",
+  "jar_older_than_compiled_classes": false
+ }
+}

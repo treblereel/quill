@@ -1,5 +1,10 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.CodexConfigInstaller;
+import org.treblereel.mcp.index.McpJsonInstaller;
+import org.treblereel.mcp.index.ProjectConfiguration;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;

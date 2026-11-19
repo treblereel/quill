@@ -56,6 +56,66 @@ class DependencyIndexerTest {
     }
 
     @Test
+    void buildFingerprintSkipsTreesGitIgnoresWithoutReadingThem() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("captures"));
+        Files.writeString(project.resolve("pom.xml"), pom("captures", "jar", ""));
+        Files.writeString(project.resolve(".gitignore"), "results/**/wire/\n");
+        String indexed = DependencyIndexer.buildFingerprint(project);
+        Files.writeString(Files.createDirectories(project.resolve("results/run/wire/copy")).resolve("pom.xml"), "<project/>");
+        assertEquals(indexed, DependencyIndexer.buildFingerprint(project));
+        Files.writeString(Files.createDirectories(project.resolve("results/run/kept")).resolve("pom.xml"), "<project/>");
+        assertNotEquals(indexed, DependencyIndexer.buildFingerprint(project));
+    }
+
+    @Test
+    void buildFingerprintIgnoresPackageTreesAndHiddenDirectoriesButNotModules() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("frontend-app"));
+        Files.writeString(project.resolve("pom.xml"), pom("frontend-app", "jar", ""));
+        Path module = Files.createDirectories(project.resolve("module"));
+        Files.writeString(module.resolve("pom.xml"), "<project>one</project>");
+        String indexed = DependencyIndexer.buildFingerprint(project);
+
+        // A frontend's node_modules can hold hundreds of thousands of files; none are this build's inputs.
+        for (String tree : List.of("src/main/webui/node_modules/dep", "src/main/webui/bower_components/dep", ".cache/tool")) {
+            Files.writeString(Files.createDirectories(project.resolve(tree)).resolve("pom.xml"), "<project/>");
+        }
+        assertEquals(indexed, DependencyIndexer.buildFingerprint(project));
+
+        Files.writeString(module.resolve("pom.xml"), "<project>two</project>");
+        assertNotEquals(indexed, DependencyIndexer.buildFingerprint(project), "a real module's build file still counts");
+    }
+
+    @Test
+    void mavenClasspathKeepsTheProjectsManagedTransitiveVersions() throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("managed"));
+        // Guava 31.1 asks for failureaccess 1.0.1; the project's dependencyManagement pins 1.0.2.
+        Files.writeString(project.resolve("pom.xml"), pom("managed", "jar", """
+                <dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.google.guava</groupId>
+                      <artifactId>failureaccess</artifactId>
+                      <version>1.0.2</version>
+                    </dependency>
+                  </dependencies>
+                </dependencyManagement>
+                <dependencies>
+                  <dependency>
+                    <groupId>com.google.guava</groupId>
+                    <artifactId>guava</artifactId>
+                    <version>31.1-jre</version>
+                  </dependency>
+                </dependencies>
+                """));
+
+        DependencyIndexer.ClasspathGenerationResult generated = MavenClasspathResolver.generate(project);
+        assertTrue(generated.successful(), generated.detail());
+        String classpath = Files.readString(project.resolve("target/quill-classpath.txt"));
+        assertTrue(classpath.contains("failureaccess-1.0.2.jar"), classpath);
+        assertFalse(classpath.contains("failureaccess-1.0.1.jar"), classpath);
+    }
+
+    @Test
     void mavenReactorClasspathDoesNotRequireInternalArtifactsInLocalRepository()
             throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("reactor"));
@@ -844,5 +904,17 @@ class DependencyIndexerTest {
         writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, internalName, null, superName, null);
         writer.visitEnd();
         return writer.toByteArray();
+    }
+
+    @org.junit.jupiter.api.Test
+    void anUnchangedClasspathFingerprintIsNotRewritten(@org.junit.jupiter.api.io.TempDir Path module) throws Exception {
+        Path file = Files.createDirectories(module.resolve("target")).resolve("quill-classpath.sha256");
+        DependencyIndexer.writeFingerprint(module, BuildSystem.MAVEN, "abc");
+        FileTime old = FileTime.from(Instant.parse("2020-01-01T00:00:00Z"));
+        Files.setLastModifiedTime(file, old);
+        DependencyIndexer.writeFingerprint(module, BuildSystem.MAVEN, "abc");
+        assertEquals(old, Files.getLastModifiedTime(file), "watchers must not see an identical rewrite");
+        DependencyIndexer.writeFingerprint(module, BuildSystem.MAVEN, "def");
+        assertEquals("def", Files.readString(file));
     }
 }

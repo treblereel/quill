@@ -1,3 +1,7 @@
+## Project Type
+
+**Type:** java
+
 ## Quill — Codebase Intelligence (MCP)
 
 This project is indexed by Quill. **Always prefer Quill MCP tools over grep/find/Explore agents** for:
@@ -18,7 +22,8 @@ This project is indexed by Quill. **Always prefer Quill MCP tools over grep/find
 <!-- quill:instructions:v2 -->
 ## Quill — Codebase Intelligence (MCP)
 
-At the beginning of a coding or code-analysis task, call `get_overview`. Before broad
+Once per session, before the first project-wide question, call `get_overview` (again only
+after a build, index refresh, or project switch). Before broad
 code search, dependency or impact analysis, or running a large test suite, prefer Quill
 for project-wide semantic
 questions: implementations, annotations, endpoints, DI, dependency graphs, affected tests,

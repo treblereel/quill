@@ -1,5 +1,9 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.BuildIntegrationInstaller;
+import org.treblereel.mcp.index.ClaudeSettingsInstaller;
+import org.treblereel.mcp.index.ProjectIndexStore;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,8 +21,8 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.QuillTopCommand;
-import org.treblereel.mcp.mcp.ProjectRegistry;
-import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 import org.treblereel.mcp.workspace.WorkspaceLock;
 import picocli.CommandLine;
@@ -30,14 +34,36 @@ class WorkspaceCommandTest {
     @TempDir Path workspace;
 
     @Test
-    void explicitPermissionFlagConfiguresWorkspaceAndRepositoriesReversibly() throws Exception {
+    void projectInitGrantsReadOnlyPermissionsAndIndexOnlySkipsClientConfiguration() throws Exception {
+        createCompiledRepository("project");
+        Path project=workspace.resolve("project");
+        Captured result=execute("init","--project",project.toString());
+        assertEquals(CommandLine.ExitCode.OK,result.exitCode(),result.stderr());
+        assertTrue(ClaudeSettingsInstaller.areToolsAllowed(project,
+                org.treblereel.mcp.mcp.server.ReadOnlyToolNames.all()));
+        String settings=Files.readString(project.resolve(".claude/settings.local.json"));
+        assertFalse(settings.contains("Bash"));
+        // One server rule allows every Quill tool, as the Codex registration approves them all.
+        assertEquals(java.util.List.of("mcp__quill"), java.util.List.copyOf(JSON.readValue(
+                JSON.readTree(settings).path("permissions").path("allow").traverse(), java.util.List.class)));
+        assertTrue(Files.readString(project.resolve(".codex/config.toml"))
+                .contains("default_tools_approval_mode = \"approve\""));
+        assertTrue(result.stdout().contains("/hooks"));
+        createCompiledRepository("index-only");
+        Path indexOnly=workspace.resolve("index-only");
+        assertEquals(CommandLine.ExitCode.OK,execute("init","--project",indexOnly.toString(),"--index-only").exitCode());
+        assertFalse(Files.exists(indexOnly.resolve(".claude")));
+        assertFalse(Files.exists(indexOnly.resolve(".codex")));
+    }
+
+    @Test
+    void defaultInitializationConfiguresWorkspaceAndRepositoryPermissionsReversibly() throws Exception {
         createCompiledRepository("engine");
-        Captured result = execute("workspace", "init", "--project", workspace.toString(),
-                "--allow-quill-tools");
+        Captured result = execute("workspace", "init", "--project", workspace.toString());
         assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.stderr());
         for (Path target : java.util.List.of(workspace, workspace.resolve("engine"))) {
             assertTrue(ClaudeSettingsInstaller.areToolsAllowed(target,
-                    org.treblereel.mcp.mcp.ReadOnlyToolNames.all()));
+                    org.treblereel.mcp.mcp.server.ReadOnlyToolNames.all()));
         }
         assertEquals(CommandLine.ExitCode.OK,
                 execute("workspace", "clear", "--project", workspace.toString()).exitCode());
@@ -199,6 +225,12 @@ class WorkspaceCommandTest {
                 """.formatted(System.currentTimeMillis()));
 
         ProjectRegistry.Resolution resolution = registry.resolve("engine");
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        while (resolution.issues().stream().anyMatch(issue -> issue.code().equals("refresh_pending"))
+                && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+            resolution = registry.resolve("engine");
+        }
 
         assertTrue(resolution.errors().isEmpty(), String.join("; ", resolution.errors()));
         assertEquals(1, resolution.projects().size());
@@ -298,8 +330,8 @@ class WorkspaceCommandTest {
         assertTrue(repository.path("supported").asBoolean());
         assertTrue(repository.path("compiled").asBoolean());
         assertTrue(repository.path("indexed").asBoolean());
-        assertEquals(org.treblereel.mcp.db.QuillDatabase.currentSchemaVersion(), repository.path("indexSchema").asInt());
-        assertEquals(org.treblereel.mcp.db.QuillDatabase.currentSchemaVersion(), repository.path("currentSchema").asInt());
+        assertEquals(org.treblereel.mcp.db.IndexSchema.VERSION, repository.path("indexSchema").asInt());
+        assertEquals(org.treblereel.mcp.db.IndexSchema.VERSION, repository.path("currentSchema").asInt());
         assertEquals("installed", repository.path("buildIntegration").asText());
         assertTrue(repository.path("queryReady").asBoolean());
     }

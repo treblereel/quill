@@ -14,6 +14,13 @@
   </dependencies>
   <build><plugins>
     <plugin>
+      <!-- Sources shared by both K2 worker modules; only K2Compat is compiled per compiler version. -->
+      <groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId><version>3.6.0</version>
+      <executions>
+        <execution><id>shared-tests</id><phase>generate-test-sources</phase><goals><goal>add-test-source</goal></goals><configuration><sources><source>${project.basedir}/src/sharedTest/java</source></sources></configuration></execution>
+      </executions>
+    </plugin>
+    <plugin>
       <groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version>
       <executions>
         <execution><id>default-jar</id><phase>process-classes</phase><goals><goal>jar</goal></goals></execution>
@@ -27,7 +34,7 @@
     <plugin>
       <groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-maven-plugin</artifactId><version>${kotlin.version}</version>
       <executions><execution><id>kotlin-compile</id><phase>process-sources</phase><goals><goal>compile</goal></goals></execution></executions>
-      <configuration><jvmTarget>17</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
+      <configuration><jvmTarget>17</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir><sourceDir>${project.basedir}/src/compat/kotlin</sourceDir></sourceDirs></configuration>
     </plugin>
     <plugin>
     <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>${shade-plugin.version}</version>

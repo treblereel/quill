@@ -14,10 +14,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.treblereel.mcp.core.Json;
 
 /** Explicitly executes the project-local stdio launcher; never invokes an AI client. */
 final class McpConnectivityProbe {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final int MAX_LINE = 4 * 1024 * 1024;
 
     private McpConnectivityProbe() {}
@@ -145,7 +146,8 @@ final class McpConnectivityProbe {
         if (!indexOnly) {
             System.out.println("Initialization finished; client configuration alone does not prove "
                     + "live connectivity or AI client activation. Use --probe-mcp to check the .mcp.json transport. "
-                    + "Trust this project in Codex/Claude and open a fresh session to discover Quill tools.");
+                    + "Trust this project in Codex/Claude, review new or changed prefetch hooks in /hooks, "
+                    + "and open a fresh session to discover Quill tools. Project configuration cannot grant host trust.");
         }
     }
 

@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Discovers coordinates from build metadata without executing Maven or Gradle. */
 public final class ProjectCoordinatesDiscovery {
@@ -204,6 +205,7 @@ public final class ProjectCoordinatesDiscovery {
         try (Reader reader = Files.newBufferedReader(pom, StandardCharsets.UTF_8)) {
             return new MavenXpp3Reader().read(reader);
         } catch (IOException | XmlPullParserException | RuntimeException failure) {
+            QuillLog.swallowed(failure);
             return null;
         }
     }

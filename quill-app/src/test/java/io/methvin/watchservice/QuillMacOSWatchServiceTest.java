@@ -36,6 +36,7 @@ class QuillMacOSWatchServiceTest {
             if (startFailure != null) throw startFailure;
             return startResult;
         }
+        public void flush(FSEventStreamRef stream) { calls.add("flush"); }
         public void stop(FSEventStreamRef stream) { calls.add("stop"); }
         public void invalidate(FSEventStreamRef stream) { calls.add("invalidate"); }
         public void drain(Pointer queue) { calls.add("drain"); pause(draining, allowDrain); }
@@ -129,6 +130,20 @@ class QuillMacOSWatchServiceTest {
         assertEquals(2, Collections.frequency(platform.calls, "release"));
         assertEquals(1, Collections.frequency(platform.calls, "drain"));
     }
+    @Test void deliveryBarrierFlushesEveryIndependentStreamBeforeDrainingCallbacks() throws Exception {
+        var platform = new Fake();
+        Path first = Files.createDirectory(temp.resolve("project"));
+        Path second = Files.createDirectory(temp.resolve("heartbeat"));
+        var service = service(platform);
+        service.register(new WatchablePath(first), EVENTS);
+        service.register(new WatchablePath(second), EVENTS);
+        platform.calls.clear();
+        service.flushPendingEvents();
+        assertEquals(List.of("flush", "flush", "drain"), platform.calls);
+        service.close();
+        assertThrows(ClosedWatchServiceException.class, service::flushPendingEvents);
+    }
+
     @Test void nonexistentRootDoesNotAllocateNativeStream() throws Exception {
         var platform = new Fake();
         try (var service = service(platform)) {

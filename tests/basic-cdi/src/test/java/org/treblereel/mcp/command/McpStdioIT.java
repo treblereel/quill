@@ -2,6 +2,8 @@ package org.treblereel.mcp.command;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.*;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -17,13 +19,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.core.BuildSystem;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.index.ProjectIndexStore;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
 
 @Tag("e2e")
@@ -57,7 +58,8 @@ class McpStdioIT {
     @Test
     void mcpStdioToolsListAndCall() throws Exception {
         Path appJar = resolveAppJar();
-        Assumptions.assumeTrue(Files.exists(appJar),
+        Assumptions.assumeTrue(
+                Files.exists(appJar),
                 "Skipping: quill executable JAR not found (run 'mvn package -DskipTests' first)");
 
         assertToolsListAndCall(List.of("java", "-jar", appJar.toString()), PROJECT_ROOT, 3);
@@ -66,7 +68,8 @@ class McpStdioIT {
     @Test
     void nativeMcpToolsListAndCall() throws Exception {
         Path nativeImage = resolveNativeImage();
-        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+        Assumptions.assumeTrue(
+                Files.isExecutable(nativeImage),
                 "Skipping: native image not found (build with -Pnative)");
 
         assertToolsListAndCall(List.of(nativeImage.toString()), PROJECT_ROOT, 3);
@@ -77,12 +80,15 @@ class McpStdioIT {
         Path appJar = resolveAppJar();
         Path nativeImage = resolveNativeImage();
         Assumptions.assumeTrue(Files.exists(appJar));
-        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+        Assumptions.assumeTrue(
+                Files.isExecutable(nativeImage),
                 "Skipping: native image not found (build with -Pnative)");
 
         JsonNode jvmCatalog = readToolCatalog(List.of("java", "-jar", appJar.toString()));
         JsonNode nativeCatalog = readToolCatalog(List.of(nativeImage.toString()));
-        assertEquals(jvmCatalog, nativeCatalog,
+        assertEquals(
+                jvmCatalog,
+                nativeCatalog,
                 "Native MCP catalog must exactly match the JVM artifact; rebuild from the reactor root");
     }
 
@@ -91,16 +97,20 @@ class McpStdioIT {
         Path appJar = resolveAppJar();
         Path nativeImage = resolveNativeImage();
         Assumptions.assumeTrue(Files.exists(appJar));
-        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+        Assumptions.assumeTrue(
+                Files.isExecutable(nativeImage),
                 "Skipping: native image not found (build with -Pnative)");
 
-        JsonNode jvmCatalog = readToolCatalog(
-                List.of("java", "-jar", appJar.toString(), "--tools", "router"));
-        JsonNode nativeCatalog = readToolCatalog(
-                List.of(nativeImage.toString(), "--tools", "router"));
-        assertEquals(jvmCatalog, nativeCatalog,
+        JsonNode jvmCatalog =
+                readToolCatalog(List.of("java", "-jar", appJar.toString(), "--tools", "router"));
+        JsonNode nativeCatalog =
+                readToolCatalog(List.of(nativeImage.toString(), "--tools", "router"));
+        assertEquals(
+                jvmCatalog,
+                nativeCatalog,
                 "Native router catalog must exactly match the JVM artifact");
-        assertEquals(Set.of("execute_tool", "get_overview", "search_tools"),
+        assertEquals(
+                Set.of("execute_tool", "get_overview", "search_tools"),
                 java.util.stream.StreamSupport.stream(nativeCatalog.spliterator(), false)
                         .map(tool -> tool.path("name").asText())
                         .collect(java.util.stream.Collectors.toSet()));
@@ -117,57 +127,88 @@ class McpStdioIT {
         try (Git git = Git.init().setDirectory(project.toFile()).call()) {
             Files.writeString(project.resolve("pom.xml"), "<project/>");
             git.add().addFilepattern("pom.xml").call();
-            indexedCommit = git.commit().setMessage("indexed")
-                    .setAuthor("Test", "test@example.com").setSign(false).call().getName();
+            indexedCommit =
+                    git.commit()
+                            .setMessage("indexed")
+                            .setAuthor("Test", "test@example.com")
+                            .setSign(false)
+                            .call()
+                            .getName();
             branch = git.getRepository().getBranch();
 
             Path quillDir = Files.createDirectories(project.resolve(".quill"));
             String indexId = indexedCommit + "-generation";
             var jdbi = QuillDatabase.create(quillDir.resolve(indexId + ".db"));
-            jdbi.useHandle(handle -> {
-                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                        "index_id", indexId);
-                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                        "indexed_at", "2026-09-15T00:00:00Z");
-                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                        "last_commit", indexedCommit);
-                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                        "project_root", project.toString());
-                handle.execute("INSERT INTO metadata(key, value) VALUES (?, ?)",
-                        "framework", "Plain");
-            });
-            JSON.writerWithDefaultPrettyPrinter().writeValue(
-                    quillDir.resolve("refs.json").toFile(),
-                    Map.of("@head:" + indexedCommit, indexId, branch, indexId));
+            jdbi.useHandle(
+                    handle -> {
+                        handle.execute(
+                                "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                                "index_id",
+                                indexId);
+                        handle.execute(
+                                "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                                "indexed_at",
+                                "2026-09-15T00:00:00Z");
+                        handle.execute(
+                                "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                                "last_commit",
+                                indexedCommit);
+                        handle.execute(
+                                "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                                "project_root",
+                                project.toString());
+                        handle.execute(
+                                "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                                "framework",
+                                "Plain");
+                    });
+            JSON.writerWithDefaultPrettyPrinter()
+                    .writeValue(
+                            quillDir.resolve("refs.json").toFile(),
+                            Map.of("@head:" + indexedCommit, indexId, branch, indexId));
 
             Files.writeString(project.resolve("README.md"), "new head\n");
             git.add().addFilepattern("README.md").call();
-            git.commit().setMessage("head moved")
-                    .setAuthor("Test", "test@example.com").setSign(false).call();
+            git.commit()
+                    .setMessage("head moved")
+                    .setAuthor("Test", "test@example.com")
+                    .setSign(false)
+                    .call();
         }
 
-        Process process = new ProcessBuilder("java", "-jar", appJar.toString(),
-                "--mcp", "--project", project.toString())
-                .directory(PROJECT_ROOT.toFile())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
-        BufferedWriter input = new BufferedWriter(
-                new OutputStreamWriter(process.getOutputStream()));
-        BufferedReader output = new BufferedReader(
-                new InputStreamReader(process.getInputStream()));
+        Process process =
+                new ProcessBuilder(
+                                "java",
+                                "-jar",
+                                appJar.toString(),
+                                "--mcp",
+                                "--project",
+                                project.toString())
+                        .directory(PROJECT_ROOT.toFile())
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+        BufferedWriter input =
+                new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+        BufferedReader output = new BufferedReader(new InputStreamReader(process.getInputStream()));
         try {
-            sendRequest(input, 1, "initialize", """
+            sendRequest(
+                    input,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"stale-test","version":"1"}}""");
             assertNotNull(readResponse(output, 1).get("result"));
             sendNotification(input, "notifications/initialized", "{}");
-            sendRequest(input, 2, "tools/call",
-                    "{\"name\":\"get_overview\",\"arguments\":{}}");
+            sendRequest(input, 2, "tools/call", "{\"name\":\"get_overview\",\"arguments\":{}}");
 
             JsonNode overview = toolStructured(readResponse(output, 2));
             assertEquals("Plain", overview.path("project").path("framework").asText());
             assertTrue(overview.path("_meta").path("commit_stale").asBoolean());
-            assertTrue(overview.path("_meta").path("stale_reasons").toString()
-                    .contains("commit_changed_after_index"));
+            assertTrue(
+                    overview.path("_meta")
+                            .path("stale_reasons")
+                            .toString()
+                            .contains("commit_changed_after_index"));
         } finally {
             stopMcpProcess(process);
             input.close();
@@ -179,7 +220,8 @@ class McpStdioIT {
     @Test
     void mcpStdioHandlesPipelinedToolCalls() throws Exception {
         Path appJar = resolveAppJar();
-        Assumptions.assumeTrue(Files.exists(appJar),
+        Assumptions.assumeTrue(
+                Files.exists(appJar),
                 "Skipping: quill executable JAR not found (run 'mvn package -DskipTests' first)");
 
         assertPipelinedToolCalls(List.of("java", "-jar", appJar.toString()));
@@ -188,7 +230,8 @@ class McpStdioIT {
     @Test
     void nativeMcpHandlesPipelinedToolCalls() throws Exception {
         Path nativeImage = resolveNativeImage();
-        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+        Assumptions.assumeTrue(
+                Files.isExecutable(nativeImage),
                 "Skipping: native image not found (build with -Pnative)");
 
         assertPipelinedToolCalls(List.of(nativeImage.toString()));
@@ -200,8 +243,7 @@ class McpStdioIT {
         Assumptions.assumeTrue(Files.exists(appJar));
         Path gradleProject = prepareGradleProject();
         assertPipelinedToolCalls(
-                List.of("java", "-jar", appJar.toString()),
-                List.of(PROJECT_ROOT, gradleProject));
+                List.of("java", "-jar", appJar.toString()), List.of(PROJECT_ROOT, gradleProject));
     }
 
     @Test
@@ -230,30 +272,38 @@ class McpStdioIT {
         assertReadsSurviveRepeatedConcurrentIndexPublications(List.of(nativeImage.toString()));
     }
 
-    private void assertReadsSurviveRepeatedConcurrentIndexPublications(
-            List<String> launcher) throws Exception {
+    private void assertReadsSurviveRepeatedConcurrentIndexPublications(List<String> launcher)
+            throws Exception {
         List<String> command = new ArrayList<>(launcher);
         command.add("--mcp");
+        // These calls exercise the server, not the catalog: the default compact profile hides most
+        // tools.
+        command.add("--tools");
+        command.add("full");
         command.add("--project");
         command.add(PROJECT_ROOT.toString());
-        Process process = new ProcessBuilder(command)
-                .directory(PROJECT_ROOT.toFile())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
+        Process process =
+                new ProcessBuilder(command)
+                        .directory(PROJECT_ROOT.toFile())
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
 
-        try (BufferedWriter input = new BufferedWriter(
-                        new OutputStreamWriter(process.getOutputStream()));
-                BufferedReader output = new BufferedReader(
-                        new InputStreamReader(process.getInputStream()))) {
-            sendRequest(input, 1, "initialize", """
+        try (BufferedWriter input =
+                        new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output =
+                        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            sendRequest(
+                    input,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"update-test","version":"1"}}""");
             assertNotNull(readResponse(output, 1).get("result"));
             sendNotification(input, "notifications/initialized", "{}");
 
-            sendRequest(input, 2, "tools/call",
-                    "{\"name\":\"get_overview\",\"arguments\":{}}");
-            String previousIndex = toolStructured(readResponse(output, 2))
-                    .path("_meta").path("index_id").asText();
+            sendRequest(input, 2, "tools/call", "{\"name\":\"get_overview\",\"arguments\":{}}");
+            String previousIndex =
+                    toolStructured(readResponse(output, 2)).path("_meta").path("index_id").asText();
             Path previousDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
 
             for (int publication = 0; publication < 7; publication++) {
@@ -261,7 +311,10 @@ class McpStdioIT {
                 int firstRequestId = 100 + publication * 24;
                 for (int id = firstRequestId; id < firstRequestId + 24; id++) {
                     inFlightIds.add(id);
-                    writeRequest(input, id, "tools/call",
+                    writeRequest(
+                            input,
+                            id,
+                            "tools/call",
                             "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":100}}");
                 }
                 input.flush();
@@ -271,23 +324,37 @@ class McpStdioIT {
                 update.force = true;
                 update.call();
                 Path currentDatabase = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
-                assertNotEquals(previousDatabase, currentDatabase,
+                assertNotEquals(
+                        previousDatabase,
+                        currentDatabase,
                         "Every forced update must publish a new immutable generation");
 
-                Map<Integer, JsonNode> inFlight =
-                        readResponses(output, inFlightIds, 30_000);
+                Map<Integer, JsonNode> inFlight = readResponses(output, inFlightIds, 30_000);
                 assertEquals(inFlightIds, inFlight.keySet());
-                assertTrue(inFlight.values().stream().allMatch(response ->
-                                response.has("result")
-                                        && !response.path("result").path("isError").asBoolean()),
+                assertTrue(
+                        inFlight.values().stream()
+                                .allMatch(
+                                        response ->
+                                                response.has("result")
+                                                        && !response.path("result")
+                                                                .path("isError")
+                                                                .asBoolean()),
                         inFlight.toString());
 
                 int overviewId = 10_000 + publication;
-                sendRequest(input, overviewId, "tools/call",
+                sendRequest(
+                        input,
+                        overviewId,
+                        "tools/call",
                         "{\"name\":\"get_overview\",\"arguments\":{}}");
-                String currentIndex = toolStructured(readResponse(output, overviewId))
-                        .path("_meta").path("index_id").asText();
-                assertNotEquals(previousIndex, currentIndex,
+                String currentIndex =
+                        toolStructured(readResponse(output, overviewId))
+                                .path("_meta")
+                                .path("index_id")
+                                .asText();
+                assertNotEquals(
+                        previousIndex,
+                        currentIndex,
                         "The long-lived MCP process must observe the newly published generation");
                 assertEquals(
                         currentDatabase.getFileName().toString().replaceFirst("\\.db$", ""),
@@ -298,16 +365,25 @@ class McpStdioIT {
 
             try (var files = Files.list(QUILL_DIR)) {
                 List<Path> entries = files.toList();
-                assertTrue(entries.stream().noneMatch(path ->
-                                path.getFileName().toString().endsWith(".tmp")),
+                assertTrue(
+                        entries.stream()
+                                .noneMatch(path -> path.getFileName().toString().endsWith(".tmp")),
                         "No unpublished temporary database may remain after the soak test");
-                assertTrue(entries.stream().filter(path ->
-                                path.getFileName().toString().endsWith(".db")).count() <= 5,
+                assertTrue(
+                        entries.stream()
+                                        .filter(
+                                                path ->
+                                                        path.getFileName()
+                                                                .toString()
+                                                                .endsWith(".db"))
+                                        .count()
+                                <= 5,
                         "Immutable generation cleanup must enforce the LRU limit");
             }
-            for (String indexId : ProjectIndexStore.readRefs(
-                    QUILL_DIR.resolve("refs.json")).values()) {
-                assertTrue(Files.isRegularFile(QUILL_DIR.resolve(indexId + ".db")),
+            for (String indexId :
+                    ProjectIndexStore.readRefs(QUILL_DIR.resolve("refs.json")).values()) {
+                assertTrue(
+                        Files.isRegularFile(QUILL_DIR.resolve(indexId + ".db")),
                         "Every published ref must resolve to an existing database");
             }
         } finally {
@@ -320,8 +396,7 @@ class McpStdioIT {
         Path appJar = resolveAppJar();
         Assumptions.assumeTrue(Files.exists(appJar));
         Path gradleProject = prepareGradleProject();
-        assertToolsListAndCall(
-                List.of("java", "-jar", appJar.toString()), gradleProject, 2);
+        assertToolsListAndCall(List.of("java", "-jar", appJar.toString()), gradleProject, 2);
     }
 
     @Test
@@ -340,16 +415,28 @@ class McpStdioIT {
         WorkspaceManifestStore.initialize(workspace, 1);
         Path engine = createWorkspaceRepository(workspace, "engine", "EngineService");
 
-        Process process = new ProcessBuilder("java", "-jar", appJar.toString(),
-                "--mcp", "--workspace", workspace.toString())
-                .directory(workspace.toFile())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
-        try (BufferedWriter input = new BufferedWriter(
-                        new OutputStreamWriter(process.getOutputStream()));
-                BufferedReader output = new BufferedReader(
-                        new InputStreamReader(process.getInputStream()))) {
-            sendRequest(input, 1, "initialize", """
+        Process process =
+                new ProcessBuilder(
+                                "java",
+                                "-jar",
+                                appJar.toString(),
+                                "--mcp",
+                                "--tools",
+                                "full",
+                                "--workspace",
+                                workspace.toString())
+                        .directory(workspace.toFile())
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+        try (BufferedWriter input =
+                        new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output =
+                        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            sendRequest(
+                    input,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"workspace-test","version":"1"}}""");
             assertNotNull(readResponse(output, 1).get("result"));
             sendNotification(input, "notifications/initialized", "{}");
@@ -361,10 +448,20 @@ class McpStdioIT {
             Files.delete(engine.resolve(".git"));
             assertWorkspaceRepositoryCount(input, output, 40, 1);
 
-            Process clear = new ProcessBuilder("java", "-jar", appJar.toString(),
-                    "workspace", "clear", "--project", workspace.toString())
-                    .redirectErrorStream(true).start();
-            assertNotEquals(0, clear.waitFor(),
+            Process clear =
+                    new ProcessBuilder(
+                                    "java",
+                                    "-jar",
+                                    appJar.toString(),
+                                    "workspace",
+                                    "clear",
+                                    "--project",
+                                    workspace.toString())
+                            .redirectErrorStream(true)
+                            .start();
+            assertNotEquals(
+                    0,
+                    clear.waitFor(),
                     "workspace clear must refuse a workspace held by a live MCP server");
             assertTrue(Files.isRegularFile(WorkspaceManifestStore.manifest(workspace)));
         } finally {
@@ -379,40 +476,74 @@ class McpStdioIT {
         Path workspace = Files.createDirectories(tempDir.resolve("native-workspace"));
         WorkspaceManifestStore.initialize(workspace, 1);
         createWorkspaceRepository(workspace, "engine", "EngineService");
-        createWorkspaceRepository(workspace, "platform", "PlatformService", """
+        createWorkspaceRepository(
+                workspace,
+                "platform",
+                "PlatformService",
+                """
                 <dependencies><dependency><groupId>org.acme</groupId>
                   <artifactId>engine</artifactId><version>1</version>
                 </dependency></dependencies>
                 """);
 
-        Process process = new ProcessBuilder(nativeImage.toString(),
-                "--mcp", "--workspace", workspace.toString())
-                .directory(workspace.toFile())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
-        try (BufferedWriter input = new BufferedWriter(
-                        new OutputStreamWriter(process.getOutputStream()));
-                BufferedReader output = new BufferedReader(
-                        new InputStreamReader(process.getInputStream()))) {
-            sendRequest(input, 1, "initialize", """
+        Process process =
+                new ProcessBuilder(
+                                nativeImage.toString(),
+                                "--mcp",
+                                "--tools",
+                                "full",
+                                "--workspace",
+                                workspace.toString())
+                        .directory(workspace.toFile())
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+        try (BufferedWriter input =
+                        new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output =
+                        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            sendRequest(
+                    input,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"native-workspace-test","version":"1"}}""");
             assertNotNull(readResponse(output, 1).get("result"));
             sendNotification(input, "notifications/initialized", "{}");
 
-            sendRequest(input, 2, "tools/call", """
+            sendRequest(
+                    input,
+                    2,
+                    "tools/call",
+                    """
                     {"name":"get_workspace_dependencies","arguments":{"repository":"engine","limit":5}}""");
             JsonNode dependencies = readResponse(output, 2).path("result");
             assertFalse(dependencies.path("isError").asBoolean(), dependencies.toString());
             assertEquals(1, dependencies.path("structuredContent").path("total").asInt());
-            assertEquals("engine", dependencies.path("structuredContent")
-                    .path("dependencies").get(0).path("providerRepository").asText());
+            assertEquals(
+                    "engine",
+                    dependencies
+                            .path("structuredContent")
+                            .path("dependencies")
+                            .get(0)
+                            .path("providerRepository")
+                            .asText());
 
-            sendRequest(input, 3, "tools/call", """
+            sendRequest(
+                    input,
+                    3,
+                    "tools/call",
+                    """
                     {"name":"resolve_workspace_entity","arguments":{"target":"org.acme:engine"}}""");
             JsonNode resolution = readResponse(output, 3).path("result");
             assertFalse(resolution.path("isError").asBoolean(), resolution.toString());
-            assertEquals("engine", resolution.path("structuredContent")
-                    .path("candidates").get(0).path("repository").asText());
+            assertEquals(
+                    "engine",
+                    resolution
+                            .path("structuredContent")
+                            .path("candidates")
+                            .get(0)
+                            .path("repository")
+                            .asText());
         } finally {
             stopMcpProcess(process);
         }
@@ -425,10 +556,16 @@ class McpStdioIT {
         Path workspace = Files.createDirectories(tempDir.resolve("native-workspace-init"));
         createWorkspaceRepository(workspace, "engine", "EngineService");
 
-        Process process = new ProcessBuilder(nativeImage.toString(), "workspace", "init",
-                "--project", workspace.toString(), "--index-only")
-                .redirectErrorStream(true)
-                .start();
+        Process process =
+                new ProcessBuilder(
+                                nativeImage.toString(),
+                                "workspace",
+                                "init",
+                                "--project",
+                                workspace.toString(),
+                                "--index-only")
+                        .redirectErrorStream(true)
+                        .start();
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         process.getInputStream().transferTo(output);
 
@@ -436,13 +573,20 @@ class McpStdioIT {
         assertEquals(0, process.exitValue(), output.toString());
         Path state = WorkspaceManifestStore.directory(workspace).resolve("repositories.json");
         assertTrue(Files.isRegularFile(state));
-        assertEquals("engine", JSON.readTree(state.toFile())
-                .path("repositories").get(0).path("name").asText());
+        assertEquals(
+                "engine",
+                JSON.readTree(state.toFile()).path("repositories").get(0).path("name").asText());
 
-        Process status = new ProcessBuilder(nativeImage.toString(), "workspace", "status",
-                "--project", workspace.toString(), "--json")
-                .redirectErrorStream(true)
-                .start();
+        Process status =
+                new ProcessBuilder(
+                                nativeImage.toString(),
+                                "workspace",
+                                "status",
+                                "--project",
+                                workspace.toString(),
+                                "--json")
+                        .redirectErrorStream(true)
+                        .start();
         ByteArrayOutputStream statusOutput = new ByteArrayOutputStream();
         status.getInputStream().transferTo(statusOutput);
         assertTrue(status.waitFor(30, TimeUnit.SECONDS));
@@ -452,13 +596,17 @@ class McpStdioIT {
         assertTrue(statusJson.path("repositories").get(0).has("queryReady"));
     }
 
-    private void assertWorkspaceRepositoryCount(BufferedWriter input, BufferedReader output,
-            int firstRequestId, int expected) throws Exception {
+    private void assertWorkspaceRepositoryCount(
+            BufferedWriter input, BufferedReader output, int firstRequestId, int expected)
+            throws Exception {
         long deadline = System.currentTimeMillis() + 5_000;
         int requestId = firstRequestId;
         JsonNode last = null;
         while (System.currentTimeMillis() < deadline) {
-            sendRequest(input, requestId, "tools/call",
+            sendRequest(
+                    input,
+                    requestId,
+                    "tools/call",
                     "{\"name\":\"list_workspace_repositories\",\"arguments\":{}}");
             last = toolStructured(readResponse(output, requestId));
             if (last.path("total").asInt(-1) == expected) return;
@@ -473,66 +621,86 @@ class McpStdioIT {
         return createWorkspaceRepository(workspace, name, className, "");
     }
 
-    private Path createWorkspaceRepository(Path workspace, String name, String className,
-            String extraPom) throws Exception {
+    private Path createWorkspaceRepository(
+            Path workspace, String name, String className, String extraPom) throws Exception {
         Path project = Files.createDirectories(workspace.resolve(name));
         Files.createDirectories(project.resolve(".git"));
-        Files.writeString(project.resolve("pom.xml"), """
+        Files.writeString(
+                project.resolve("pom.xml"),
+                """
                 <project><modelVersion>4.0.0</modelVersion>
                   <groupId>org.acme</groupId><artifactId>%s</artifactId><version>1</version>
                   %s
                 </project>
-                """.formatted(name, extraPom));
+                """
+                        .formatted(name, extraPom));
         Path quill = Files.createDirectories(project.resolve(".quill"));
         String indexId = name + "-index";
         var jdbi = QuillDatabase.create(quill.resolve(indexId + ".db"));
-        jdbi.useHandle(handle -> {
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('index_id', ?)", indexId);
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('indexed_at', '2026-09-18T00:00:00Z')");
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('last_commit', 'unknown')");
-            handle.execute("INSERT INTO metadata(key, value) VALUES ('project_root', ?)",
-                    project.toString());
-            handle.execute("""
+        jdbi.useHandle(
+                handle -> {
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('index_id', ?)", indexId);
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('indexed_at', '2026-09-18T00:00:00Z')");
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('last_commit', 'unknown')");
+                    handle.execute(
+                            "INSERT INTO metadata(key, value) VALUES ('project_root', ?)",
+                            project.toString());
+                    handle.execute(
+                            """
                     INSERT INTO classes(class_name, kind, source_file, is_bean, module, source_set)
                     VALUES (?, 'CLASS', ?, 0, '.', 'main')
-                    """, "org.acme." + className,
-                    "src/main/java/org/acme/" + className + ".java");
-        });
-        Files.writeString(quill.resolve("refs.json"),
-                "{\"@worktree\":\"" + indexId + "\"}");
+                    """,
+                            "org.acme." + className,
+                            "src/main/java/org/acme/" + className + ".java");
+                });
+        Files.writeString(quill.resolve("refs.json"), "{\"@worktree\":\"" + indexId + "\"}");
         return project;
     }
 
-    private void assertToolsListAndCall(
-            List<String> launcher, Path projectRoot, int minimumBeans) throws Exception {
+    private void assertToolsListAndCall(List<String> launcher, Path projectRoot, int minimumBeans)
+            throws Exception {
         List<String> command = new ArrayList<>(launcher);
         command.add("--mcp");
         command.add("--project");
         command.add(projectRoot.toString());
 
-        ProcessBuilder pb = new ProcessBuilder(command)
-                .directory(projectRoot.toFile())
-                .redirectErrorStream(false);
+        ProcessBuilder pb =
+                new ProcessBuilder(command)
+                        .directory(projectRoot.toFile())
+                        .redirectErrorStream(false);
         Process proc = pb.start();
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
-        Thread stderrReader = new Thread(() -> {
-            try {
-                proc.getErrorStream().transferTo(stderr);
-            } catch (IOException ignored) {
-                // The stream is closed when the test terminates the server process.
-            }
-        }, "quill-test-stderr");
+        Thread stderrReader =
+                new Thread(
+                        () -> {
+                            try {
+                                proc.getErrorStream().transferTo(stderr);
+                            } catch (IOException ignored) {
+                                // The stream is closed when the test terminates the server process.
+                            }
+                        },
+                        "quill-test-stderr");
         stderrReader.start();
 
-        try (BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
-             BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+        try (BufferedWriter stdin =
+                        new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
+                BufferedReader stdout =
+                        new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
 
-            sendRequest(stdin, 1, "initialize", """
+            sendRequest(
+                    stdin,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}""");
             JsonNode initResp = readResponse(stdout, 1);
             assertNotNull(initResp.get("result"), "initialize should return a result");
             assertEquals("quill", initResp.get("result").get("serverInfo").get("name").asText());
-            assertEquals(org.treblereel.mcp.QuillTopCommand.version(),
+            assertEquals(
+                    org.treblereel.mcp.QuillTopCommand.version(),
                     initResp.get("result").get("serverInfo").get("version").asText());
 
             sendNotification(stdin, "notifications/initialized", "{}");
@@ -546,7 +714,9 @@ class McpStdioIT {
             boolean hasGetDeps = false;
             boolean hasListIps = false;
             for (JsonNode tool : tools) {
-                assertEquals("object", tool.path("outputSchema").path("type").asText(),
+                assertEquals(
+                        "object",
+                        tool.path("outputSchema").path("type").asText(),
                         "Every Quill tool should advertise structured output: " + tool);
                 String name = tool.get("name").asText();
                 if ("list_beans".equals(name)) hasListBeans = true;
@@ -557,19 +727,22 @@ class McpStdioIT {
             assertTrue(hasGetDeps, "Should include get_dependencies tool");
             assertTrue(hasListIps, "Should include list_injection_points tool");
 
-            sendRequest(stdin, 3, "tools/call",
-                    "{\"name\":\"list_beans\",\"arguments\":{}}");
+            sendRequest(stdin, 3, "tools/call", "{\"name\":\"list_beans\",\"arguments\":{}}");
             JsonNode callResp = readResponse(stdout, 3);
             assertNotNull(callResp.get("result"), "tools/call should return a result");
             JsonNode content = callResp.get("result").get("content");
             assertNotNull(content, "Result should have content array");
             assertNoTextPayload(callResp.get("result"));
             JsonNode beansResult = callResp.get("result").get("structuredContent");
-            assertTrue(beansResult.get("total").asInt() >= minimumBeans,
+            assertTrue(
+                    beansResult.get("total").asInt() >= minimumBeans,
                     "Should find at least " + minimumBeans + " beans");
             assertTrue(beansResult.has("_meta"), "Response should contain _meta envelope");
 
-            sendRequest(stdin, 4, "tools/call",
+            sendRequest(
+                    stdin,
+                    4,
+                    "tools/call",
                     "{\"name\":\"list_beans\",\"arguments\":{\"unexpected\":true}}");
             JsonNode invalidCall = readResponse(stdout, 4).get("result");
             assertNotNull(invalidCall, "Invalid tool input should return a tool result");
@@ -577,32 +750,64 @@ class McpStdioIT {
             assertNoTextPayload(invalidCall);
             JsonNode invalidPayload = invalidCall.path("structuredContent");
             assertFalse(invalidPayload.has("error"), invalidPayload::toString);
-            assertEquals("TOOL_INVOCATION_ERROR",
-                    invalidPayload.path("error_code").asText());
-            assertEquals("Unknown argument: unexpected",
-                    invalidPayload.path("message").asText());
+            assertEquals("TOOL_INVOCATION_ERROR", invalidPayload.path("error_code").asText());
+            // The message also lists the accepted arguments, so the client can correct the call.
+            assertTrue(
+                    invalidPayload
+                            .path("message")
+                            .asText()
+                            .startsWith("Unknown argument: unexpected. Accepted arguments: "),
+                    invalidPayload::toString);
             assertFalse(invalidPayload.path("retryable").asBoolean(true));
 
             if (projectRoot.getFileName().toString().equals("basic-cdi")) {
-                sendRequest(stdin, 5, "tools/call",
-                        "{\"name\":\"analyze_execution_order\",\"arguments\":{"
-                                + "\"target\":\"CaseFlowEngine\",\"method\":\"execute\"}}");
-                JsonNode execution = readResponse(stdout, 5)
-                        .path("result").path("structuredContent");
-                assertEquals("invocation_order_proven_completion_unknown",
-                        execution.path("ordering_analysis")
-                                .path("runtime_order_status").asText());
-                assertTrue(execution.path("bytecode_sequence").valueStream()
-                        .allMatch(event -> event.hasNonNull("source")));
+                // The default compact catalog does not list analyze_execution_order; clients reach
+                // it
+                // through execute_tool.
+                sendRequest(
+                        stdin,
+                        5,
+                        "tools/call",
+                        "{\"name\":\"execute_tool\",\"arguments\":{\"name\":\"analyze_execution_order\","
+                                + "\"arguments\":{\"target\":\"CaseFlowEngine\",\"method\":\"execute\"}}}");
+                JsonNode execution =
+                        readResponse(stdout, 5).path("result").path("structuredContent");
+                assertEquals(
+                        "invocation_order_proven_completion_unknown",
+                        execution.path("ordering_analysis").path("runtime_order_status").asText());
+                // The source file is stated once for the method; each event keeps its own lines.
+                assertTrue(execution.hasNonNull("source"), execution::toString);
+                assertTrue(
+                        execution
+                                .path("bytecode_sequence")
+                                .valueStream()
+                                .allMatch(event -> !event.path("evidence_lines").isEmpty()),
+                        execution::toString);
             } else if (projectRoot.getFileName().toString().equals("gradle-basic")) {
-                sendRequest(stdin, 5, "tools/call",
+                sendRequest(
+                        stdin,
+                        5,
+                        "tools/call",
                         "{\"name\":\"find_configuration_references\",\"arguments\":{"
                                 + "\"key\":\"greeting.prefix\"}}");
-                JsonNode configuration = readResponse(stdout, 5)
-                        .path("result").path("structuredContent");
-                assertEquals(1, configuration.path("definition_count").asInt(),
+                JsonNode configuration =
+                        readResponse(stdout, 5).path("result").path("structuredContent");
+                // The index view lists each reference with its entry type instead of counting them.
+                assertEquals(
+                        1,
+                        configuration
+                                .path("references")
+                                .valueStream()
+                                .filter(
+                                        reference ->
+                                                reference
+                                                        .path("entry_type")
+                                                        .asText()
+                                                        .equals("definition"))
+                                .count(),
                         configuration.toString());
-                assertEquals("src/main/resources/application.properties",
+                assertEquals(
+                        "src/main/resources/application.properties",
                         configuration.path("references").get(0).path("file").asText());
             }
         } finally {
@@ -619,15 +824,20 @@ class McpStdioIT {
         command.add("--mcp");
         command.add("--project");
         command.add(PROJECT_ROOT.toString());
-        Process process = new ProcessBuilder(command)
-                .directory(PROJECT_ROOT.toFile())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
-        try (BufferedWriter input = new BufferedWriter(
-                        new OutputStreamWriter(process.getOutputStream()));
-                BufferedReader output = new BufferedReader(
-                        new InputStreamReader(process.getInputStream()))) {
-            sendRequest(input, 1, "initialize", """
+        Process process =
+                new ProcessBuilder(command)
+                        .directory(PROJECT_ROOT.toFile())
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+        try (BufferedWriter input =
+                        new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output =
+                        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            sendRequest(
+                    input,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"catalog-test","version":"1"}}""");
             assertNotNull(readResponse(output, 1).get("result"));
             sendNotification(input, "notifications/initialized", "{}");
@@ -644,8 +854,8 @@ class McpStdioIT {
         assertPipelinedToolCalls(launcher, List.of(PROJECT_ROOT), 0);
     }
 
-    private void assertPipelinedToolCalls(
-            List<String> launcher, List<Path> projectRoots) throws Exception {
+    private void assertPipelinedToolCalls(List<String> launcher, List<Path> projectRoots)
+            throws Exception {
         assertPipelinedToolCalls(launcher, projectRoots, 0);
     }
 
@@ -653,51 +863,74 @@ class McpStdioIT {
             List<String> launcher, List<Path> projectRoots, int burstRequests) throws Exception {
         List<String> command = new ArrayList<>(launcher);
         command.add("--mcp");
+        // These calls exercise the server, not the catalog: the default compact profile hides most
+        // tools.
+        command.add("--tools");
+        command.add("full");
         for (Path projectRoot : projectRoots) {
             command.add("--project");
             command.add(projectRoot.toString());
         }
 
-        ProcessBuilder processBuilder = new ProcessBuilder(command)
-                .directory(PROJECT_ROOT.toFile())
-                .redirectErrorStream(false);
+        ProcessBuilder processBuilder =
+                new ProcessBuilder(command)
+                        .directory(PROJECT_ROOT.toFile())
+                        .redirectErrorStream(false);
         if (burstRequests > 0) {
             processBuilder.environment().put("QUILL_MCP_MAX_CONCURRENCY", "1");
             processBuilder.environment().put("QUILL_MCP_MAX_QUEUED_PER_WORKER", "1");
         }
         Process proc = processBuilder.start();
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
-        Thread stderrReader = Thread.startVirtualThread(() -> {
-            try {
-                proc.getErrorStream().transferTo(stderr);
-            } catch (IOException ignored) {
-                // Process shutdown closes the stream.
-            }
-        });
+        Thread stderrReader =
+                Thread.startVirtualThread(
+                        () -> {
+                            try {
+                                proc.getErrorStream().transferTo(stderr);
+                            } catch (IOException ignored) {
+                                // Process shutdown closes the stream.
+                            }
+                        });
 
-        try (BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
-             BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
-            sendRequest(stdin, 1, "initialize", """
+        try (BufferedWriter stdin =
+                        new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
+                BufferedReader stdout =
+                        new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+            sendRequest(
+                    stdin,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"pipeline-test","version":"1"}}""");
             assertNotNull(readResponse(stdout, 1).get("result"));
             sendNotification(stdin, "notifications/initialized", "{}");
 
             Map<Integer, String> requests = new LinkedHashMap<>();
-            requests.put(10, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*Service\",\"limit\":10}}");
+            requests.put(
+                    10,
+                    "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*Service\",\"limit\":10}}");
             requests.put(11, "{\"name\":\"get_overview\",\"arguments\":{}}");
-            requests.put(12, "{\"name\":\"get_dependencies\",\"arguments\":{\"target\":\"GreetingService\"}}");
+            requests.put(
+                    12,
+                    "{\"name\":\"get_dependencies\",\"arguments\":{\"target\":\"GreetingService\"}}");
             requests.put(13, "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":5}}");
             requests.put(14, "{\"name\":\"search_classes\",\"arguments\":{\"unexpected\":true}}");
             requests.put(15, "{\"name\":\"list_beans\",\"arguments\":{\"limit\":5}}");
             requests.put(16, "{\"name\":\"get_recent_changes\",\"arguments\":{\"commits\":3}}");
-            requests.put(17, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5}}");
+            requests.put(
+                    17,
+                    "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5}}");
             if (projectRoots.size() > 1) {
-                requests.put(18, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5,\"project\":\"basic-cdi\"}}");
-                requests.put(19, "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5,\"project\":\"gradle-basic\"}}");
+                requests.put(
+                        18,
+                        "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5,\"project\":\"basic-cdi\"}}");
+                requests.put(
+                        19,
+                        "{\"name\":\"search_classes\",\"arguments\":{\"pattern\":\"*\",\"limit\":5,\"project\":\"gradle-basic\"}}");
             }
             for (int i = 0; i < burstRequests; i++) {
-                requests.put(100 + i,
-                        "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":5}}");
+                requests.put(
+                        100 + i, "{\"name\":\"find_git_hotspots\",\"arguments\":{\"limit\":5}}");
             }
 
             for (var request : requests.entrySet()) {
@@ -705,24 +938,35 @@ class McpStdioIT {
             }
             stdin.flush();
 
-            Map<Integer, JsonNode> responses = readResponses(
-                    stdout, new LinkedHashSet<>(requests.keySet()), 30_000);
-            assertEquals(requests.keySet(), responses.keySet(),
+            Map<Integer, JsonNode> responses =
+                    readResponses(stdout, new LinkedHashSet<>(requests.keySet()), 30_000);
+            assertEquals(
+                    requests.keySet(),
+                    responses.keySet(),
                     "Every pipelined request must receive exactly one response");
             for (int id : requests.keySet()) {
                 assertNotNull(responses.get(id).get("result"), "Missing result for id=" + id);
             }
-            assertTrue(responses.get(14).path("result").path("isError").asBoolean(),
+            assertTrue(
+                    responses.get(14).path("result").path("isError").asBoolean(),
                     "One invalid request must not prevent other responses");
             if (burstRequests > 0) {
-                boolean busy = responses.entrySet().stream()
-                        .filter(entry -> entry.getKey() >= 100)
-                        .map(Map.Entry::getValue)
-                        .anyMatch(response -> response.path("result").path("isError").asBoolean()
-                                && response.path("result").path("structuredContent")
-                                        .path("message").asText().contains("Server busy")
-                                && response.path("result").path("structuredContent")
-                                        .path("retryable").asBoolean());
+                boolean busy =
+                        responses.entrySet().stream()
+                                .filter(entry -> entry.getKey() >= 100)
+                                .map(Map.Entry::getValue)
+                                .anyMatch(
+                                        response ->
+                                                response.path("result").path("isError").asBoolean()
+                                                        && response.path("result")
+                                                                .path("structuredContent")
+                                                                .path("message")
+                                                                .asText()
+                                                                .contains("Server busy")
+                                                        && response.path("result")
+                                                                .path("structuredContent")
+                                                                .path("retryable")
+                                                                .asBoolean());
                 assertTrue(busy, "A saturated bounded queue must return an explicit busy error");
             }
         } finally {
@@ -733,20 +977,24 @@ class McpStdioIT {
     }
 
     private Path prepareGradleProject() throws Exception {
-        Path gradleProject = TestProjectCopies.copyFixture(
-                GRADLE_FIXTURE, tempDir.resolve("gradle-basic"));
+        Path gradleProject =
+                TestProjectCopies.copyFixture(GRADLE_FIXTURE, tempDir.resolve("gradle-basic"));
         assertTrue(Files.isRegularFile(gradleProject.resolve("build.gradle")));
-        Process probe = new ProcessBuilder(
-                BuildSystem.GRADLE.command(gradleProject, "--version"))
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                .redirectError(ProcessBuilder.Redirect.DISCARD).start();
-        assertTrue(probe.waitFor(10, TimeUnit.SECONDS) && probe.exitValue() == 0,
+        Process probe =
+                new ProcessBuilder(BuildSystem.GRADLE.command(gradleProject, "--version"))
+                        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+        assertTrue(
+                probe.waitFor(10, TimeUnit.SECONDS) && probe.exitValue() == 0,
                 "Gradle executable is required for the Gradle integration test");
-        Process clean = new ProcessBuilder(BuildSystem.GRADLE.command(
-                gradleProject, "clean", "classes", "--quiet"))
-                .directory(gradleProject.toFile())
-                .inheritIO()
-                .start();
+        Process clean =
+                new ProcessBuilder(
+                                BuildSystem.GRADLE.command(
+                                        gradleProject, "clean", "classes", "--quiet"))
+                        .directory(gradleProject.toFile())
+                        .inheritIO()
+                        .start();
         assertEquals(0, clean.waitFor(), "Gradle fixture build must succeed");
         InitCommand command = new InitCommand();
         command.projectPath = gradleProject;
@@ -760,7 +1008,8 @@ class McpStdioIT {
     @Test
     void nativeMcpReturnsStructuredErrors() throws Exception {
         Path nativeImage = resolveNativeImage();
-        Assumptions.assumeTrue(Files.isExecutable(nativeImage),
+        Assumptions.assumeTrue(
+                Files.isExecutable(nativeImage),
                 "Skipping: native image not found (build with -Pnative)");
 
         Path brokenProject = Files.createDirectories(tempDir.resolve("broken-native-project"));
@@ -769,15 +1018,25 @@ class McpStdioIT {
         Files.writeString(quillDir.resolve("broken.db"), "not a sqlite database");
         Files.writeString(quillDir.resolve("refs.json"), "{\"@worktree\":\"broken\"}");
 
-        Process proc = new ProcessBuilder(nativeImage.toString(), "--mcp", "--project",
-                brokenProject.toString())
-                .directory(PROJECT_ROOT.toFile())
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
+        Process proc =
+                new ProcessBuilder(
+                                nativeImage.toString(),
+                                "--mcp",
+                                "--project",
+                                brokenProject.toString())
+                        .directory(PROJECT_ROOT.toFile())
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
 
-        try (BufferedWriter stdin = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
-             BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
-            sendRequest(stdin, 1, "initialize", """
+        try (BufferedWriter stdin =
+                        new BufferedWriter(new OutputStreamWriter(proc.getOutputStream()));
+                BufferedReader stdout =
+                        new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+            sendRequest(
+                    stdin,
+                    1,
+                    "initialize",
+                    """
                     {"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"native-test","version":"1"}}""");
             assertNotNull(readResponse(stdout, 1).get("result"));
             sendNotification(stdin, "notifications/initialized", "{}");
@@ -786,21 +1045,27 @@ class McpStdioIT {
             JsonNode protocolError = readResponse(stdout, 2).get("error");
             assertNotNull(protocolError, "Unknown method must return a JSON-RPC error");
             assertTrue(protocolError.has("code"), "Error must contain code: " + protocolError);
-            assertTrue(protocolError.hasNonNull("message"), "Error must contain message: " + protocolError);
+            assertTrue(
+                    protocolError.hasNonNull("message"),
+                    "Error must contain message: " + protocolError);
 
-            sendRequest(stdin, 3, "tools/call",
-                    "{\"name\":\"get_overview\",\"arguments\":{}}");
+            sendRequest(stdin, 3, "tools/call", "{\"name\":\"get_overview\",\"arguments\":{}}");
             JsonNode toolResponse = readResponse(stdout, 3);
-            assertNotNull(toolResponse.get("result"), "Broken index should be a tool result, not a transport failure");
+            assertNotNull(
+                    toolResponse.get("result"),
+                    "Broken index should be a tool result, not a transport failure");
             JsonNode structured = toolResponse.path("result").path("structuredContent");
-            assertTrue(structured.toString().contains("broken-native-project"), structured::toString);
-            assertEquals("build_required", structured.path("status").asText(), structured::toString);
+            assertTrue(
+                    structured.toString().contains("broken-native-project"), structured::toString);
+            assertEquals(
+                    "build_required", structured.path("status").asText(), structured::toString);
             assertFalse(structured.has("error"), structured::toString);
-            assertEquals("BUILD_REQUIRED", structured.path("error_code").asText(),
-                    structured::toString);
+            assertEquals(
+                    "BUILD_REQUIRED", structured.path("error_code").asText(), structured::toString);
             assertFalse(structured.path("message").asText().isBlank(), structured::toString);
             assertTrue(structured.path("retryable").asBoolean(), structured::toString);
-            assertEquals("mcp_client", structured.path("decision_owner").asText(), structured::toString);
+            assertEquals(
+                    "mcp_client", structured.path("decision_owner").asText(), structured::toString);
             assertFalse(structured.path("build_was_started").asBoolean(true), structured::toString);
             assertNoTextPayload(toolResponse.path("result"));
         } finally {
@@ -809,24 +1074,26 @@ class McpStdioIT {
     }
 
     /**
-     * Stops an MCP subprocess and waits until Windows has observed the whole
-     * process tree exiting. {@link Process#destroyForcibly()} is asynchronous;
-     * returning immediately after calling it can leave the subprocess working
-     * directory locked while JUnit attempts to remove {@code @TempDir}.
+     * Stops an MCP subprocess and waits until Windows has observed the whole process tree exiting.
+     * {@link Process#destroyForcibly()} is asynchronous; returning immediately after calling it can
+     * leave the subprocess working directory locked while JUnit attempts to remove
+     * {@code @TempDir}.
      */
     private static void stopMcpProcess(Process process) throws Exception {
         if (System.getProperty("os.name", "").toLowerCase().contains("windows")) {
-            Process taskkill = new ProcessBuilder(
-                    "taskkill", "/PID", Long.toString(process.pid()), "/T", "/F")
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            assertTrue(taskkill.waitFor(10, TimeUnit.SECONDS),
+            Process taskkill =
+                    new ProcessBuilder("taskkill", "/PID", Long.toString(process.pid()), "/T", "/F")
+                            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                            .redirectError(ProcessBuilder.Redirect.DISCARD)
+                            .start();
+            assertTrue(
+                    taskkill.waitFor(10, TimeUnit.SECONDS),
                     "taskkill did not finish for MCP process " + process.pid());
             if (process.isAlive()) {
                 process.destroyForcibly();
             }
-            assertTrue(process.waitFor(10, TimeUnit.SECONDS),
+            assertTrue(
+                    process.waitFor(10, TimeUnit.SECONDS),
                     "MCP process did not terminate after taskkill: pid=" + process.pid());
             return;
         }
@@ -845,40 +1112,37 @@ class McpStdioIT {
             return;
         }
 
-        process.descendants().forEach(candidate -> {
-            if (descendants.stream().noneMatch(
-                    existing -> existing.pid() == candidate.pid())) {
-                descendants.add(candidate);
-            }
-        });
+        process.descendants()
+                .forEach(
+                        candidate -> {
+                            if (descendants.stream()
+                                    .noneMatch(existing -> existing.pid() == candidate.pid())) {
+                                descendants.add(candidate);
+                            }
+                        });
         descendants.forEach(ProcessHandle::destroy);
         process.destroy();
         if (awaitTermination(process, descendants, 2, TimeUnit.SECONDS)) {
             return;
         }
 
-        descendants.stream()
-                .filter(ProcessHandle::isAlive)
-                .forEach(ProcessHandle::destroyForcibly);
+        descendants.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
         process.destroyForcibly();
-        assertTrue(awaitTermination(process, descendants, 10, TimeUnit.SECONDS),
+        assertTrue(
+                awaitTermination(process, descendants, 10, TimeUnit.SECONDS),
                 "MCP process tree did not terminate: pid=" + process.pid());
     }
 
     private static boolean awaitTermination(
-            Process process,
-            List<ProcessHandle> descendants,
-            long timeout,
-            TimeUnit unit) throws InterruptedException {
+            Process process, List<ProcessHandle> descendants, long timeout, TimeUnit unit)
+            throws InterruptedException {
         long deadline = System.nanoTime() + unit.toNanos(timeout);
-        while (process.isAlive()
-                || descendants.stream().anyMatch(ProcessHandle::isAlive)) {
+        while (process.isAlive() || descendants.stream().anyMatch(ProcessHandle::isAlive)) {
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0) {
                 return false;
             }
-            TimeUnit.NANOSECONDS.sleep(Math.min(
-                    remaining, TimeUnit.MILLISECONDS.toNanos(25)));
+            TimeUnit.NANOSECONDS.sleep(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(25)));
         }
         return true;
     }
@@ -887,24 +1151,26 @@ class McpStdioIT {
         IOException failure = null;
         for (int attempt = 1; attempt <= 20 && Files.exists(root); attempt++) {
             try {
-                Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                    @Override
-                    public FileVisitResult visitFile(
-                            Path file, BasicFileAttributes attributes) throws IOException {
-                        Files.deleteIfExists(file);
-                        return FileVisitResult.CONTINUE;
-                    }
+                Files.walkFileTree(
+                        root,
+                        new SimpleFileVisitor<>() {
+                            @Override
+                            public FileVisitResult visitFile(
+                                    Path file, BasicFileAttributes attributes) throws IOException {
+                                Files.deleteIfExists(file);
+                                return FileVisitResult.CONTINUE;
+                            }
 
-                    @Override
-                    public FileVisitResult postVisitDirectory(
-                            Path directory, IOException exception) throws IOException {
-                        if (exception != null) {
-                            throw exception;
-                        }
-                        Files.deleteIfExists(directory);
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
+                            @Override
+                            public FileVisitResult postVisitDirectory(
+                                    Path directory, IOException exception) throws IOException {
+                                if (exception != null) {
+                                    throw exception;
+                                }
+                                Files.deleteIfExists(directory);
+                                return FileVisitResult.CONTINUE;
+                            }
+                        });
                 return;
             } catch (IOException e) {
                 failure = e;
@@ -912,27 +1178,33 @@ class McpStdioIT {
             }
         }
         if (Files.exists(root)) {
-            throw failure != null ? failure
+            throw failure != null
+                    ? failure
                     : new IOException("Failed to delete temporary tree " + root);
         }
     }
 
-    private void sendRequest(BufferedWriter stdin, int id, String method, String params) throws IOException {
+    private void sendRequest(BufferedWriter stdin, int id, String method, String params)
+            throws IOException {
         writeRequest(stdin, id, method, params);
         stdin.flush();
     }
 
     private void writeRequest(BufferedWriter stdin, int id, String method, String params)
             throws IOException {
-        String msg = String.format(
-                "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"%s\",\"params\":%s}",
-                id, method, params);
+        String msg =
+                String.format(
+                        "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"%s\",\"params\":%s}",
+                        id, method, params);
         stdin.write(msg);
         stdin.newLine();
     }
 
-    private void sendNotification(BufferedWriter stdin, String method, String params) throws IOException {
-        String msg = String.format("{\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":%s}", method, params);
+    private void sendNotification(BufferedWriter stdin, String method, String params)
+            throws IOException {
+        String msg =
+                String.format(
+                        "{\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":%s}", method, params);
         stdin.write(msg);
         stdin.newLine();
         stdin.flush();
@@ -946,7 +1218,8 @@ class McpStdioIT {
                     Thread.sleep(10);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while waiting for response id=" + expectedId, e);
+                    throw new IOException(
+                            "Interrupted while waiting for response id=" + expectedId, e);
                 }
                 continue;
             }
@@ -958,8 +1231,7 @@ class McpStdioIT {
             try {
                 node = JSON.readTree(line);
             } catch (Exception e) {
-                throw new IOException(
-                        "Non-JSON data on stdout (MCP transport violation): " + line);
+                throw new IOException("Non-JSON data on stdout (MCP transport violation): " + line);
             }
             if (node.has("id") && node.get("id").asInt() == expectedId) {
                 return node;
@@ -969,7 +1241,8 @@ class McpStdioIT {
     }
 
     private Map<Integer, JsonNode> readResponses(
-            BufferedReader stdout, Set<Integer> expectedIds, long timeoutMillis) throws IOException {
+            BufferedReader stdout, Set<Integer> expectedIds, long timeoutMillis)
+            throws IOException {
         long deadline = System.currentTimeMillis() + timeoutMillis;
         Map<Integer, JsonNode> responses = new HashMap<>();
         while (System.currentTimeMillis() < deadline && responses.size() < expectedIds.size()) {
@@ -990,7 +1263,8 @@ class McpStdioIT {
             try {
                 response = JSON.readTree(line);
             } catch (Exception e) {
-                throw new IOException("Non-JSON data on stdout (MCP transport violation): " + line, e);
+                throw new IOException(
+                        "Non-JSON data on stdout (MCP transport violation): " + line, e);
             }
             if (!response.has("id") || !response.get("id").canConvertToInt()) continue;
             int id = response.get("id").asInt();
@@ -1016,9 +1290,16 @@ class McpStdioIT {
     private static void assertNoTextPayload(JsonNode result) {
         JsonNode content = result.path("content");
         assertTrue(content.isArray(), "Tool result should contain the MCP content array");
+        // An error also carries a one-line summary for clients that read only text
+        // (McpToolCatalog.withErrorText); a successful result stays structured-only.
+        String errorCode = result.path("structuredContent").path("error_code").asText("");
         for (JsonNode item : content) {
-            assertTrue(!"text".equals(item.path("type").asText())
-                            || item.path("text").asText().isBlank(),
+            String text = item.path("text").asText();
+            if (!"text".equals(item.path("type").asText()) || text.isBlank()) continue;
+            assertTrue(
+                    result.path("isError").asBoolean()
+                            && !errorCode.isEmpty()
+                            && text.startsWith(errorCode + ": "),
                     "Structured result must not duplicate its payload as text: " + content);
         }
     }
@@ -1027,18 +1308,28 @@ class McpStdioIT {
         Path target = PROJECT_ROOT.getParent().getParent().resolve("quill-app/target");
         if (!Files.isDirectory(target)) return target.resolve("missing-all.jar");
         try (var files = Files.list(target)) {
-            return files.filter(path -> path.getFileName().toString().matches("quill-app-.+-all\\.jar"))
-                    .findFirst().orElse(target.resolve("missing-all.jar"));
+            return files.filter(
+                            path -> path.getFileName().toString().matches("quill-app-.+-all\\.jar"))
+                    .findFirst()
+                    .orElse(target.resolve("missing-all.jar"));
         }
     }
 
     private Path resolveNativeImage() {
         String configured = System.getProperty("native.image.path");
-        Path image = configured != null && !configured.isBlank() ? Path.of(configured)
-                : PROJECT_ROOT.getParent().getParent().resolve(
-                BuildSystem.isWindows() ? "quill-app/target/quill.exe" : "quill-app/target/quill");
+        Path image =
+                configured != null && !configured.isBlank()
+                        ? Path.of(configured)
+                        : PROJECT_ROOT
+                                .getParent()
+                                .getParent()
+                                .resolve(
+                                        BuildSystem.isWindows()
+                                                ? "quill-app/target/quill.exe"
+                                                : "quill-app/target/quill");
         if (Boolean.getBoolean("native.tests.required")) {
-            assertTrue(Files.isExecutable(image),
+            assertTrue(
+                    Files.isExecutable(image),
                     "Native quality gate requires an executable image at " + image);
         }
         return image;

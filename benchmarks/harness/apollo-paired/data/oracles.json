@@ -1,0 +1,2507 @@
+{
+ "project_revision": "e31c48097be6b679fc91ea3a2c67640afc512d31",
+ "policy": "Private, never available to tested model. Compare facts separately from answer format. Uncertainty accepted only for the explicitly bounded unknowns.",
+ "cases": {
+  "AQ-001": {
+   "expected": {
+    "build_entrypoints": [
+     "pom.xml (reactor root, no <parent>)",
+     "mvnw"
+    ],
+    "modules": [
+     "apollo-build-sql-converter",
+     "apollo-buildtools",
+     "apollo-common",
+     "apollo-biz",
+     "apollo-configservice",
+     "apollo-adminservice",
+     "apollo-portal",
+     "apollo-assembly",
+     "apollo-audit (aggregator: apollo-audit-annotation, apollo-audit-impl, apollo-audit-api, apollo-audit-spring-boot-starter)"
+    ],
+    "spring_versions": {
+     "spring-boot.version": "4.1.1",
+     "spring-cloud.version": "2025.1.3",
+     "spring-cloud-alibaba.version": "2025.1.0.0",
+     "mechanism": "spring-boot-dependencies imported as a BOM in dependencyManagement; spring-boot-maven-plugin at ${spring-boot.version}"
+    },
+    "spring_entry_dependencies": {
+     "apollo-common": "spring-boot-starter-web, -actuator, -validation, -security, -data-jpa",
+     "apollo-biz": "apollo-common plus spring-cloud-starter-netflix-eureka-client, consul-discovery, zookeeper-discovery, apollo-audit-spring-boot-starter",
+     "apollo-configservice / apollo-adminservice": "apollo-biz plus spring-cloud-starter-netflix-eureka-server, archaius, ribbon, alibaba nacos-discovery",
+     "apollo-portal": "apollo-common, apollo-audit-spring-boot-starter, spring-boot-starter-oauth2-client, oauth2-resource-server, spring-security-ldap, spring-boot-session-jdbc/-data-redis",
+     "apollo-audit-spring-boot-starter": "apollo-audit-impl plus spring-boot-autoconfigure"
+    },
+    "applications": [
+     "ConfigServiceApplication (apollo-configservice)",
+     "AdminServiceApplication (apollo-adminservice)",
+     "PortalApplication (apollo-portal)",
+     "ApolloApplication (apollo-assembly)"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "pom.xml",
+     "sha256": "f532ad8bfd2642f1014112763d8a60e5f19de87a141bee1fccd81c0cd558a05d",
+     "declaration_lines": [
+      52,
+      78,
+      79,
+      213
+     ]
+    },
+    {
+     "path": "apollo-audit/pom.xml",
+     "sha256": "b0892482490a77934345153a9b7cfaa4aa475b33a85cf1bf10a70a399fdd6573",
+     "declaration_lines": [
+      30
+     ]
+    },
+    {
+     "path": "apollo-common/pom.xml",
+     "sha256": "9bd389d637b2661d990e712676376be7c339c5ebc5c0ef72a9043470671a5ed9",
+     "declaration_lines": [
+      46
+     ]
+    },
+    {
+     "path": "apollo-biz/pom.xml",
+     "sha256": "a452956ec51fef384fba8b46de53bdd5671931ed6f4d03d7a6f8bd1dd010d882",
+     "declaration_lines": [
+      48
+     ]
+    },
+    {
+     "path": "apollo-portal/pom.xml",
+     "sha256": "71d3d8c4ef4a881ea98996debf83133be2096e1a68b3aa111fe25dfeb18b0949",
+     "declaration_lines": [
+      66
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "Apollo inherits from spring-boot-starter-parent",
+    "apollo-buildtools is a Spring application module"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-002": {
+   "expected": {
+    "package": "com.ctrip.framework.apollo.portal.component (direct members only)",
+    "component_classes": [
+     {
+      "class": "AdminServiceAddressLocator",
+      "name": "adminServiceAddressLocator",
+      "scope": "singleton"
+     },
+     {
+      "class": "ConfigReleaseWebhookNotifier",
+      "name": "configReleaseWebhookNotifier",
+      "scope": "singleton"
+     },
+     {
+      "class": "ItemsComparator",
+      "name": "itemsComparator",
+      "scope": "singleton"
+     },
+     {
+      "class": "PortalSettings",
+      "name": "portalSettings",
+      "scope": "singleton"
+     },
+     {
+      "class": "RestTemplateFactory",
+      "name": "&restTemplateFactory (the FactoryBean itself)",
+      "scope": "singleton"
+     },
+     {
+      "class": "RetryableRestTemplate",
+      "name": "retryableRestTemplate",
+      "scope": "singleton"
+     },
+     {
+      "class": "UnifiedPermissionValidator",
+      "name": "unifiedPermissionValidator",
+      "scope": "singleton"
+     },
+     {
+      "class": "UserPermissionValidator",
+      "name": "userPermissionValidator",
+      "scope": "singleton"
+     },
+     {
+      "class": "UserTokenPermissionValidator",
+      "name": "userTokenPermissionValidator",
+      "scope": "singleton"
+     }
+    ],
+    "factory_bean_products": [
+     {
+      "factory": "RestTemplateFactory",
+      "product_type": "org.springframework.web.client.RestTemplate",
+      "name": "restTemplateFactory",
+      "singleton": "isSingleton() of the factory"
+     }
+    ],
+    "bean_methods": [],
+    "not_beans": [
+     "AbstractPermissionValidator (abstract)",
+     "PermissionValidator (interface)",
+     "UserIdentityContextHolder (final utility, static ThreadLocal)"
+    ],
+    "excluded_subpackages": [
+     "component.config (PortalConfig, SpringSessionConfig, ...)",
+     "component.emailbuilder",
+     "component.txtresolver"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/RestTemplateFactory.java",
+     "sha256": "96b55c59c3efbfcab0e7396d0fa568ba8ba8aead87c841cd599bd4e4de39af9a",
+     "declaration_lines": [
+      37,
+      38,
+      65
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidator.java",
+     "sha256": "0930929f6558d45f72f14eb71ce86004ef77ea9116217f210594d8aa22f44edb",
+     "declaration_lines": [
+      25
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserPermissionValidator.java",
+     "sha256": "a0563b98318e0e347584454d97937a3464c6ae02a68fd0fd84f49ef14972e014",
+     "declaration_lines": [
+      29
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserTokenPermissionValidator.java",
+     "sha256": "4101499c08291800494ff6b63bbbd3e375fcc1bca56225df38fc83846102cd6d",
+     "declaration_lines": [
+      41
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/PortalSettings.java",
+     "sha256": "659a2fbeddb42e281a1c5544a5896c133af9dcd30e72237f479a8f3d67f4a648",
+     "declaration_lines": [
+      42
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserIdentityContextHolder.java",
+     "sha256": "24a9e7d14e39e5a436b94f0582469d74e93e4d1e84ec3b71ac03bff9d2e39653",
+     "declaration_lines": [
+      19
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "RestTemplateFactory is only a RestTemplate bean (the factory object is a separate &-prefixed bean)",
+    "PortalConfig is declared in this package"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-003": {
+   "expected": {
+    "stereotype": "@Component(\"unifiedPermissionValidator\") directly on the class; bean name is explicit",
+    "scanning": "PortalApplication: @ComponentScan(basePackageClasses = {ApolloCommonConfig.class, PortalApplication.class, PortalOpenApiConfig.class}) covers com.ctrip.framework.apollo.portal",
+    "bootstrapping": "PortalApplication is the SpringApplication.run source (@Configuration, @EnableAutoConfiguration)",
+    "conditions": "no @Profile/@Conditional on the class: registered in every profile",
+    "consumers_by_name": "SpEL @PreAuthorize(\"@unifiedPermissionValidator....\") depends on the explicit bean name"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidator.java",
+     "sha256": "0930929f6558d45f72f14eb71ce86004ef77ea9116217f210594d8aa22f44edb",
+     "declaration_lines": [
+      25
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/PortalApplication.java",
+     "sha256": "20404eedb0dd39900c887a75ecb7dd39c7c33bb362c3fe905cc9fb46bd6ed5ad",
+     "declaration_lines": [
+      34,
+      39
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "UnifiedPermissionValidator is registered by a @Bean method",
+    "it is only active under the auth profile"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-004": {
+   "expected": {
+    "injection_site": "openapi ReleaseController constructor parameter ApplicationEventPublisher publisher",
+    "provider": "the ApplicationContext itself: AbstractApplicationContext#prepareBeanFactory calls beanFactory.registerResolvableDependency(ApplicationEventPublisher.class, this)",
+    "artifact": "org.springframework:spring-context:7.0.9",
+    "bean_definition": "none; a resolvable dependency is not a bean definition and is not returned by getBeansOfType",
+    "delivery": "publishEvent multicasts synchronously through the context ApplicationEventMulticaster"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      71,
+      218
+     ]
+    }
+   ],
+   "framework_evidence": [
+    {
+     "artifact": "org.springframework:spring-context:7.0.9",
+     "class": "org.springframework.context.support.AbstractApplicationContext",
+     "method": "prepareBeanFactory",
+     "fact": "registerResolvableDependency(ApplicationEventPublisher.class, this)"
+    }
+   ],
+   "forbidden_claims": [
+    "a @Bean method in Apollo produces the ApplicationEventPublisher",
+    "Spring Boot auto-configuration defines an ApplicationEventPublisher bean"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-005": {
+   "expected": {
+    "declaration": "AuthConfiguration.SpringSecurityAuthAutoConfiguration (static nested @Configuration, @Profile(\"auth\")) #springSecurityUserInfoHolder(ObjectProvider<UserService>)",
+    "conditions": [
+     "@Profile(\"auth\") on the declaring class: satisfied by github,auth",
+     "@ConditionalOnMissingBean(UserInfoHolder.class): no other UserInfoHolder bean definition in application-owned production source is active under github,auth"
+    ],
+    "excluded_competitors": [
+     "DefaultAuthAutoConfiguration#defaultUserInfoHolder: @ConditionalOnMissingProfile({\"ctrip\",\"auth\",\"ldap\",\"oidc\"})",
+     "SpringSecurityLDAPAuthAutoConfiguration#springSecurityUserInfoHolder: @Profile(\"ldap\")",
+     "OidcAuthAutoConfiguration#oidcUserInfoHolder: @Profile(\"oidc\")"
+    ],
+    "verdict": "registered under github,auth unless an extra UserInfoHolder bean is contributed from outside the application source",
+    "guard": "AuthConfiguration#portalAuthenticationValidator (SmartInitializingSingleton, @Lazy(false)) fails startup if the resolved UserInfoHolder is DefaultUserInfoHolder"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      96,
+      98,
+      110,
+      126,
+      127,
+      470
+     ]
+    },
+    {
+     "path": "apollo-common/src/main/java/com/ctrip/framework/apollo/common/condition/ConditionalOnMissingProfile.java",
+     "sha256": "45f4b86f891d3a90f5cad4f24d2ad65f7fa1e345a79bedaa204208b354412127",
+     "declaration_lines": [
+      35
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the bean is always skipped because DefaultUserInfoHolder exists"
+   ],
+   "limitations": [
+    "@ConditionalOnMissingBean in a non-auto-configuration class depends on bean definition registration order; a UserInfoHolder registered later or by an external jar is not proven absent"
+   ],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-006": {
+   "expected": {
+    "required_type": "com.ctrip.framework.apollo.portal.spi.UserInfoHolder",
+    "candidates_under_github_auth": [
+     "springSecurityUserInfoHolder: SpringSecurityUserInfoHolder from SpringSecurityAuthAutoConfiguration (@Profile(\"auth\"), @ConditionalOnMissingBean)"
+    ],
+    "inactive_candidates": [
+     "defaultUserInfoHolder (excluded by @ConditionalOnMissingProfile incl. auth)",
+     "ldap springSecurityUserInfoHolder (@Profile(\"ldap\"))",
+     "oidcUserInfoHolder (@Profile(\"oidc\"))"
+    ],
+    "resolution": "single active candidate by type; constructor autowiring, no qualifier needed",
+    "runtime_behaviour": "SpringSecurityUserInfoHolder#getUser reads SecurityContextHolder and looks the user up through ObjectProvider<UserService>"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      71
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      127,
+      381,
+      481
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/springsecurity/SpringSecurityUserInfoHolder.java",
+     "sha256": "ea79c825b3a2595d0f12029580f800a3181ffbef5df3891ee834cf5333d7c647",
+     "declaration_lines": [
+      58
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "DefaultUserInfoHolder is injected under github,auth",
+    "the injection is ambiguous between three beans"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-007": {
+   "expected": {
+    "creation": "constructor injection: single public constructor, no @Autowired needed; @Component(\"userTokenPermissionValidator\") singleton",
+    "parameters": {
+     "UserPermissionValidator": "userPermissionValidator (@Component, concrete class, unique by type)",
+     "UserTokenService": "userTokenService (@Service)",
+     "UserTokenAuthUtil": "userTokenAuthUtil (@Service)",
+     "RolePermissionService": "rolePermissionService: RoleConfiguration#rolePermissionService() @Bean returning DefaultRolePermissionService (DefaultRolePermissionService itself is not a component)",
+     "UserInfoHolder": "springSecurityUserInfoHolder under github,auth (see AQ-006)"
+    },
+    "order": "each parameter bean is created (or fetched) before the constructor runs; no @Lazy parameters"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserTokenPermissionValidator.java",
+     "sha256": "4101499c08291800494ff6b63bbbd3e375fcc1bca56225df38fc83846102cd6d",
+     "declaration_lines": [
+      56
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/UserTokenService.java",
+     "sha256": "b93fd431a348a67e2d7dd1f2a9a9ac271e5e54dc7fc21cb0d52354767ea28680",
+     "declaration_lines": [
+      58
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/util/UserTokenAuthUtil.java",
+     "sha256": "c952a2cba9c56c3042e270e3cf8ebe55e9ce3907abdca93e2a03013ecc9b9f90",
+     "declaration_lines": [
+      25
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/RoleConfiguration.java",
+     "sha256": "1a87f8d44693afa9b66eda4b6895445994d0da32f8f852fef24deb365b534f8a",
+     "declaration_lines": [
+      68
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/defaultimpl/DefaultRolePermissionService.java",
+     "sha256": "5e5ae37759e4fc1aa0e850ce91f289efac8ed65dd2e94bd4895957a40187021c",
+     "declaration_lines": [
+      59
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "DefaultRolePermissionService is discovered by component scanning"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-009": {
+   "expected": {
+    "superclass": "ConfigPublishEmailBuilder (abstract, not a bean) declares five @Autowired fields",
+    "inherited_dependencies": [
+     "RolePermissionService rolePermissionService (private; rolePermissionService @Bean from RoleConfiguration)",
+     "ReleaseService releaseService (private; portal ReleaseService @Service)",
+     "AppNamespaceService appNamespaceService (private; portal AppNamespaceService @Service)",
+     "UserService userService (private; springSecurityUserService under github,auth)",
+     "PortalConfig portalConfig (protected; used directly by the subclass)"
+    ],
+    "injection_mechanism": "field injection by AutowiredAnnotationBeanPostProcessor, which walks the class hierarchy, so private superclass fields of the @Component subclass are injected",
+    "direct_dependencies": [],
+    "overrides": [
+     "subject(), emailContent(Env, ReleaseHistoryBO) (delegates to renderEmailCommonContent), getTemplateFramework() and getDiffModuleTemplate() (both read portalConfig)"
+    ],
+    "inherited_behaviour": "build(Env, ReleaseHistoryBO) and renderEmailCommonContent use releaseService, appNamespaceService and rolePermissionService from the superclass"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/emailbuilder/NormalPublishEmailBuilder.java",
+     "sha256": "bcca256500496edde675bf0493143711d43da8837f1cf7fd6c7f331df8a19ecc",
+     "declaration_lines": [
+      26,
+      27,
+      44
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/emailbuilder/ConfigPublishEmailBuilder.java",
+     "sha256": "d01659a53b79335eb34b727bca29fe90a4702800081226e2a1231121c250a236",
+     "declaration_lines": [
+      52,
+      84,
+      86,
+      88,
+      90,
+      92
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "private superclass fields are not injected",
+    "NormalPublishEmailBuilder has constructor-injected dependencies"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-010": {
+   "expected": {
+    "java_hierarchy": {
+     "declaration": "PermissionValidator (interface, abstract method)",
+     "implementations": [
+      "AbstractPermissionValidator#hasReleaseNamespacePermission (concrete)",
+      "ConsumerPermissionValidator (overrides, calls super)",
+      "UserTokenPermissionValidator (implements directly, delegates to UserPermissionValidator + token scope)",
+      "UnifiedPermissionValidator (implements directly, delegates by auth type)",
+      "UserPermissionValidator (inherits the AbstractPermissionValidator implementation)"
+     ]
+    },
+    "spring_beans_of_type_PermissionValidator": [
+     "unifiedPermissionValidator",
+     "userPermissionValidator",
+     "userTokenPermissionValidator",
+     "consumerPermissionValidator"
+    ],
+    "not_beans": [
+     "AbstractPermissionValidator (abstract)"
+    ],
+    "injection_consequence": "four beans share the interface type and none is @Primary: consumers inject concrete classes (mostly UnifiedPermissionValidator); a plain PermissionValidator injection would be ambiguous"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/PermissionValidator.java",
+     "sha256": "0575a7dffdecf97ca22f3c52bbffe2b0c96946abebf2807e5e56e25b06ad4fe6",
+     "declaration_lines": [
+      26
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/AbstractPermissionValidator.java",
+     "sha256": "ff43924d6d838f2f343e3c0472e96e16f46a089f8b1ce1da6a73ff2cfa3ac97f",
+     "declaration_lines": [
+      48
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/auth/ConsumerPermissionValidator.java",
+     "sha256": "e847524f4479ecc8a87449950cfec9f668088a9094127394503fad906bb28d30",
+     "declaration_lines": [
+      32,
+      55
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserTokenPermissionValidator.java",
+     "sha256": "4101499c08291800494ff6b63bbbd3e375fcc1bca56225df38fc83846102cd6d",
+     "declaration_lines": [
+      75
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidator.java",
+     "sha256": "0930929f6558d45f72f14eb71ce86004ef77ea9116217f210594d8aa22f44edb",
+     "declaration_lines": [
+      61
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserPermissionValidator.java",
+     "sha256": "a0563b98318e0e347584454d97937a3464c6ae02a68fd0fd84f49ef14972e014",
+     "declaration_lines": [
+      30
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "UserPermissionValidator declares its own hasReleaseNamespacePermission",
+    "PermissionValidator has a single bean"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-011": {
+   "expected": {
+    "producer": "static @Bean passwordEncoder() in SpringSecurityAuthAutoConfiguration (@Profile(\"auth\")), @ConditionalOnMissingBean(PasswordEncoder.class); returns ApolloPasswordEncoderFactory.createDelegatingPasswordEncoder()",
+    "bean_name": "passwordEncoder",
+    "qualifiers": "none declared; implicit bean-name qualifier \"passwordEncoder\"",
+    "direct_injection_sites": [
+     "AuthConfiguration.SpringSecurityAuthAutoConfiguration#springSecurityUserService(PasswordEncoder, ...) parameter, then passed to the SpringSecurityUserService constructor (a plain object, not scanned)"
+    ],
+    "dynamic_lookups": [
+     "Spring Security InitializeUserDetailsBeanManagerConfigurer looks up a PasswordEncoder bean by type (getBeanOrNull) for the DaoAuthenticationProvider built from the single UserDetailsService (jdbcUserDetailsManager)"
+    ],
+    "not_injection_sites": [
+     "PasswordEncoderAdapter is constructed with new inside ApolloPasswordEncoderFactory",
+     "oidc passwordEncoder() and configservice NoOpPasswordEncoder are other producers in other profiles/modules"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      120,
+      121,
+      188
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/springsecurity/ApolloPasswordEncoderFactory.java",
+     "sha256": "8095c5862f563c08ff9ed9965e420b408a1e8eea95229fafead2ffaf8a639329",
+     "declaration_lines": [
+      75
+     ]
+    }
+   ],
+   "framework_evidence": [
+    {
+     "artifact": "org.springframework.security:spring-security-config:7.1.1",
+     "class": "org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer",
+     "method": "configure / getBeanOrNull",
+     "fact": "by-type lookups of UserDetailsService and PasswordEncoder beans"
+    }
+   ],
+   "forbidden_claims": [
+    "PasswordEncoder is injected with @Qualifier",
+    "SpringSecurityUserService is a scanned @Service"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-012": {
+   "expected": {
+    "injection_site": "ItemService constructor parameter @Qualifier(\"fileTextResolver\") ConfigTextResolver fileTextResolver",
+    "candidates_by_type": [
+     "fileTextResolver: FileTextResolver (@Component(\"fileTextResolver\"))",
+     "propertyResolver: PropertyResolver (@Component(\"propertyResolver\"))"
+    ],
+    "match": "@Qualifier value \"fileTextResolver\" equals the bean name of FileTextResolver; Spring treats a bean name as its default qualifier, so exactly FileTextResolver matches and PropertyResolver does not",
+    "sibling_site": "the propertyResolver parameter is qualified \"propertyResolver\" and resolves to PropertyResolver",
+    "without_qualifier": "two candidates and no @Primary; Spring would fall back to the parameter name, which also matches (the root pom enables maven-compiler <parameters>true</parameters>)"
+   },
+   "evidence": [
+    {
+     "path": "pom.xml",
+     "sha256": "f532ad8bfd2642f1014112763d8a60e5f19de87a141bee1fccd81c0cd558a05d",
+     "declaration_lines": [
+      332
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/ItemService.java",
+     "sha256": "962f1cd0eb092c968c6eb966b455fb79eef64b55d853f8e84e4d118764a78888",
+     "declaration_lines": [
+      64,
+      65
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/txtresolver/FileTextResolver.java",
+     "sha256": "42f521ad7a459f53d7815030b82718807a2401f91f9605694e8db62a623d67ee",
+     "declaration_lines": [
+      29
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/txtresolver/PropertyResolver.java",
+     "sha256": "1906f66b243feeb9ac361ce0c781390a4acdbde426b9b0c076f577e21f19b89d",
+     "declaration_lines": [
+      44
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the qualifier is a custom @Qualifier annotation type",
+    "both resolvers match the qualifier"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-013": {
+   "expected": {
+    "injection_site_qualifiers": "none explicit; parameter name \"userInfoHolder\"",
+    "candidate": "springSecurityUserInfoHolder (bean name = @Bean method name; implicit qualifier value is that name)",
+    "primary": "no @Primary on any UserInfoHolder producer",
+    "parameter_name": "does not equal the bean name; irrelevant because only one candidate is active",
+    "inactive_candidates": "defaultUserInfoHolder, ldap springSecurityUserInfoHolder, oidcUserInfoHolder are not registered under github,auth, so they never take part in qualifier matching"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      71
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      127
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the parameter name selects the bean",
+    "a @Primary UserInfoHolder exists"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-014": {
+   "expected": {
+    "lookup": "SpringSecurityUserInfoHolder(ObjectProvider<UserService>) stores userServiceProvider::getObject; every getUser() calls getObject() again",
+    "candidates_under_github_auth": [
+     "springSecurityUserService: SpringSecurityUserService (@Bean, @Profile(\"auth\"), @ConditionalOnMissingBean(UserService.class), @DependsOn(\"jdbcUserDetailsManager\"))"
+    ],
+    "other_profiles": [
+     "ldap: LdapUserService",
+     "oidc: OidcLocalUserServiceImpl",
+     "default: DefaultUserService"
+    ],
+    "runtime_dependence": [
+     "which UserService exists is fixed at startup by active profiles and the missing-bean conditions",
+     "getObject() throws if no unique UserService is available",
+     "the user looked up depends on SecurityContextHolder for the current thread"
+    ],
+    "why_provider": "defers resolution to call time instead of constructor time"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/springsecurity/SpringSecurityUserInfoHolder.java",
+     "sha256": "ea79c825b3a2595d0f12029580f800a3181ffbef5df3891ee834cf5333d7c647",
+     "declaration_lines": [
+      38,
+      48
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      186,
+      188,
+      263,
+      493
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the provider resolves once in the constructor",
+    "getIfAvailable silently returns null"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-015": {
+   "expected": {
+    "injection_site": "ConfigPublishListener constructor parameter EmailService emailService",
+    "producer": "EmailConfiguration#defaultEmailService() @Bean with @ConditionalOnMissingBean(EmailService.class), returning DefaultEmailService",
+    "selection": "no @Primary, no @Profile: the default implementation is a fallback that applies when no other EmailService bean is defined; none is defined in application-owned production source",
+    "note": "DefaultEmailService receives PortalConfig through field @Resource although it is created by new in a @Bean method; send() is a no-op unless portalConfig.isEmailEnabled()"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/listener/ConfigPublishListener.java",
+     "sha256": "791d8dea35102f1e979fa153d60091597179fdb4595f4bfade5ae0c2f011afd2",
+     "declaration_lines": [
+      45
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/EmailConfiguration.java",
+     "sha256": "888449b22155db7b4f59561cab1b41db95de367b28d53c689a8600fe48019b4e",
+     "declaration_lines": [
+      29,
+      31
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/defaultimpl/DefaultEmailService.java",
+     "sha256": "cb46bca0ed42e9b062dadb24515044cf8f8c35fd0ed1692cd48b1b4e0f99de5e",
+     "declaration_lines": [
+      43,
+      48
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "EmailService selection uses @Primary or @Profile"
+   ],
+   "limitations": [
+    "an EmailService contributed by a deployment jar would replace the default; not provable from the tree"
+   ],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-016": {
+   "expected": {
+    "declaration": "public static @Bean method in static nested @Configuration SpringSecurityAuthAutoConfiguration (@Profile(\"auth\"))",
+    "result_type": "org.springframework.security.provisioning.JdbcUserDetailsManager (also a UserDetailsService / UserDetailsManager)",
+    "bean_name": "jdbcUserDetailsManager (method name)",
+    "qualifiers": "none declared; implicit name qualifier",
+    "scope": "singleton (no @Scope)",
+    "static_effect": "static: invoked without instantiating the declaring configuration class",
+    "configuration": "SQL queries are customised with dialect quote characters taken from the Hibernate SessionFactory",
+    "consumers": [
+     "@DependsOn(\"jdbcUserDetailsManager\") on springSecurityUserService",
+     "Spring Security picks it up as the UserDetailsService for form login (by type)"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      139,
+      145,
+      186
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "its scope is inherited from the declaring configuration class",
+    "it is conditional on a missing bean"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-018": {
+   "expected": {
+    "parameters": {
+     "PasswordEncoder": "passwordEncoder (static @Bean in the same class, conditional on missing PasswordEncoder)",
+     "UserRepository": "Spring Data JPA repository bean userRepository (interface extends JpaRepository)",
+     "AuthorityRepository": "Spring Data JPA repository bean authorityRepository"
+    },
+    "repository_registration": "JPA repositories are found by Spring Boot JPA repository auto-configuration in the auto-configuration packages registered by @EnableAutoConfiguration on PortalApplication, PortalOpenApiConfig and ApolloCommonConfig; there is no @EnableJpaRepositories in source",
+    "explicit_depends_on": "jdbcUserDetailsManager (no injection, ordering only)",
+    "declaring_class_dependencies": "SpringSecurityAuthAutoConfiguration has no fields or constructor parameters; the non-static method needs the configuration instance itself",
+    "conditions": [
+     "@Profile(\"auth\") on the class",
+     "@ConditionalOnMissingBean(UserService.class) on the method"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      186,
+      187,
+      189
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/repository/UserRepository.java",
+     "sha256": "465245ce2cdeac5d6471bfc35f1a93aec5cadbd1ec9e4a07128b311fef8bbd07",
+     "declaration_lines": [
+      28
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/repository/AuthorityRepository.java",
+     "sha256": "a80e064a1c6b7a191e58a775e04a4286d2252bb6ec9ec5488063962858e6d05f",
+     "declaration_lines": [
+      26
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/PortalApplication.java",
+     "sha256": "20404eedb0dd39900c887a75ecb7dd39c7c33bb362c3fe905cc9fb46bd6ed5ad",
+     "declaration_lines": [
+      32
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "@DependsOn injects jdbcUserDetailsManager into the method",
+    "repositories are @Repository-annotated classes"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-020": {
+   "expected": {
+    "bean": "@Component singleton configPublishListener, created eagerly during context refresh (not lazy)",
+    "creation": "constructor injection of 9 dependencies, then @PostConstruct init() creates a single-thread executor (ApolloThreadFactory \"ConfigPublishNotify\", daemon flag true)",
+    "destruction_callbacks": "none: no @PreDestroy, no DisposableBean, no destroy method; a @Component gets no inferred destroy method",
+    "consequence": "the executor is never shut down by the context; queued notify tasks may be lost at shutdown; daemon threads do not block JVM exit",
+    "static_limits": [
+     "whether tasks are still queued at shutdown",
+     "thread daemon behaviour is inside apollo-core ApolloThreadFactory (external jar)",
+     "executor exceptions are swallowed by submit()"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/listener/ConfigPublishListener.java",
+     "sha256": "791d8dea35102f1e979fa153d60091597179fdb4595f4bfade5ae0c2f011afd2",
+     "declaration_lines": [
+      41,
+      73,
+      76,
+      81
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the executor is shut down in a @PreDestroy method",
+    "the listener is request scoped"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-023": {
+   "expected": {
+    "known_before_startup": [
+     "candidate UserService producers and their conditions (auth: SpringSecurityUserService; ldap: LdapUserService; oidc: OidcLocalUserServiceImpl; none of them: DefaultUserService)"
+    ],
+    "decided_at_startup": [
+     "spring.profiles.active (apollo_profile, here github,auth) selects the @Profile configuration",
+     "@ConditionalOnMissingBean(UserService.class) yields to any UserService defined earlier",
+     "the bean set is fixed after refresh; nothing re-evaluates the profiles at runtime"
+    ],
+    "decided_per_call": [
+     "ObjectProvider#getObject() on every getUser() returns the single UserService bean",
+     "the user id comes from SecurityContextHolder for the current thread",
+     "the returned UserInfo comes from the Users table (falls back to a UserInfo with only the id)"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/springsecurity/SpringSecurityUserInfoHolder.java",
+     "sha256": "ea79c825b3a2595d0f12029580f800a3181ffbef5df3891ee834cf5333d7c647",
+     "declaration_lines": [
+      38,
+      47,
+      53
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      110,
+      187
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/resources/application.yml",
+     "sha256": "b79299762b77a8b17cbb71dd9cc6d55a68f63ee06c933052ecc38f035e90c961",
+     "declaration_lines": [
+      18
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the UserService can change after a profile switch at runtime"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-024": {
+   "expected": {
+    "registrar": "@EnableConfigurationProperties({ApolloServiceDiscoveryProperties.class}) on ApolloServiceDiscoveryAutoConfiguration (registers the type through EnableConfigurationPropertiesRegistrar)",
+    "bean_name": "apollo.service.discovery-com.ctrip.framework.apollo.biz.registry.configuration.support.ApolloServiceDiscoveryProperties (prefix-FQCN convention)",
+    "types": [
+     "ApolloServiceDiscoveryProperties (plain class, no interfaces)"
+    ],
+    "binding": "values bound from the Environment under prefix apollo.service.discovery: enabled (default false), healthCheckIntervalInSecond (default 61)",
+    "conditions": [
+     "ApolloServiceDiscoveryAutoConfiguration is a plain @Configuration found by component scanning of com.ctrip.framework.apollo.biz (ConfigServiceApplication/AdminServiceApplication scan ApolloBizConfig), not an AutoConfiguration.imports entry",
+     "@ConditionalOnProperty(prefix=\"apollo.service.discovery\", value=\"enabled\") on that class"
+    ],
+    "where_enabled": "apollo.service.discovery.enabled=true only in application-database-discovery.properties of apollo-configservice and apollo-assembly; under github alone the bean is absent",
+    "consumers": [
+     "ApolloServiceDiscoveryAutoConfiguration#databaseDiscoveryClient(ApolloServiceDiscoveryProperties, ...)"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/ApolloServiceDiscoveryAutoConfiguration.java",
+     "sha256": "41123e7e5a0c04329c51a862a0b7b25e5a6b2e1c9c167e58c1819a0edf7de87b",
+     "declaration_lines": [
+      34,
+      35
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/support/ApolloServiceDiscoveryProperties.java",
+     "sha256": "1ad832040898c1376b8d728b94d6530bfc19fd1d59568fcda87c2cdb7f0ea18b",
+     "declaration_lines": [
+      29,
+      34,
+      43
+     ]
+    },
+    {
+     "path": "apollo-configservice/src/main/resources/application-database-discovery.properties",
+     "sha256": "43df3a56dd7cfbd7ddd80964f5579994e4378ae5c90b501d2f1d2c638ca27536",
+     "declaration_lines": [
+      24
+     ]
+    },
+    {
+     "path": "apollo-configservice/src/main/java/com/ctrip/framework/apollo/configservice/ConfigServiceApplication.java",
+     "sha256": "938a12760076db7931b2d56ba6ab3f70c21f3d8292a51eef5d59581871db4779",
+     "declaration_lines": [
+      42
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the class is annotated @Component",
+    "it is registered via spring.factories or AutoConfiguration.imports",
+    "it is active in apollo-adminservice with github"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-025": {
+   "expected": {
+    "boundary": "onConfigPublish runs synchronously on the publishing (request) thread but only submits ConfigPublishNotifyTask to a single-thread executor; run() executes on the \"ConfigPublishNotify\" thread",
+    "context_not_propagated": [
+     "UserIdentityContextHolder is a plain ThreadLocal set and cleared by UserTypeResolverFilter around the request: null in the task",
+     "SecurityContextHolder (thread-local strategy by default) is not copied, so UserInfoHolder#getUser would fail there",
+     "no request attributes / request scope on the worker thread"
+    ],
+    "what_the_task_uses": "only the captured ConfigPublishInfo (env, appId, cluster, namespace, release ids) plus singleton beans: ReleaseHistoryService, ConfigReleaseWebhookNotifier, EmailService, email builders, MQService, PortalConfig",
+    "verdict": "the async path does not rely on request context today; adding a permission or current-user call there would break silently or throw",
+    "runtime_checks": [
+     "transitive calls inside email builders / admin API clients",
+     "any custom EmailService or MQService implementation reading request context"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/listener/ConfigPublishListener.java",
+     "sha256": "791d8dea35102f1e979fa153d60091597179fdb4595f4bfade5ae0c2f011afd2",
+     "declaration_lines": [
+      80,
+      89
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserIdentityContextHolder.java",
+     "sha256": "24a9e7d14e39e5a436b94f0582469d74e93e4d1e84ec3b71ac03bff9d2e39653",
+     "declaration_lines": [
+      21
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/filter/UserTypeResolverFilter.java",
+     "sha256": "47aac20ef2f1108d45682665924a83a73f4b86e5569e106c047d8336ccad4795",
+     "declaration_lines": [
+      42,
+      46
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the listener is @Async",
+    "UserIdentityContextHolder is an InheritableThreadLocal"
+   ],
+   "limitations": [
+    "transitive behaviour of email builders and admin-service HTTP calls was not executed"
+   ],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-026": {
+   "expected": {
+    "proxying": "AdminServiceApplication @EnableAspectJAutoProxy; ItemController is proxied (class proxy, no interface)",
+    "applicable_advice": [
+     "NamespaceAcquireLockAspect#requireLockAdvice(String,String,String,ItemDTO): @Before, pointcut \"@annotation(PreAcquireNamespaceLock) && args(appId, clusterName, namespaceName, item, ..)\"",
+     "NamespaceUnlockAspect#requireLockAdvice(String,String,String,ItemDTO): @After with the same pointcut shape"
+    ],
+    "not_matching_overloads": [
+     "args(..., itemId, item, ..) needs a long 4th argument",
+     "args(..., changeSet, ..) needs ItemChangeSets",
+     "args(itemId, operator, ..) needs long first"
+    ],
+    "not_applicable_aspects": [
+     "RepositoryAspect: execution(public * Repository+.*(..)), applies to repository calls inside, not to the controller method",
+     "ApolloAuditSpanAspect: @annotation(auditLog), create has no @ApolloAuditLog"
+    ],
+    "order": "no @Order on either aspect; lock @Before runs before the method, unlock @After runs after it (also on exceptions); their relative precedence is undefined but they never compete in the same phase",
+    "runtime_switch": "both advices return immediately when bizConfig.isNamespaceLockSwitchOff()"
+   },
+   "evidence": [
+    {
+     "path": "apollo-adminservice/src/main/java/com/ctrip/framework/apollo/adminservice/controller/ItemController.java",
+     "sha256": "f1e27e9268112c4aff53d1b9db7b469a17ed202a4fd56c9d3d1f89b9af63ad45",
+     "declaration_lines": [
+      74,
+      76
+     ]
+    },
+    {
+     "path": "apollo-adminservice/src/main/java/com/ctrip/framework/apollo/adminservice/aop/NamespaceAcquireLockAspect.java",
+     "sha256": "0b75874ddee399b2b91fa4fdcb123a45a1bcd91de80bad8eb51edca09442fa5d",
+     "declaration_lines": [
+      43,
+      65,
+      102
+     ]
+    },
+    {
+     "path": "apollo-adminservice/src/main/java/com/ctrip/framework/apollo/adminservice/aop/NamespaceUnlockAspect.java",
+     "sha256": "6f71a8ca513f780a5e85ab59357a901749843135c45b16b84374b522e107074a",
+     "declaration_lines": [
+      76,
+      77
+     ]
+    },
+    {
+     "path": "apollo-common/src/main/java/com/ctrip/framework/apollo/common/aop/RepositoryAspect.java",
+     "sha256": "7f2a9f92f4de0117c78662a995f3964ba7a0fce7e8957cdd1d58f4ac1cc9ea42",
+     "declaration_lines": [
+      32
+     ]
+    },
+    {
+     "path": "apollo-adminservice/src/main/java/com/ctrip/framework/apollo/adminservice/AdminServiceApplication.java",
+     "sha256": "d88ca8575f332fff8a5a2cdafadd79c56ff6d5864787e23b744b47f72987622f",
+     "declaration_lines": [
+      30
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "all four requireLockAdvice overloads apply",
+    "RepositoryAspect wraps the controller method",
+    "the aspects are ordered by @Order"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-027": {
+   "expected": {
+    "start": "transaction proxy around adminservice ReleaseController#publish (@Transactional, default REQUIRED, rollback on unchecked exceptions); @EnableTransactionManagement on AdminServiceApplication",
+    "end": "commit or rollback when the controller method returns or throws, before the HTTP response is written",
+    "joining_calls": [
+     "biz ReleaseService#publish (@Transactional REQUIRED) joins",
+     "DatabaseMessageSender#sendMessage (@Transactional REQUIRED) joins: the ReleaseMessage row commits atomically with the release",
+     "NamespaceService/Repository reads join the same transaction"
+    ],
+    "propagation_changes": "no REQUIRES_NEW, NOT_SUPPORTED or explicit propagation in application source",
+    "non_transactions": [
+     "Tracer.newTransaction / RepositoryAspect \"CatTransaction\" are tracing spans, not database transactions",
+     "DatabaseMessageSender queues the id for asynchronous cleanup (toClean) outside the request transaction"
+    ],
+    "self_invocation": "private masterRelease/createRelease/branchRelease run inside the caller transaction; their own annotations, if any, are not proxied"
+   },
+   "evidence": [
+    {
+     "path": "apollo-adminservice/src/main/java/com/ctrip/framework/apollo/adminservice/controller/ReleaseController.java",
+     "sha256": "dd91a2567c89759c464657e71627e64b7b5f4e5c37898d5ca9aada7cd9071cb8",
+     "declaration_lines": [
+      115,
+      117,
+      138
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/ReleaseService.java",
+     "sha256": "817b076e9619fdbb32f29d19ef0329dee5683fbab300826d18424c611b872a58",
+     "declaration_lines": [
+      195
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/message/DatabaseMessageSender.java",
+     "sha256": "c21a3e9bad60f42ffe98aec9534317b849e5e3cbb91325be28b1a92cdd37ed2b",
+     "declaration_lines": [
+      62,
+      73
+     ]
+    },
+    {
+     "path": "apollo-common/src/main/java/com/ctrip/framework/apollo/common/aop/RepositoryAspect.java",
+     "sha256": "7f2a9f92f4de0117c78662a995f3964ba7a0fce7e8957cdd1d58f4ac1cc9ea42",
+     "declaration_lines": [
+      36
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the release message is sent in a separate transaction",
+    "RepositoryAspect starts a database transaction"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-028": {
+   "expected": {
+    "event": "ConfigPublishEvent extends ApplicationEvent, published through ApplicationEventPublisher (the context)",
+    "listeners": [
+     "ConfigPublishListener#onConfigPublish(ConfigPublishEvent): @EventListener, synchronous on the request thread, then hands work to its own executor"
+    ],
+    "not_listeners": [
+     "DeletionListener, CreationListener, AppInfoChangedListener (other event types)",
+     "ApolloAuditLogDataInfluenceEventListener (ApolloAuditLogDataInfluenceEvent)",
+     "OidcAuthenticationSuccessEventListener (AuthenticationSuccessEvent, oidc profile only)"
+    ],
+    "transaction_phase": "no @TransactionalEventListener and no portal-side transaction around createRelease: delivery is immediate",
+    "multicaster": "default SimpleApplicationEventMulticaster without executor (no custom applicationEventMulticaster bean)"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      218
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/listener/ConfigPublishEvent.java",
+     "sha256": "027ab8fed2f53c5ac3ba6a388cc5b25d38c067cdc4e7a4d383bc127907578063",
+     "declaration_lines": [
+      23
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/listener/ConfigPublishListener.java",
+     "sha256": "791d8dea35102f1e979fa153d60091597179fdb4595f4bfade5ae0c2f011afd2",
+     "declaration_lines": [
+      79,
+      80
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the listener runs after transaction commit",
+    "admin service receives the Spring event"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-029": {
+   "expected": {
+    "mechanism": "manual decoration inside the @Bean method ApolloServiceDiscoveryAutoConfiguration#databaseDiscoveryClient; no Spring decorator/BeanPostProcessor",
+    "chain_outer_to_inner": [
+     "DatabaseDiscoveryClientMemoryCacheDecoratorImpl (cache, init() starts a refresh scheduler)",
+     "DatabaseDiscoveryClientAlwaysAddSelfInstanceDecoratorImpl (adds selfServiceInstance)",
+     "DatabaseDiscoveryClientImpl (reads ServiceRegistryService)"
+    ],
+    "order_source": "nesting in code: wrapMemoryCache(wrapAlwaysAddSelfInstance(discoveryClient, selfServiceInstance))",
+    "delegate": "each decorator receives the inner client through its constructor (field delegate)",
+    "override": "@ConditionalOnMissingBean on the @Bean: a user-defined DatabaseDiscoveryClient bean replaces the whole chain (DatabaseDiscoveryWithoutDecoratorIntegrationTest does this)",
+    "active_when": "apollo.service.discovery.enabled=true (database-discovery profile)",
+    "consumer": "configservice DatabaseDiscoveryService (@Profile(\"database-discovery\"))"
+   },
+   "evidence": [
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/ApolloServiceDiscoveryAutoConfiguration.java",
+     "sha256": "41123e7e5a0c04329c51a862a0b7b25e5a6b2e1c9c167e58c1819a0edf7de87b",
+     "declaration_lines": [
+      42,
+      54,
+      59
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/DatabaseDiscoveryClientMemoryCacheDecoratorImpl.java",
+     "sha256": "8660533c42fb59177b2f44ccb1389192df85259e0bce99f95aacdf38e6b0ea6b",
+     "declaration_lines": [
+      43
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/DatabaseDiscoveryClientAlwaysAddSelfInstanceDecoratorImpl.java",
+     "sha256": "b1db470c15e3fd9840c404daa830027e41d608272fb6908f17c3fe5d9c7cf501",
+     "declaration_lines": [
+      34
+     ]
+    },
+    {
+     "path": "apollo-biz/src/test/java/com/ctrip/framework/apollo/biz/registry/DatabaseDiscoveryWithoutDecoratorIntegrationTest.java",
+     "sha256": "aea31928420d3560bf02e5678f4886d9e0041b6307a3f8798947cdc1e67fc2be",
+     "declaration_lines": [
+      52
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "Spring applies the decorators automatically",
+    "the self-instance decorator is outermost"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-030": {
+   "expected": {
+    "graph_cycles_through_NamespaceService": [
+     "NamespaceService <-> ItemService (both edges @Lazy)",
+     "NamespaceService <-> AppNamespaceService (both @Lazy)",
+     "NamespaceService <-> ClusterService (both @Lazy)",
+     "NamespaceService -@Lazy-> ReleaseService -> NamespaceService",
+     "NamespaceService -@Lazy-> NamespaceBranchService -> NamespaceService",
+     "NamespaceService -@Lazy-> ReleaseService -> ItemSetService -> NamespaceService",
+     "AdminService -@Lazy-> NamespaceService (not a cycle; one-way)"
+    ],
+    "creation": "every cycle contains at least one @Lazy constructor parameter; Spring injects a lazy-resolution proxy there, so constructor instantiation is acyclic and needs no spring.main.allow-circular-references (not set)",
+    "risk": "calling a lazy proxy inside a constructor would resolve the target early; constructors only assign fields",
+    "related_cycle_not_through_NamespaceService": "ReleaseService -> NamespaceBranchService -@Lazy-> ReleaseService"
+   },
+   "evidence": [
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/NamespaceService.java",
+     "sha256": "f3ec8dc0995c10183b9449da492a596a4455c1622d144aae36ae89a0170bef20",
+     "declaration_lines": [
+      76,
+      77,
+      78,
+      79
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/ItemService.java",
+     "sha256": "78d2aec4dcc15edf63bbe021fb5e27c47571db75d35f031a93a1afe869b4efbc",
+     "declaration_lines": [
+      55
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/ReleaseService.java",
+     "sha256": "817b076e9619fdbb32f29d19ef0329dee5683fbab300826d18424c611b872a58",
+     "declaration_lines": [
+      86
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/NamespaceBranchService.java",
+     "sha256": "5413d649b39d9fd6325b4c41eaf8ed383a8f5d5ddb496c1cbc9e2096c22eb8b8",
+     "declaration_lines": [
+      45,
+      50
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/ItemSetService.java",
+     "sha256": "f9070a2930216fe3b456c910d732e89c1d28d1a8e507f46a70578f9a00c18021",
+     "declaration_lines": [
+      42
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "startup fails with BeanCurrentlyInCreationException",
+    "Apollo enables allow-circular-references"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-031": {
+   "expected": {
+    "filters_in_order": [
+     "springSecurityFilterChain (order -100): /openapi/** is in BY_PASS_URLS -> permitAll; UserTokenAuthenticationFilter runs inside the chain",
+     "PortalUserSessionFilter (order -99, /openapi/*)",
+     "ConsumerAuthenticationFilter (order -98, /openapi/*)",
+     "UserTypeResolverFilter (order -97, /*): sets UserIdentityContextHolder auth type"
+    ],
+    "handler_mapping": "the @RequestMapping (path constant PATH_CREATE_RELEASE) is declared on the generated interface method ReleaseManagementApi#createRelease; ReleaseController (\"openapiReleaseController\") implements it",
+    "entrypoint": "com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController#createRelease(String,String,String,String,NamespaceReleaseDTO,String)",
+    "before_body": "method-security proxy evaluates @PreAuthorize(\"@unifiedPermissionValidator.hasReleaseNamespacePermission(...)\")",
+    "business_path": [
+     "toReleaseModel + resolveOperator (current user or consumer operator)",
+     "checkEmergencyPublishAllowedForUser",
+     "portal ReleaseService#publish(NamespaceReleaseModel) (@Service)",
+     "AdminServiceAPI.ReleaseAPI#createRelease: HTTP call to apollo-adminservice",
+     "publishEvent(ConfigPublishEvent) after the remote publish succeeds"
+    ],
+    "direct_dependency": "ReleaseService injected by constructor; it depends on AdminServiceAPI.ReleaseAPI"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      54,
+      55,
+      139,
+      148
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/ReleaseService.java",
+     "sha256": "d56e768ccb6a859f94be40315f93800589347150dd7d6cdb69db0520108f128b",
+     "declaration_lines": [
+      57,
+      65
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthFilterConfiguration.java",
+     "sha256": "7d4f4972738a3811303b71a8a3be018c9553f0d851fdc17628d10aabcacfc2b9",
+     "declaration_lines": [
+      36,
+      81,
+      99
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      88
+     ]
+    }
+   ],
+   "framework_evidence": [
+    {
+     "artifact": "org.springframework.boot:spring-boot-security:4.1.1",
+     "class": "org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties",
+     "fact": "DEFAULT_FILTER_ORDER = -100"
+    },
+    {
+     "artifact": "generated",
+     "class": "apollo-portal/target/generated-sources/openapi/src/main/java/com/ctrip/framework/apollo/openapi/api/ReleaseManagementApi.java (generated, not tracked)",
+     "fact": "PATH_CREATE_RELEASE and @RequestMapping on createRelease"
+    }
+   ],
+   "forbidden_claims": [
+    "the route is mapped by the deprecated portal web ReleaseController",
+    "the portal writes the release to its own database"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-032": {
+   "expected": {
+    "layers": [
+     "Spring Security chain (auth profile): /openapi/** permitAll, so no login is forced here; a session login or user token still populates SecurityContext",
+     "PortalUserSessionFilter: authenticated portal user -> PORTAL_USER_AUTHENTICATED; SESSION cookie without auth -> session-expired response",
+     "ConsumerAuthenticationFilter: lets portal users and user tokens through, otherwise requires a consumer token in Authorization (401), applies the token rate limit and stores the consumer id",
+     "UserTypeResolverFilter: auth type USER_TOKEN, CONSUMER, USER or ANONYMOUS",
+     "@PreAuthorize(\"@unifiedPermissionValidator.hasReleaseNamespacePermission(#appId, #env, #clusterName, #namespaceName)\") via @EnableMethodSecurity(prePostEnabled = true) on SpringSecurityConfigurer"
+    ],
+    "permission_source": {
+     "USER": "UserPermissionValidator -> RolePermissionService#hasAnyPermission: super admin, or any of RELEASE_NAMESPACE (app+namespace), RELEASE_NAMESPACE (app+namespace+env), RELEASE_NAMESPACES_IN_CLUSTER (app+env+cluster) from the Role/RolePermission/UserRole/Permission tables",
+     "USER_TOKEN": "same user permission AND token scope allows CONFIG_RELEASE and the namespace",
+     "CONSUMER": "ConsumerPermissionValidator: app-level CREATE_NAMESPACE consumer permission short-circuits, otherwise the same release permissions for the consumer",
+     "ANONYMOUS": "getDelegate() throws IllegalStateException"
+    },
+    "configuration_dependent": [
+     "emergency publish allowed only for envs in emergencyPublish.supported.envs (USER and USER_TOKEN)",
+     "super admins from PortalConfig superAdmin",
+     "env normalisation via Env.transformEnv",
+     "adminservice namespace lock: with namespace.lock.switch=true the last modifier cannot publish unless emergency publish"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      94,
+      244
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      198,
+      212
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/filter/ConsumerAuthenticationFilter.java",
+     "sha256": "32e6b2d577defd0371630b1e24bbc15d8126ce749a6b546c9300fc8bf381ab4c",
+     "declaration_lines": [
+      93,
+      96
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/filter/PortalUserSessionFilter.java",
+     "sha256": "c28d54fae9e9f1c4e02f8ba97675b66fae28978d42329e5de998775fd3a0ab32",
+     "declaration_lines": [
+      76
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/AbstractPermissionValidator.java",
+     "sha256": "ff43924d6d838f2f343e3c0472e96e16f46a089f8b1ce1da6a73ff2cfa3ac97f",
+     "declaration_lines": [
+      58
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/defaultimpl/DefaultRolePermissionService.java",
+     "sha256": "5e5ae37759e4fc1aa0e850ce91f289efac8ed65dd2e94bd4895957a40187021c",
+     "declaration_lines": [
+      379
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/ReleaseService.java",
+     "sha256": "817b076e9619fdbb32f29d19ef0329dee5683fbab300826d18424c611b872a58",
+     "declaration_lines": [
+      279
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the security filter chain requires the user role for /openapi/**",
+    "consumers are checked with UserPermissionValidator"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-033": {
+   "expected": {
+    "bean": "not a component: ConfigServiceAutoConfiguration#releaseMessageScanner(...) @Bean in apollo-configservice creates it with new and registers six ReleaseMessageListener beans (ReleaseMessageServiceWithCache, GrayReleaseRulesHolder, ConfigService, ConfigFileController, NotificationControllerV2, NotificationController) in that order",
+    "trigger": "InitializingBean#afterPropertiesSet schedules scheduleWithFixedDelay on its own single-thread executor (\"ReleaseMessageScanner\", daemon); no @Scheduled",
+    "dependencies": [
+     "BizConfig (constructor)",
+     "ReleaseMessageRepository (constructor)"
+    ],
+    "schedule_setting": "apollo.message-scan.interval via BizConfig#releaseMessageScanIntervalInMilli: default 1000 ms, below 100 falls back to the default; read once in afterPropertiesSet",
+    "source_of_setting": "BizConfig is a RefreshableConfig backed by the ConfigDB ServerConfig table, but the interval is captured once, so changing it needs a restart",
+    "not_present_in": "apollo-adminservice and apollo-portal (declared only in apollo-configservice, which apollo-assembly embeds)"
+   },
+   "evidence": [
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/message/ReleaseMessageScanner.java",
+     "sha256": "28b9eaecd73ea51f5e73162fdcbe500de80dead6ae63342526300004959865a8",
+     "declaration_lines": [
+      45,
+      70,
+      72
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/config/BizConfig.java",
+     "sha256": "773c563ef3a2f47caf10de76dc7a4d88be3dd89f874c3d6fef1666254291bdb0",
+     "declaration_lines": [
+      57,
+      237
+     ]
+    },
+    {
+     "path": "apollo-configservice/src/main/java/com/ctrip/framework/apollo/configservice/ConfigServiceAutoConfiguration.java",
+     "sha256": "43748d23c3844abe4a4db6c6cf39dcc9978736513a74668eb768bde3fa515822",
+     "declaration_lines": [
+      109,
+      119
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "ReleaseMessageScanner uses @Scheduled",
+    "the interval is re-read on every refresh"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-035": {
+   "expected": {
+    "registration": "ApolloServiceRegistryAutoConfiguration#apolloServiceRegistryHeartbeatApplicationRunner @Bean, @ConditionalOnMissingBean; the configuration is @ConditionalOnProperty apollo.service.registry.enabled",
+    "active_when": "apollo.service.registry.enabled=true (database-discovery profile of configservice/adminservice/assembly); not active under github alone",
+    "startup": "SpringApplication calls ApplicationRunner#run after the context is refreshed; run logs and schedules heartbeat() at fixed rate (initial delay 0, period heartbeatIntervalInSecond, default 10 s) on its own daemon executor",
+    "beans_touched": [
+     "ApolloServiceRegistryProperties (also the ServiceInstance; @PostConstruct resolves serviceName from spring.application.name and uri from InetUtils/server.port/ServletContext)",
+     "DatabaseServiceRegistry (DatabaseServiceRegistryImpl -> ServiceRegistryService -> ServiceRegistryRepository)"
+    ],
+    "shutdown": "the runner has no stop logic; ApolloServiceRegistryDeregisterApplicationListener deregisters on ContextClosedEvent; the heartbeat executor is never shut down explicitly",
+    "unknown_order": [
+     "relative order with ApolloServiceRegistryClearApplicationRunner (no @Order on either)",
+     "whether a heartbeat can race with deregistration during shutdown"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/ApolloServiceRegistryAutoConfiguration.java",
+     "sha256": "c6c5957e3d85f00ccb439dc2564c6a4225227a9488cffbd613513c4a41d95cae",
+     "declaration_lines": [
+      33,
+      52
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/support/ApolloServiceRegistryHeartbeatApplicationRunner.java",
+     "sha256": "033bb18ca801c660aedbb01e915b13d098e22347fe2790ebbc207be8c144e4e2",
+     "declaration_lines": [
+      55,
+      61
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/support/ApolloServiceRegistryDeregisterApplicationListener.java",
+     "sha256": "209bf0bc1cbc81c9f5ef6011b3be4299e4a4844e68ae9233088688daaa50d008",
+     "declaration_lines": [
+      29
+     ]
+    },
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/support/ApolloServiceRegistryProperties.java",
+     "sha256": "a7cdba2abf1190f78624e25be63d348417d3d649c585e3cef68b0203832df320",
+     "declaration_lines": [
+      69,
+      86
+     ]
+    },
+    {
+     "path": "apollo-adminservice/src/main/resources/application-database-discovery.properties",
+     "sha256": "655c6721c4c854a484542773b059bbb30f5512b2c170f765691b9298c5be1b13",
+     "declaration_lines": [
+      19
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the runner deregisters on shutdown itself",
+    "it runs before the context refresh completes"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-036": {
+   "expected": {
+    "reader": "PortalConfig#isEmergencyPublishAllowed(Env): getArrayProperty(\"emergencyPublish.supported.envs\", EMPTY_STRING_ARRAY), trims entries, normalises each with Env.transformEnv and compares with the normalised env",
+    "default": "empty: emergency publish is allowed in no environment",
+    "sources_under_github_auth": [
+     "any Spring Environment source (application.properties/yml, profile files, env vars, system properties) - none in the tracked portal resources define it",
+     "PortalDBPropertySource \"DBConfig\": rows of the PortalDB ServerConfig table, added with addLast (lowest precedence) by RefreshableConfig#setup"
+    ],
+    "usages": [
+     "openapi ReleaseController#checkEmergencyPublishAllowedForUser (USER and USER_TOKEN only)",
+     "deprecated portal web ReleaseController#createRelease / #createGrayRelease"
+    ],
+    "documentation": "docs/en and docs/zh deployment guides section 3.1.8"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/config/PortalConfig.java",
+     "sha256": "45b6e2334bdc19cbc7894c5bed25e741bfa3f9559662b502f87a3fbd6653e45c",
+     "declaration_lines": [
+      227,
+      235
+     ]
+    },
+    {
+     "path": "apollo-common/src/main/java/com/ctrip/framework/apollo/common/config/RefreshableConfig.java",
+     "sha256": "ec35cecc6011d24b7831623978bd1fdbb5f80d017895ce5d9dbb01135c4ae2b0",
+     "declaration_lines": [
+      72
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      249
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/controller/ReleaseController.java",
+     "sha256": "bc0b0d9adc5ad97c2a0ea84d9a8867b46ad75a1a89e7881ec16a46092256d41d",
+     "declaration_lines": [
+      88
+     ]
+    },
+    {
+     "path": "docs/en/deployment/distributed-deployment-guide.md",
+     "sha256": "049cf131e654d0bcb8452c748c204efe4df5a957e353d2e95d93d682e3a938d0",
+     "declaration_lines": [
+      1414
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the key is bound with @Value or @ConfigurationProperties",
+    "emergency publish is enabled by default"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-038": {
+   "expected": {
+    "answer": "dev",
+    "reason": "classpath application.properties is a Spring Boot config-data source; PortalDBPropertySource (\"DBConfig\") is appended with addLast in RefreshableConfig#setup, after every existing source, so it has the lowest precedence and only supplies keys that no other source defines",
+    "order_mechanism": "MutablePropertySources iteration order; PortalConfig reads through ConfigurableEnvironment#getProperty",
+    "consequence": "the database value pro is shadowed while application.properties defines the key"
+   },
+   "evidence": [
+    {
+     "path": "apollo-common/src/main/java/com/ctrip/framework/apollo/common/config/RefreshableConfig.java",
+     "sha256": "ec35cecc6011d24b7831623978bd1fdbb5f80d017895ce5d9dbb01135c4ae2b0",
+     "declaration_lines": [
+      72,
+      154
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/PortalDBPropertySource.java",
+     "sha256": "f9a9d8170f0df5ac9223ce56100bab03e2fb7e96733138062a62d462efb8cb5a",
+     "declaration_lines": [
+      57
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/config/PortalConfig.java",
+     "sha256": "45b6e2334bdc19cbc7894c5bed25e741bfa3f9559662b502f87a3fbd6653e45c",
+     "declaration_lines": [
+      82
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the database value wins because it is refreshed later",
+    "the result is pro"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-039": {
+   "expected": {
+    "answer": "yes, through the PortalDB ServerConfig table, if no higher-precedence source defines the key",
+    "mechanism": [
+     "RefreshableConfig#setup schedules a refresh every 60 s (CONFIG_REFRESH_INTERVAL) on a \"ConfigRefresher\" executor",
+     "PortalDBPropertySource#refresh reloads all rows into its map",
+     "isEmergencyPublishAllowed reads the Environment on every call, so the new value applies within about a minute"
+    ],
+    "caveats": [
+     "refresh only puts keys: deleting the row keeps the old value until restart",
+     "a value from application.properties, env vars or system properties shadows the database and needs a restart to change",
+     "no @RefreshScope / Spring Cloud refresh is involved"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-common/src/main/java/com/ctrip/framework/apollo/common/config/RefreshableConfig.java",
+     "sha256": "ec35cecc6011d24b7831623978bd1fdbb5f80d017895ce5d9dbb01135c4ae2b0",
+     "declaration_lines": [
+      44,
+      81
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/PortalDBPropertySource.java",
+     "sha256": "f9a9d8170f0df5ac9223ce56100bab03e2fb7e96733138062a62d462efb8cb5a",
+     "declaration_lines": [
+      75,
+      88
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/config/PortalConfig.java",
+     "sha256": "45b6e2334bdc19cbc7894c5bed25e741bfa3f9559662b502f87a3fbd6653e45c",
+     "declaration_lines": [
+      235
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "a rebuild is required",
+    "removing the database row restores the default immediately"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-040": {
+   "expected": {
+    "code": [
+     "PortalConfig#isEmergencyPublishAllowed key literal (single production reader)"
+    ],
+    "tests": [
+     "PortalConfigTest stubs getArrayProperty(\"emergencyPublish.supported.envs\", ...) in two places"
+    ],
+    "configuration_and_sql": "no tracked properties/yml or SQL script defines the key; existing deployments keep it as a row in the PortalDB ServerConfig table, so a data migration (or reading both keys) is needed",
+    "documentation": [
+     "docs/en/deployment/distributed-deployment-guide.md section 3.1.8",
+     "docs/zh/deployment/distributed-deployment-guide.md section 3.1.8"
+    ],
+    "not_affected": "controllers call isEmergencyPublishAllowed and never use the key string"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/config/PortalConfig.java",
+     "sha256": "45b6e2334bdc19cbc7894c5bed25e741bfa3f9559662b502f87a3fbd6653e45c",
+     "declaration_lines": [
+      235
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/portal/component/config/PortalConfigTest.java",
+     "sha256": "b57888a228e5dcdf1779ba47d5a8e0c5ee3b74c20c7843fc536d7d9b3d9ee3f7",
+     "declaration_lines": [
+      435
+     ]
+    },
+    {
+     "path": "docs/en/deployment/distributed-deployment-guide.md",
+     "sha256": "049cf131e654d0bcb8452c748c204efe4df5a957e353d2e95d93d682e3a938d0",
+     "declaration_lines": [
+      1414
+     ]
+    },
+    {
+     "path": "docs/zh/deployment/distributed-deployment-guide.md",
+     "sha256": "7593fc30a4409cf1e0ace9a86232042b4a0423cac8ff648e3f13377337acb246",
+     "declaration_lines": [
+      1361
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the SQL init scripts insert this key",
+    "controllers must be edited"
+   ],
+   "limitations": [
+    "ServerConfig rows in real databases are outside the repository"
+   ],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-037": {
+   "expected": {
+    "prefix": "apollo.service.registry",
+    "keys": [
+     {
+      "key": "apollo.service.registry.enabled",
+      "type": "boolean",
+      "default": "false (field default); also the @ConditionalOnProperty switch of ApolloServiceRegistryAutoConfiguration"
+     },
+     {
+      "key": "apollo.service.registry.service-name",
+      "type": "String",
+      "default": "null, resolved in @PostConstruct from spring.application.name (required)"
+     },
+     {
+      "key": "apollo.service.registry.uri",
+      "type": "URI bound through setUri(String)",
+      "default": "null, resolved in @PostConstruct to http://<first non-loopback ip>:<server.port><context path or />"
+     },
+     {
+      "key": "apollo.service.registry.cluster",
+      "type": "String",
+      "default": "null (database-discovery profile files set default)"
+     },
+     {
+      "key": "apollo.service.registry.metadata",
+      "type": "Map<String,String>",
+      "default": "empty HashMap"
+     },
+     {
+      "key": "apollo.service.registry.heartbeat-interval-in-second",
+      "type": "long",
+      "default": "10"
+     }
+    ],
+    "not_keys": [
+     "@Autowired PropertyResolver, InetUtils and ServletContext fields are injected collaborators, not properties"
+    ],
+    "nested_groups": "none",
+    "profile_values": "application-database-discovery.properties sets enabled=true, cluster=default, heartbeat-interval-in-second=10"
+   },
+   "evidence": [
+    {
+     "path": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/registry/configuration/support/ApolloServiceRegistryProperties.java",
+     "sha256": "a7cdba2abf1190f78624e25be63d348417d3d649c585e3cef68b0203832df320",
+     "declaration_lines": [
+      41,
+      46,
+      52,
+      57,
+      62,
+      64,
+      69,
+      75,
+      121
+     ]
+    },
+    {
+     "path": "apollo-configservice/src/main/resources/application-database-discovery.properties",
+     "sha256": "43df3a56dd7cfbd7ddd80964f5579994e4378ae5c90b501d2f1d2c638ca27536",
+     "declaration_lines": [
+      21
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "servlet-context is a configuration key",
+    "cluster defaults to \"default\" in code"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-041": {
+   "expected": {
+    "contract": "UnifiedPermissionValidator#hasReleaseNamespacePermission overrides PermissionValidator#hasReleaseNamespacePermission; changing its signature changes or breaks the interface contract",
+    "java_callers_on_unified": [
+     "openapi.v1.controller.ReleaseController (rollback, checkReleaseNamespaceReadAllowed, checkReleaseReadAllowed)",
+     "openapi.v1.controller.NamespaceBranchController (2 calls)",
+     "openapi.v1.controller.InstanceController (1 call)",
+     "portal.controller.NamespaceBranchController (1 call)",
+     "portal.controller.ReleaseController (getReleaseWithPermissionCheck)"
+    ],
+    "non_java_references": [
+     "@PreAuthorize SpEL \"@unifiedPermissionValidator.hasReleaseNamespacePermission(#appId, #env, #clusterName, #namespaceName)\": 3 in openapi ReleaseController (createGrayDelRelease, createGrayRelease, createRelease), 2 in portal ReleaseController (createRelease, createGrayRelease); resolved at runtime, invisible to javac"
+    ],
+    "indirect": [
+     "PermissionValidator#hasOperateNamespacePermission default method calls it; reached through unifiedPermissionValidator.hasOperateNamespacePermission (openapi NamespaceBranchController, portal NamespaceBranchController @PreAuthorize SpEL)"
+    ],
+    "other_implementations_of_the_contract": [
+     "AbstractPermissionValidator",
+     "ConsumerPermissionValidator",
+     "UserTokenPermissionValidator"
+    ],
+    "tests": [
+     "UnifiedPermissionValidatorTest (direct calls)",
+     "ReleaseBranchInstanceControllerTest and ApolloOpenApiJavaClientCompatibilityTest (Mockito stubs of the method)"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidator.java",
+     "sha256": "0930929f6558d45f72f14eb71ce86004ef77ea9116217f210594d8aa22f44edb",
+     "declaration_lines": [
+      61
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      94,
+      203
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/controller/ReleaseController.java",
+     "sha256": "bc0b0d9adc5ad97c2a0ea84d9a8867b46ad75a1a89e7881ec16a46092256d41d",
+     "declaration_lines": [
+      76
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/NamespaceBranchController.java",
+     "sha256": "bc3273b27cd4e380d0c527e0c430669a208157bcb60359ba13e931f4f6b6a8fc",
+     "declaration_lines": [
+      198
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/InstanceController.java",
+     "sha256": "051d0b781cd2a490fa9c0dfcf080e00a6e19ce511c9424be391c3d16871e23a3",
+     "declaration_lines": [
+      140
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/controller/NamespaceBranchController.java",
+     "sha256": "29d423bf812529e80e88fb5f7c25dcd7576ae3fd603e9eae0980c1b4b2f01ad7",
+     "declaration_lines": [
+      109,
+      170
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/PermissionValidator.java",
+     "sha256": "0575a7dffdecf97ca22f3c52bbffe2b0c96946abebf2807e5e56e25b06ad4fe6",
+     "declaration_lines": [
+      36
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidatorTest.java",
+     "sha256": "ba3148c95fa71be44ba3c89943cd77883af289cd63a541cd061396200c4f5c58",
+     "declaration_lines": [
+      182
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the compiler finds every caller",
+    "it is only called from Java code"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-042": {
+   "expected": {
+    "declaration_to_change": "@Component(\"fileTextResolver\") on FileTextResolver",
+    "injection_sites": [
+     "ItemService constructor @Qualifier(\"fileTextResolver\") ConfigTextResolver fileTextResolver: must change to \"fileTextResolverV2\" or startup fails with no qualifying bean (two ConfigTextResolver candidates)"
+    ],
+    "unaffected": [
+     "ItemService propertyResolver parameter and PropertyResolver bean",
+     "ItemServiceTest builds ItemService with mocks by constructor; the field name fileTextResolver is not a qualifier"
+    ],
+    "other_by_name_lookups": "no getBean(\"fileTextResolver\"), SpEL @fileTextResolver or XML references in the tree"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/txtresolver/FileTextResolver.java",
+     "sha256": "42f521ad7a459f53d7815030b82718807a2401f91f9605694e8db62a623d67ee",
+     "declaration_lines": [
+      29
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/ItemService.java",
+     "sha256": "962f1cd0eb092c968c6eb966b455fb79eef64b55d853f8e84e4d118764a78888",
+     "declaration_lines": [
+      64
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/portal/service/ItemServiceTest.java",
+     "sha256": "a3483267bcc3a8a6be131220e66ee477ff5785428d64b7e8c0f064daec4809ad",
+     "declaration_lines": [
+      60
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the parameter name keeps the injection working after the rename"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-043": {
+   "expected": {
+    "contract": "interface UserInfoHolder { UserInfo getUser(); }",
+    "implementations": [
+     "SpringSecurityUserInfoHolder (spi.springsecurity)",
+     "OidcUserInfoHolder (spi.oidc)",
+     "DefaultUserInfoHolder (spi.defaultimpl)"
+    ],
+    "bean_declarations": [
+     "AuthConfiguration: auth springSecurityUserInfoHolder, ldap springSecurityUserInfoHolder, oidcUserInfoHolder, defaultUserInfoHolder (all @ConditionalOnMissingBean(UserInfoHolder))",
+     "AuthConfiguration#portalAuthenticationValidator consumes it and checks instanceof DefaultUserInfoHolder",
+     "test configs (e.g. ControllableAuthorizationConfiguration) provide @Primary mocks"
+    ],
+    "injection_sites_production": "25 application files inject UserInfoHolder: openapi v1 controllers (App, Cluster, Item, NamespaceBranch, Namespace, PortalManagement, Release, User), OpenApiOperatorResolver, UserPermissionValidator, UserTokenPermissionValidator, 13 portal web controllers and AuthConfiguration",
+    "method_users": "getUser() is the only method; every injection site calls getUser().getUserId() or similar",
+    "tests": "31 test files reference UserInfoHolder (mocks and stubs of getUser)"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/UserInfoHolder.java",
+     "sha256": "a89b782b7fd979011a788b0321dcd24a305a0d6904afbce6f693a384853769d9",
+     "declaration_lines": [
+      25,
+      27
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/oidc/OidcUserInfoHolder.java",
+     "sha256": "10ff968170ac95ffa0a091e2d080ba249a497211942a2c23329a7bb400847ce4",
+     "declaration_lines": [
+      36
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/defaultimpl/DefaultUserInfoHolder.java",
+     "sha256": "ba44ce54a7e4382e5aebdb29350df1c738471ab0c48e75a243e9550036ce96ec",
+     "declaration_lines": [
+      25
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/springsecurity/SpringSecurityUserInfoHolder.java",
+     "sha256": "ea79c825b3a2595d0f12029580f800a3181ffbef5df3891ee834cf5333d7c647",
+     "declaration_lines": [
+      29
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/spi/configuration/AuthConfiguration.java",
+     "sha256": "d784d715e2c16d75b513066209a6b8ea4046bac50731938be703ee168120efe9",
+     "declaration_lines": [
+      96
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/ControllableAuthorizationConfiguration.java",
+     "sha256": "ba9bae52842d3357c76458103c4b33749a839e8dc618787c0187c359350b8f65",
+     "declaration_lines": [
+      43
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "UserInfoHolder implementations are discovered by component scanning"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-044": {
+   "expected": {
+    "replacement": "@Bean(\"unifiedPermissionValidator\") or a @Bean method named unifiedPermissionValidator returning UnifiedPermissionValidator, in a @Configuration scanned by PortalApplication, and remove @Component",
+    "name_must_stay": "five @PreAuthorize SpEL expressions reference @unifiedPermissionValidator by bean name (plus hasOperateNamespacePermission SpEL in portal NamespaceBranchController and other @PreAuthorize uses)",
+    "return_type": "declare UnifiedPermissionValidator (not PermissionValidator): 24 production classes inject the concrete class, and a PermissionValidator return type would also hide the extra overloads",
+    "scope_and_lifecycle": "singleton by default as now; no lifecycle callbacks to carry over; keep constructor parameters (UserPermissionValidator, UserTokenPermissionValidator, ConsumerPermissionValidator) as @Bean method parameters",
+    "conditions": "none today; adding a @Profile or condition would break every consumer",
+    "tests": [
+     "ApolloOpenApiJavaClientCompatibilityTest uses @MockitoBean(name = \"unifiedPermissionValidator\")",
+     "UnifiedPermissionValidatorTest constructs it with @InjectMocks and is unaffected"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidator.java",
+     "sha256": "0930929f6558d45f72f14eb71ce86004ef77ea9116217f210594d8aa22f44edb",
+     "declaration_lines": [
+      25,
+      32
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      94
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/openapi/v1/controller/ApolloOpenApiJavaClientCompatibilityTest.java",
+     "sha256": "f5f4dafe1e0540baf3fbcc7616eabab4eafd9485cc9ab8b8c0b18ca6700f1274",
+     "declaration_lines": [
+      120
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the bean name may change freely",
+    "consumers inject PermissionValidator by interface"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-045": {
+   "expected": {
+    "state": "UserPermissionValidator holds only final references to singletons; it has no per-request state, so request scope adds overhead without a behavioural reason",
+    "proxy": "singleton consumers (UnifiedPermissionValidator, UserTokenPermissionValidator, UserTokenService) inject it by constructor; @RequestScope uses proxyMode TARGET_CLASS, so they would get a CGLIB scoped proxy (class is not final, public methods OK); a plain @Scope(\"request\") without proxy fails at startup",
+    "outside_requests": [
+     "any call without an active request (startup, schedulers, executor threads such as ConfigPublishListener, tests without a request context) throws ScopeNotActiveException / IllegalStateException",
+     "UserTokenService and the token validators call it from the request thread today"
+    ],
+    "user_context": "it already reads the current user through UserInfoHolder -> SecurityContextHolder per call; request scope does not change identity resolution",
+    "tests": "unit tests construct it directly (UserPermissionValidatorTest) and are unaffected; Spring context tests need a request scope"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserPermissionValidator.java",
+     "sha256": "a0563b98318e0e347584454d97937a3464c6ae02a68fd0fd84f49ef14972e014",
+     "declaration_lines": [
+      29,
+      33,
+      66
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidator.java",
+     "sha256": "0930929f6558d45f72f14eb71ce86004ef77ea9116217f210594d8aa22f44edb",
+     "declaration_lines": [
+      28
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UserTokenPermissionValidator.java",
+     "sha256": "4101499c08291800494ff6b63bbbd3e375fcc1bca56225df38fc83846102cd6d",
+     "declaration_lines": [
+      50
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/UserTokenService.java",
+     "sha256": "b93fd431a348a67e2d7dd1f2a9a9ac271e5e54dc7fc21cb0d52354767ea28680",
+     "declaration_lines": [
+      81
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "request scope is needed to see the current user",
+    "singletons can inject a request-scoped bean without a proxy"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-046": {
+   "expected": {
+    "direct_coverage": [
+     "UnifiedPermissionValidatorTest: calls hasReleaseNamespacePermission for USER and CONSUMER delegation (12 tests in the class)"
+    ],
+    "compile_dependent_stubs": [
+     "ReleaseBranchInstanceControllerTest (stubs the method 11 times; 53 tests)",
+     "ApolloOpenApiJavaClientCompatibilityTest (@MockitoBean unifiedPermissionValidator stub, Spring context)"
+    ],
+    "heuristic": [
+     "OpenApiControllerAnnotationParityTest (inspects @PreAuthorize expressions on openapi controllers incl. ReleaseController)",
+     "UserPermissionValidatorTest, AbstractPermissionValidatorTest, ConsumerPermissionValidatorTest, UserTokenPermissionValidatorTest (delegate implementations)",
+     "portal ReleaseControllerTest (mocks the validator; covers shouldHideConfigToCurrentUser, not this method)"
+    ],
+    "gap": "no test evaluates the @PreAuthorize SpEL against the real bean on the release endpoints; Mockito-based controller tests bypass method security",
+    "reference_run": "UnifiedPermissionValidatorTest and ReleaseBranchInstanceControllerTest pass at the pinned revision (12 + 53)"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidatorTest.java",
+     "sha256": "ba3148c95fa71be44ba3c89943cd77883af289cd63a541cd061396200c4f5c58",
+     "declaration_lines": [
+      213
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseBranchInstanceControllerTest.java",
+     "sha256": "ee16993d5d47614bb1612278a78a7a07d88e757cb03724744f4154910d4d7477",
+     "declaration_lines": [
+      132
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/openapi/v1/controller/OpenApiControllerAnnotationParityTest.java",
+     "sha256": "0c54dabb2e3eee24efa5b12e2561a549abebb1453a9fca1df21a4ff497d722c5",
+     "declaration_lines": [
+      124
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "controller unit tests verify the @PreAuthorize expression at runtime"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": true
+  },
+  "AQ-047": {
+   "expected": {
+    "context": "@SpringBootTest(classes = {PortalApplication.class, ControllableAuthorizationConfiguration.class}, RANDOM_PORT) with SpringJUnit4ClassRunner: the full portal context on an embedded server",
+    "substitutions": [
+     "@Primary @Bean userInfoHolder(): Mockito mock (coexists with the default holder; @Primary wins)",
+     "@Primary @Bean rolePermissionService() and itemService(): Mockito mocks whose names equal the production beans, so they override those definitions (test application.properties sets spring.main.allow-bean-definition-overriding=true)",
+     "controllableUserAuthenticationFilter (order -98, /*): puts an authenticated \"apollo\" ROLE_USER token into SecurityContextHolder for every non-/openapi request"
+    ],
+    "configuration": [
+     "test-classpath application.properties: H2 in-memory mysql-mode datasource, spring.session.store-type=none, Spring Cloud discovery disabled",
+     "test application.yml: apollo.portal.envs=local, port 8070",
+     "no auth profile: DefaultAuthAutoConfiguration and DefaultWebSecurityConfig (method security still enabled)",
+     "System.setProperty(\"spring.profiles.active\", \"test\") runs in @PostConstruct, after the context exists, so it does not affect this context"
+    ],
+    "what_it_checks": "@PreAuthorize on the portal web item endpoint denies (403) or allows depending on the mocked hasAnyPermission",
+    "not_checked": [
+     "real login, Spring Security auth profile, JdbcUserDetailsManager",
+     "real permission tables and DefaultRolePermissionService",
+     "ItemService and admin-service calls (mocked)",
+     "OpenAPI consumer/user-token filters"
+    ]
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/portal/controller/ItemControllerAuthIntegrationTest.java",
+     "sha256": "55681b97a622ae3aa0b45e641e226fce20347aab1cf6ae392b3c7f5b3350f9dc",
+     "declaration_lines": [
+      55,
+      79,
+      105
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/ControllableAuthorizationConfiguration.java",
+     "sha256": "ba9bae52842d3357c76458103c4b33749a839e8dc618787c0187c359350b8f65",
+     "declaration_lines": [
+      49,
+      57,
+      80
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/resources/application.properties",
+     "sha256": "893067db2f7f4de55b557aeadcbabfd3cb2938975eb0cf5a548b7eb2c27fc04e",
+     "declaration_lines": [
+      32,
+      33
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the test runs with the auth profile",
+    "it uses @MockBean/@MockitoBean for these substitutions"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-048": {
+   "expected": {
+    "origin": "generated by openapi-generator-maven-plugin 7.20.0 (generatorName spring, interfaceOnly, useTags, useSpringBoot4) in apollo-portal generate-sources into target/generated-sources/openapi; build-helper-maven-plugin adds it to sources",
+    "input": "apollo.openapi.spec.url = https://raw.githubusercontent.com/apolloconfig/apollo-openapi/v0.3.12/apollo-openapi.yaml (external repository apolloconfig/apollo-openapi; this fixture pins a local copy through .mvn/maven.config)",
+    "handwritten_side": "openapi.v1.controller.ReleaseController implements ReleaseManagementApi and carries the behaviour, @PreAuthorize and validation",
+    "change_instead": [
+     "the OpenAPI spec (new version in apolloconfig/apollo-openapi) and the spec URL/version in apollo-portal/pom.xml",
+     "plugin configOptions in apollo-portal/pom.xml",
+     "the implementing controller"
+    ],
+    "not_tracked": "target/ is git-ignored; the file carries \"Do not edit the class manually\""
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/pom.xml",
+     "sha256": "71d3d8c4ef4a881ea98996debf83133be2096e1a68b3aa111fe25dfeb18b0949",
+     "declaration_lines": [
+      29,
+      153,
+      164,
+      166,
+      170,
+      272
+     ]
+    },
+    {
+     "path": "pom.xml",
+     "sha256": "f532ad8bfd2642f1014112763d8a60e5f19de87a141bee1fccd81c0cd558a05d",
+     "declaration_lines": [
+      88
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      55
+     ]
+    }
+   ],
+   "framework_evidence": [
+    {
+     "artifact": "generated",
+     "class": "apollo-portal/target/generated-sources/openapi/src/main/java/com/ctrip/framework/apollo/openapi/api/ReleaseManagementApi.java (generated, not tracked)",
+     "fact": "header \"auto generated by OpenAPI Generator (7.20.0) ... Do not edit\""
+    }
+   ],
+   "forbidden_claims": [
+    "ReleaseManagementApi is a tracked source file",
+    "edit the generated interface to change the route"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  },
+  "AQ-049": {
+   "expected": {
+    "patch": "rename private getDelegate() to resolveDelegate() in UnifiedPermissionValidator: 1 declaration and 18 call sites, all in that file; no other class references it (private)",
+    "behavior_preserved": "delegation by UserIdentityContextHolder auth type (USER, USER_TOKEN, CONSUMER) and IllegalStateException for unknown types unchanged",
+    "narrow_tests": [
+     "UnifiedPermissionValidatorTest (existing; may be extended to assert the unknown-type exception)"
+    ],
+    "reference_result": {
+     "baseline": "UnifiedPermissionValidatorTest 12/12, ReleaseBranchInstanceControllerTest 53/53 passed",
+     "reference_rename": "same 12/12 and 53/53 passed after the rename (mvnw -o -pl apollo-portal -am test)",
+     "diff": "1 file, 19 lines changed"
+    }
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidator.java",
+     "sha256": "0930929f6558d45f72f14eb71ce86004ef77ea9116217f210594d8aa22f44edb",
+     "declaration_lines": [
+      40,
+      51
+     ]
+    },
+    {
+     "path": "apollo-portal/src/test/java/com/ctrip/framework/apollo/portal/component/UnifiedPermissionValidatorTest.java",
+     "sha256": "ba3148c95fa71be44ba3c89943cd77883af289cd63a541cd061396200c4f5c58",
+     "declaration_lines": [
+      46
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "reference patch is the model result",
+    "callers outside UnifiedPermissionValidator need edits"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": true
+  },
+  "AQ-050": {
+   "expected": {
+    "step_facts": {
+     "1": "POST /openapi/v1/envs/{env}/apps/{appId}/clusters/{clusterName}/namespaces/{namespaceName}/releases -> openapi.v1.controller.ReleaseController#createRelease (route declared on generated ReleaseManagementApi)",
+     "2": {
+      "releaseService": "portal ReleaseService (@Service, unique)",
+      "userInfoHolder": "springSecurityUserInfoHolder (auth profile)",
+      "unifiedPermissionValidator": "by bean name in @PreAuthorize SpEL and by type in the constructor; delegates by auth type",
+      "publisher": "the ApplicationContext (resolvable dependency)",
+      "userService": "springSecurityUserService (only used for consumer operators)"
+     },
+     "3": {
+      "emergencyPublish.supported.envs": "PortalConfig, default empty, PortalDB ServerConfig via DBConfig (lowest precedence)",
+      "superAdmin": "PortalConfig super admins short-circuit permission checks",
+      "spring.profiles.active": "github,auth decides the security chain and UserInfoHolder/UserService beans"
+     },
+     "4": {
+      "direct_calls": "createRelease -> toReleaseModel/resolveOperator -> checkEmergencyPublishAllowedForUser -> ReleaseService#publish -> AdminServiceAPI.ReleaseAPI#createRelease (HTTP) -> publishEvent",
+      "di_links": "constructor-injected ReleaseService, UserService, NamespaceBranchService, UnifiedPermissionValidator, PortalConfig, UserInfoHolder, ApplicationEventPublisher",
+      "conditional_runtime": [
+       "auth type from UserTypeResolverFilter selects the permission delegate and operator resolution",
+       "emergency flag + env list",
+       "ConfigPublishListener runs asynchronously after the event"
+      ]
+     },
+     "5": "portal ReleaseService#publish(NamespaceReleaseModel) is public; direct Java callers: openapi ReleaseController (createRelease, createGrayRelease) and deprecated portal ReleaseController (createRelease, createGrayRelease); tests that stub it; plan only",
+     "6": {
+      "candidates": [
+       "ReleaseBranchInstanceControllerTest (stubs ReleaseService#publish for the openapi release endpoints)",
+       "ApolloOpenApiJavaClientCompatibilityTest (Spring context, stubs publish)",
+       "portal ReleaseControllerTest"
+      ],
+      "absent": "there is no portal ReleaseServiceTest (apollo-biz ReleaseServiceTest covers the adminservice-side service)",
+      "gap": "no test drives the full route through filters, method security and the admin HTTP call"
+     }
+    },
+    "consistent_bindings": {
+     "entrypoint": "com.ctrip.framework.apollo.openapi.v1.controller.ReleaseController#createRelease",
+     "service": "com.ctrip.framework.apollo.portal.service.ReleaseService",
+     "method": "com.ctrip.framework.apollo.portal.service.ReleaseService#publish(NamespaceReleaseModel)"
+    },
+    "cross_step_consistency": "same controller/service/method throughout; must not drift to the adminservice ReleaseController or the publish(NamespaceGrayDelReleaseModel, String) overload",
+    "change_plan": "plan only; direct callers, both controllers, stubs in tests; no production mutation"
+   },
+   "evidence": [
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/openapi/v1/controller/ReleaseController.java",
+     "sha256": "bce7c51c95eb780014d47fadb6ea2b1792db29c9766faf13ff4d81bc82fcfde3",
+     "declaration_lines": [
+      139,
+      148
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/controller/ReleaseController.java",
+     "sha256": "bc0b0d9adc5ad97c2a0ea84d9a8867b46ad75a1a89e7881ec16a46092256d41d",
+     "declaration_lines": [
+      92
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/ReleaseService.java",
+     "sha256": "d56e768ccb6a859f94be40315f93800589347150dd7d6cdb69db0520108f128b",
+     "declaration_lines": [
+      57,
+      75
+     ]
+    },
+    {
+     "path": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/component/config/PortalConfig.java",
+     "sha256": "45b6e2334bdc19cbc7894c5bed25e741bfa3f9559662b502f87a3fbd6653e45c",
+     "declaration_lines": [
+      125
+     ]
+    }
+   ],
+   "framework_evidence": [],
+   "forbidden_claims": [
+    "the operation writes the release in the portal database",
+    "adminservice ReleaseController#publish is the entry point"
+   ],
+   "limitations": [],
+   "review_basis": "Inspected source at the pinned revision, tracked-file inventories and javap of packaged framework jars; no Quill answer used.",
+   "runtime_proven": false
+  }
+ }
+}

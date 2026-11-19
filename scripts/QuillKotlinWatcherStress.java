@@ -1,4 +1,4 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.project;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -36,8 +36,8 @@ public final class WorkspaceInitCommand implements Callable<Integer> {
     boolean probeMcp;
 
     @Option(names = "--allow-quill-tools", negatable = true,
-            description = "Allow current read-only Quill tools in local Claude permissions; "
-                    + "--no-allow-quill-tools skips the interactive consent question")
+            description = "Allow current read-only Quill tools in local Claude permissions (default); "
+                    + "--no-allow-quill-tools skips these grants")
     Boolean allowQuillTools;
 
     @Override

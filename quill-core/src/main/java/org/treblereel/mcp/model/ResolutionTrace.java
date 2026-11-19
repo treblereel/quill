@@ -4,8 +4,8 @@ import java.util.List;
 
 public record ResolutionTrace(
         List<ResolutionCandidate> candidates,
-        List<String> appliedRules,
-        List<String> unsupportedRules
+        List<ResolutionRule> appliedRules,
+        List<ResolutionRule> unsupportedRules
 ) {
     public static final ResolutionTrace EMPTY = new ResolutionTrace(
             List.of(), List.of(), List.of());

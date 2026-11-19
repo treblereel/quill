@@ -115,6 +115,15 @@
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <executions><execution>
+                    <id>test-fixtures</id><phase>test-compile</phase><goals><goal>test-jar</goal></goals>
+                    <configuration><includes><include>org/treblereel/mcp/db/IndexFixture.class</include></includes></configuration>
+                </execution></executions>
+            </plugin>
         </plugins>
     </build>
 </project>

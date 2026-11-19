@@ -13,11 +13,12 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.treblereel.mcp.core.Json;
 
 /** Local, content-free measurements of MCP tool usage for UX evaluation. */
 public final class UxTelemetry {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Object WRITE_LOCK = new Object();
     private static final long MAX_LOG_BYTES = 5L * 1024 * 1024;
     private static volatile Path logFile;
@@ -49,6 +50,15 @@ public final class UxTelemetry {
 
     public static void record(String tool, String routedTool, long durationMillis,
             McpSchema.CallToolResult result) {
+        record(tool, routedTool, durationMillis, result, null, null);
+    }
+
+    /**
+     * @param client "name/version" from MCP initialize, when known
+     * @param model  the model reported by the client for this call, when the client sends one
+     */
+    public static void record(String tool, String routedTool, long durationMillis,
+            McpSchema.CallToolResult result, String client, String model) {
         Path destination = logFile;
         if (destination == null) return;
 
@@ -60,6 +70,8 @@ public final class UxTelemetry {
         event.put("tool_profile", toolProfile);
         event.put("tool", tool);
         if (routedTool != null && !routedTool.isBlank()) event.put("routed_tool", routedTool);
+        if (client != null) event.put("client", client);
+        if (model != null) event.put("model", model);
         event.put("duration_ms", Math.max(0, durationMillis));
         event.put("response_bytes", responseBytes(result));
         event.put("status", Boolean.TRUE.equals(result.isError()) ? "error" : "ok");
@@ -91,6 +103,7 @@ public final class UxTelemetry {
             try {
                 return JSON.readTree(text.text());
             } catch (Exception ignored) {
+                QuillLog.swallowed(ignored);
                 return JSON.createObjectNode();
             }
         }
@@ -112,6 +125,7 @@ public final class UxTelemetry {
             }
             return bytes;
         } catch (Exception ignored) {
+            QuillLog.swallowed(ignored);
             return 0;
         }
     }

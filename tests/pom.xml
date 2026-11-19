@@ -18,4 +18,10 @@
         <module>advanced-spring</module>
         <module>annotation-processing</module>
     </modules>
+    <dependencies>
+        <dependency>
+            <groupId>org.treblereel.mcp</groupId><artifactId>quill-core</artifactId>
+            <version>${project.version}</version><type>test-jar</type><classifier>tests</classifier><scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

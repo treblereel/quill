@@ -1,0 +1,668 @@
+{
+  "schema_version": 1,
+  "name": "quarkus-langchain4j real repository effectiveness v3",
+  "project_revision": "06bbaf2339353d3d3857581a0001ee569651ed50",
+  "oracle_version": 3,
+  "tracked_inputs_sha256": "26267fda865633d46b904530fe89f22c692bf0a584d0aec152c04ce2b343ec6a",
+  "tasks": [
+    {
+      "id": "langchain4j-v3-annotation-defaults",
+      "category": "local-control",
+      "prompt": "Read core/runtime/src/main/java/io/quarkiverse/langchain4j/RegisterAiService.java. Return annotation defaults model_name, max_tool_round_trips and max_tool_calls_per_response as written in declarations (not effective configuration fallback). Return arrays in lexicographic order without duplicates. Return numeric values as JSON numbers without quotes. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "model_name": "<default>",
+        "max_tool_round_trips": 0,
+        "max_tool_calls_per_response": 0
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/RegisterAiService.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/RegisterAiService.java": "27ec24ff4646734e851170c8e763c9fbd210911c9cc06e15e9da47fb2ab358a8"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/RegisterAiService.java",
+            "text": "String modelName() default \"<default>\";"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/RegisterAiService.java",
+            "text": "int maxToolCallingRoundTrips() default 0;"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/RegisterAiService.java",
+            "text": "int maxToolCallsPerResponse() default 0;"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-default-name",
+      "category": "local-control",
+      "prompt": "In io.quarkiverse.langchain4j.runtime.NamedConfigUtil, return default_name (literal DEFAULT_NAME) and null_is_default (result of isDefault(null)). Return arrays in lexicographic order without duplicates. Return boolean values as JSON true/false without quotes. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "default_name": "<default>",
+        "null_is_default": false
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/NamedConfigUtil.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/NamedConfigUtil.java": "0ed177cb161020d9b5dc0a5deebd92970295195763f1e3a7022a8bf52b79ce52"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/NamedConfigUtil.java",
+            "text": "return DEFAULT_NAME.equals(configName);"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-transport-enum",
+      "category": "local-control",
+      "prompt": "List all constants declared by io.quarkiverse.langchain4j.mcp.runtime.config.McpTransportType as transports. Return arrays in lexicographic order without duplicates. The values of transports must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "transports": [
+          "HTTP",
+          "STDIO",
+          "STREAMABLE_HTTP",
+          "WEBSOCKET"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "mcp/runtime/src/main/java/io/quarkiverse/langchain4j/mcp/runtime/config/McpTransportType.java"
+        ],
+        "source_sha256": {
+          "mcp/runtime/src/main/java/io/quarkiverse/langchain4j/mcp/runtime/config/McpTransportType.java": "2074a3b8f28eb375fbf9ae8e482a44054d850c61c791d58936ff0a2d95f0414a"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-openai-defaults",
+      "category": "configuration",
+      "prompt": "Read model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/config/LangChain4jOpenAiConfig.java. Return config_prefix from @ConfigMapping, and declared OpenAiConfig base_url and max_retries defaults. Return max_retries as an integer. Return arrays in lexicographic order without duplicates. Return numeric values as JSON numbers without quotes. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "config_prefix": "quarkus.langchain4j.openai",
+        "base_url": "https://api.openai.com/v1/",
+        "max_retries": 1
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/config/LangChain4jOpenAiConfig.java"
+        ],
+        "source_sha256": {
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/config/LangChain4jOpenAiConfig.java": "8db86e08ababccd9fc2c43e52f2ea4d73a801d618f5297095f9a8d66ce105afc"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/config/LangChain4jOpenAiConfig.java",
+            "text": "@WithDefault(\"https://api.openai.com/v1/\")"
+          },
+          {
+            "file": "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/config/LangChain4jOpenAiConfig.java",
+            "text": "@WithDefault(\"1\")"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-flush-strategies",
+      "category": "local-control",
+      "prompt": "List the enum constants of io.quarkiverse.langchain4j.runtime.aiservice.ChatMemoryFlushStrategy as strategies. Return arrays in lexicographic order without duplicates. The values of strategies must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "strategies": [
+          "DEFERRED",
+          "IMMEDIATE"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/aiservice/ChatMemoryFlushStrategy.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/aiservice/ChatMemoryFlushStrategy.java": "37dabe75d3581420f4a4ba4364b16028777c3ba6372cfef198af99ea04e63215"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-cost-fallback",
+      "category": "execution-flow",
+      "prompt": "For io.quarkiverse.langchain4j.cost.CostEstimatorService: return no_estimate when no estimator produces a result, and absent_usage_input_tokens and absent_usage_output_tokens when TokenUsage is null. Use JSON null for the first and integers for the others. Return arrays in lexicographic order without duplicates. Return numeric values as JSON numbers without quotes. Write null as the JSON literal null, never as a quoted string. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "no_estimate": null,
+        "absent_usage_input_tokens": 0,
+        "absent_usage_output_tokens": 0
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java": "c593b47e9c01d36b5f4c6ecd3fd7e00b8f8057a52bf3a065fa74ae5d6b214473"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java",
+            "text": "return null;"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java",
+            "text": "return tokenUsage != null ? tokenUsage.inputTokenCount() : 0;"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java",
+            "text": "return tokenUsage != null ? tokenUsage.outputTokenCount() : 0;"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-customizer-order",
+      "category": "execution-flow",
+      "prompt": "Inspect io.quarkiverse.langchain4j.ModelBuilderCustomizer. Return default_priority as integer and sort_order as exactly ascending or descending by numeric priority when applyCustomizers sorts the list. Return arrays in lexicographic order without duplicates. Return numeric values as JSON numbers without quotes. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "default_priority": 0,
+        "sort_order": "descending"
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/ModelBuilderCustomizer.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/ModelBuilderCustomizer.java": "381de01175728072d7b3a1add6848d236e2575e5120bedc0b945acbf09db9bbd"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/ModelBuilderCustomizer.java",
+            "text": "int DEFAULT_PRIORITY = 0;"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/ModelBuilderCustomizer.java",
+            "text": "return Integer.compare(o.priority(), priority());"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/ModelBuilderCustomizer.java",
+            "text": "customizers.sort(null);"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-toolbox-target",
+      "category": "local-control",
+      "prompt": "For io.quarkiverse.langchain4j.ToolBox, return targets as the simple ElementType constant names in @Target and retention as the simple RetentionPolicy constant. Return arrays in lexicographic order without duplicates. The values of targets must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "targets": [
+          "METHOD"
+        ],
+        "retention": "RUNTIME"
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/ToolBox.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/ToolBox.java": "44a29874e0ddf9bd44c8b647c104be2c4961af3de24f4b0e4025b70f1d648c5f"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/ToolBox.java",
+            "text": "@Target({ METHOD })"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/ToolBox.java",
+            "text": "@Retention(RUNTIME)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-cost-implementations",
+      "category": "type-hierarchy",
+      "prompt": "Across production src/main/java in this repository, find every public top-level class that directly implements io.quarkiverse.langchain4j.cost.CostEstimator. Return classes. Exclude test sources, nested classes and external dependencies. Return arrays in lexicographic order without duplicates. For this question, src/main/java includes integration-tests, samples and inactive Maven-profile modules; exclude src/test/java directories. The values of classes must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. observed.classes must contain fully qualified class names as strings. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "classes": [
+          "io.quarkiverse.langchain4j.openai.runtime.cost.BasicE3BigCostEstimator",
+          "io.quarkiverse.langchain4j.openai.runtime.cost.BasicE3SmallCostEstimator",
+          "io.quarkiverse.langchain4j.openai.runtime.cost.BasicGpt4oCostEstimator",
+          "io.quarkiverse.langchain4j.openai.runtime.cost.BasicGpt4oMiniCostEstimator",
+          "io.quarkiverse.langchain4j.openai.runtime.cost.BasicO1MiniCostEstimator",
+          "io.quarkiverse.langchain4j.openai.runtime.cost.BasicO1PreviewCostEstimator"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicE3BigCostEstimator.java",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicE3SmallCostEstimator.java",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicGpt4oCostEstimator.java",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicGpt4oMiniCostEstimator.java",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicO1MiniCostEstimator.java",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicO1PreviewCostEstimator.java"
+        ],
+        "source_sha256": {
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicE3BigCostEstimator.java": "bd979ccf564c65bd3b2a15ddab683fc99dc48d4606bc08909f806afa2d91a451",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicE3SmallCostEstimator.java": "a7f479b4640395bfdb95c1bf4d9582e3ad112c148344fc97a769998919d7a065",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicGpt4oCostEstimator.java": "28db6cb8f842969770b8dd7ed650ad5bc682d8629d9fce82a547c31c28f39125",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicGpt4oMiniCostEstimator.java": "594c785f532d13bdc686b434abe295836e7e71cb5402a5f3064f36b7ca82b14f",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicO1MiniCostEstimator.java": "b10fa9353731ae0a56714e1dc8e5567de49bc03b32cbbfd601b1ee7d617b4405",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/cost/BasicO1PreviewCostEstimator.java": "71c59d84d7cc2e5464616fde95fe904775d777cd75e8773c890b76c8f706749b"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-auth-implementations",
+      "category": "type-hierarchy",
+      "prompt": "Across production src/main/java, find all public top-level classes directly implementing io.quarkiverse.langchain4j.auth.ModelAuthProvider. Exclude nested classes, its Input subinterface and tests. Return classes. Return arrays in lexicographic order without duplicates. For this question, src/main/java includes integration-tests, samples and inactive Maven-profile modules; exclude src/test/java directories. The values of classes must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. observed.classes must contain fully qualified class names as strings. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "classes": [
+          "io.quarkiverse.langchain4j.oidc.runtime.OidcModelAuthProvider",
+          "org.acme.example.gemini.aiservices.DummyAuthProvider"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "integration-tests/vertex-ai-gemini/src/main/java/org/acme/example/gemini/aiservices/DummyAuthProvider.java",
+          "model-auth-providers/oidc-model-auth-provider/runtime/src/main/java/io/quarkiverse/langchain4j/oidc/runtime/OidcModelAuthProvider.java"
+        ],
+        "source_sha256": {
+          "integration-tests/vertex-ai-gemini/src/main/java/org/acme/example/gemini/aiservices/DummyAuthProvider.java": "ecaaae62434e61d2756a1abfa5d573c5213ca7518cb0c733a35090b4da9be4c9",
+          "model-auth-providers/oidc-model-auth-provider/runtime/src/main/java/io/quarkiverse/langchain4j/oidc/runtime/OidcModelAuthProvider.java": "f5c2d96f7262d63fa582cb488ebe779a34c9b05cf71f3d1a676efee92a085c83"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-scope-test-subclasses",
+      "category": "test-hierarchy",
+      "prompt": "Within model-providers/openai/openai-vanilla/deployment/src/test/java, list all direct subclasses of org.acme.examples.aiservices.ToolsScopeTestBase as classes. Include only source declarations. Return arrays in lexicographic order without duplicates. The values of classes must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. observed.classes must contain fully qualified class names as strings. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "classes": [
+          "org.acme.examples.aiservices.ToolsApplicationScopedTest",
+          "org.acme.examples.aiservices.ToolsApplicationScopedWithInterceptorTest",
+          "org.acme.examples.aiservices.ToolsDependentTest",
+          "org.acme.examples.aiservices.ToolsRequestScopeTest",
+          "org.acme.examples.aiservices.ToolsSingletonTest"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsApplicationScopedTest.java",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsApplicationScopedWithInterceptorTest.java",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsDependentTest.java",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsRequestScopeTest.java",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsSingletonTest.java"
+        ],
+        "source_sha256": {
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsApplicationScopedTest.java": "5e48d948ef1f13d1ec836d43135419dee5bc86aa7336d56105d2513ede0bbf02",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsApplicationScopedWithInterceptorTest.java": "d53c2d4a1d33cbbd74ee2fed299abf617658c90c8288e92dea01bdaa63a6789c",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsDependentTest.java": "56d9feb7ce1b96a980f14e8c42d93f835139ac28035b70b12490738e0b68434f",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsRequestScopeTest.java": "845ebcde146f2eba3024e4ad23b417372cebb56635b00801a8c56765d72b8afb",
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/ToolsSingletonTest.java": "8602248596d02d9263cf21e7793cf164dfa3e301393211930195ade419e620f2"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-remover-call-files",
+      "category": "symbol-usages",
+      "prompt": "Within model-providers/openai/openai-vanilla/deployment/src/test/java, find files with actual direct calls to either overload of io.quarkiverse.langchain4j.ChatMemoryRemover.remove. Exclude removeAll, imports, comments and mentions. Return files. Return arrays in lexicographic order without duplicates. The values of files must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. observed.files must contain repository-relative file paths ending in .java, never fully qualified class names. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "files": [
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/CustomChatMemoryStoreTest.java"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/CustomChatMemoryStoreTest.java"
+        ],
+        "source_sha256": {
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/org/acme/examples/aiservices/CustomChatMemoryStoreTest.java": "4af5c14393ed6561a909841211a5ee503ce78397fcc1bfa119dace0b8e11090f"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-listener-implementations",
+      "category": "type-hierarchy",
+      "prompt": "Within core/runtime/src/main/java, find all public top-level classes directly implementing dev.langchain4j.model.chat.listener.ChatModelListener. Return classes. Return arrays in lexicographic order without duplicates. The values of classes must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. observed.classes must contain fully qualified class names as strings. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "classes": [
+          "io.quarkiverse.langchain4j.runtime.listeners.MetricsChatModelListener",
+          "io.quarkiverse.langchain4j.runtime.listeners.SpanChatModelListener"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/MetricsChatModelListener.java",
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/SpanChatModelListener.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/MetricsChatModelListener.java": "61d460706f3d69fa0da759fd49c5319057f156e555af4247d834d7689a29a095",
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/SpanChatModelListener.java": "6deaec2b8e3b83505aac372670e50509cef7d68841538bde9299302b06bb67ae"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-customizer-callers",
+      "category": "cross-module-usages",
+      "prompt": "Across production src/main/java in the whole repository, find every source file with a direct static invocation of io.quarkiverse.langchain4j.ModelBuilderCustomizer.applyCustomizers. Exclude tests, comments and declarations. Return files. Return arrays in lexicographic order without duplicates. For this question, src/main/java includes integration-tests, samples and inactive Maven-profile modules; exclude src/test/java directories. The values of files must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. observed.files must contain repository-relative file paths ending in .java, never fully qualified class names. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "files": [
+          "model-providers/anthropic/runtime/src/main/java/io/quarkiverse/langchain4j/anthropic/runtime/AnthropicRecorder.java",
+          "model-providers/bedrock/runtime/src/main/java/io/quarkiverse/langchain4j/bedrock/runtime/BedrockRecorder.java",
+          "model-providers/google/gemini/ai-gemini/runtime/src/main/java/io/quarkiverse/langchain4j/ai/runtime/gemini/AiGeminiRecorder.java",
+          "model-providers/google/vertex-ai-gemini/runtime/src/main/java/io/quarkiverse/langchain4j/vertexai/runtime/gemini/VertexAiGeminiRecorder.java",
+          "model-providers/google/vertex-ai/runtime/src/main/java/io/quarkiverse/langchain4j/vertexai/runtime/VertexAiRecorder.java",
+          "model-providers/hugging-face/runtime/src/main/java/io/quarkiverse/langchain4j/huggingface/runtime/HuggingFaceRecorder.java",
+          "model-providers/jlama/runtime/src/main/java/io/quarkiverse/langchain4j/jlama/runtime/JlamaAiRecorder.java",
+          "model-providers/llama3-java/runtime/src/main/java/io/quarkiverse/langchain4j/llama3/runtime/Llama3Recorder.java",
+          "model-providers/mistral/runtime/src/main/java/io/quarkiverse/langchain4j/mistralai/runtime/MistralAiRecorder.java",
+          "model-providers/ollama/runtime/src/main/java/io/quarkiverse/langchain4j/ollama/runtime/OllamaRecorder.java",
+          "model-providers/openai/azure-openai/runtime/src/main/java/io/quarkiverse/langchain4j/azure/openai/runtime/AzureOpenAiRecorder.java",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/OpenAiRecorder.java",
+          "model-providers/openshift-ai/runtime/src/main/java/io/quarkiverse/langchain4j/openshiftai/runtime/OpenshiftAiRecorder.java",
+          "model-providers/watsonx/runtime/src/main/java/io/quarkiverse/langchain4j/watsonx/runtime/WatsonxRecorder.java"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/anthropic/runtime/src/main/java/io/quarkiverse/langchain4j/anthropic/runtime/AnthropicRecorder.java",
+          "model-providers/bedrock/runtime/src/main/java/io/quarkiverse/langchain4j/bedrock/runtime/BedrockRecorder.java",
+          "model-providers/google/gemini/ai-gemini/runtime/src/main/java/io/quarkiverse/langchain4j/ai/runtime/gemini/AiGeminiRecorder.java",
+          "model-providers/google/vertex-ai-gemini/runtime/src/main/java/io/quarkiverse/langchain4j/vertexai/runtime/gemini/VertexAiGeminiRecorder.java",
+          "model-providers/google/vertex-ai/runtime/src/main/java/io/quarkiverse/langchain4j/vertexai/runtime/VertexAiRecorder.java",
+          "model-providers/hugging-face/runtime/src/main/java/io/quarkiverse/langchain4j/huggingface/runtime/HuggingFaceRecorder.java",
+          "model-providers/jlama/runtime/src/main/java/io/quarkiverse/langchain4j/jlama/runtime/JlamaAiRecorder.java",
+          "model-providers/llama3-java/runtime/src/main/java/io/quarkiverse/langchain4j/llama3/runtime/Llama3Recorder.java",
+          "model-providers/mistral/runtime/src/main/java/io/quarkiverse/langchain4j/mistralai/runtime/MistralAiRecorder.java",
+          "model-providers/ollama/runtime/src/main/java/io/quarkiverse/langchain4j/ollama/runtime/OllamaRecorder.java",
+          "model-providers/openai/azure-openai/runtime/src/main/java/io/quarkiverse/langchain4j/azure/openai/runtime/AzureOpenAiRecorder.java",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/OpenAiRecorder.java",
+          "model-providers/openshift-ai/runtime/src/main/java/io/quarkiverse/langchain4j/openshiftai/runtime/OpenshiftAiRecorder.java",
+          "model-providers/watsonx/runtime/src/main/java/io/quarkiverse/langchain4j/watsonx/runtime/WatsonxRecorder.java"
+        ],
+        "source_sha256": {
+          "model-providers/anthropic/runtime/src/main/java/io/quarkiverse/langchain4j/anthropic/runtime/AnthropicRecorder.java": "86bf3f720f99bf5c43b4bb64fe5d3f334a588656bdb98c5c64ea71e804f551cb",
+          "model-providers/bedrock/runtime/src/main/java/io/quarkiverse/langchain4j/bedrock/runtime/BedrockRecorder.java": "04132e34a856abf17a8fa6b3cd3641f828b0b76cf605afe94225e59eef61571a",
+          "model-providers/google/gemini/ai-gemini/runtime/src/main/java/io/quarkiverse/langchain4j/ai/runtime/gemini/AiGeminiRecorder.java": "12a50ca1cc246890daf15f42ed7878d69c4dcb796f916101ac854502644fdf25",
+          "model-providers/google/vertex-ai-gemini/runtime/src/main/java/io/quarkiverse/langchain4j/vertexai/runtime/gemini/VertexAiGeminiRecorder.java": "e0a722c4c45dc365f54821e73ef6aa096bb2b81f04df7d9dac663fff40a5c276",
+          "model-providers/google/vertex-ai/runtime/src/main/java/io/quarkiverse/langchain4j/vertexai/runtime/VertexAiRecorder.java": "9cca09f93b162e37b019cefaa2f40a1a8187d1112ab13010a01e380bf3146f12",
+          "model-providers/hugging-face/runtime/src/main/java/io/quarkiverse/langchain4j/huggingface/runtime/HuggingFaceRecorder.java": "485175516c3da2a8dda7b65de304972adfd3c927a95c1a153cf17acb715adfed",
+          "model-providers/jlama/runtime/src/main/java/io/quarkiverse/langchain4j/jlama/runtime/JlamaAiRecorder.java": "5273e74a1301efc2455aa9e08d576f2eeeb5ee448d22dbd1b03dd67b3bf552aa",
+          "model-providers/llama3-java/runtime/src/main/java/io/quarkiverse/langchain4j/llama3/runtime/Llama3Recorder.java": "745fde972d58ee510635151513eb31264a0ce8fe9c7482f0d9e4c30b7ab20f7d",
+          "model-providers/mistral/runtime/src/main/java/io/quarkiverse/langchain4j/mistralai/runtime/MistralAiRecorder.java": "6883c2dc6de40618c22c8efb4cfe6101effea92c9d6dcd0d623a26115ef5e9b2",
+          "model-providers/ollama/runtime/src/main/java/io/quarkiverse/langchain4j/ollama/runtime/OllamaRecorder.java": "8de01b918bb334ad51709c40c4c2c0c9e5c5523150f1c8c828855cc4220dd91e",
+          "model-providers/openai/azure-openai/runtime/src/main/java/io/quarkiverse/langchain4j/azure/openai/runtime/AzureOpenAiRecorder.java": "ca05048f3620ab2bd51cc296150bb416e95ebe7206a655cf2364e7b03013dcaf",
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/OpenAiRecorder.java": "0bfd4d82a5c971f105a8d3eeb878e85ec4896df09f6eceeee8291400435b74c8",
+          "model-providers/openshift-ai/runtime/src/main/java/io/quarkiverse/langchain4j/openshiftai/runtime/OpenshiftAiRecorder.java": "ae14622ac36bb5a2d56e420431b7a63fe39614351774ed1090cfcd0ec7b57036",
+          "model-providers/watsonx/runtime/src/main/java/io/quarkiverse/langchain4j/watsonx/runtime/WatsonxRecorder.java": "b7d88e55fe4eec8ec15c68a50b81609110baec31aecb76460c092e97e8442711"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-cost-callers",
+      "category": "symbol-usages",
+      "prompt": "Within core/runtime/src/main/java, find all source files that directly call CostEstimatorService.estimate(ChatModelResponseContext). Return files; exclude imports and constructor injection without a call. Return arrays in lexicographic order without duplicates. The values of files must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. observed.files must contain repository-relative file paths ending in .java, never fully qualified class names. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/MetricsChatModelListener.java",
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/SpanChatModelListener.java"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/MetricsChatModelListener.java",
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/SpanChatModelListener.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/MetricsChatModelListener.java": "61d460706f3d69fa0da759fd49c5319057f156e555af4247d834d7689a29a095",
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/runtime/listeners/SpanChatModelListener.java": "6deaec2b8e3b83505aac372670e50509cef7d68841538bde9299302b06bb67ae"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-cost-service-injection",
+      "category": "dependency-injection",
+      "prompt": "For the constructor of io.quarkiverse.langchain4j.cost.CostEstimatorService return bean_scope as its fully qualified scope annotation, collection_qualifier as the fully qualified constructor parameter annotation selecting all estimators, and element_type as the fully qualified collection element interface. Return arrays in lexicographic order without duplicates. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "bean_scope": "jakarta.inject.Singleton",
+        "collection_qualifier": "io.quarkus.arc.All",
+        "element_type": "io.quarkiverse.langchain4j.cost.CostEstimator"
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimator.java",
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimator.java": "995828c46e8b6365d7c2001e80fd436f6470119b54aeeb50aed79bd2ce1d92d4",
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java": "c593b47e9c01d36b5f4c6ecd3fd7e00b8f8057a52bf3a065fa74ae5d6b214473"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/cost/CostEstimatorService.java",
+            "text": "public CostEstimatorService(@All List<CostEstimator> costEstimators)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-auth-injection",
+      "category": "dependency-injection",
+      "prompt": "Inspect io.quarkiverse.langchain4j.oidc.runtime.OidcModelAuthProvider. Return injected_type as the fully qualified Instance element type, authorization_prefix including its trailing space, and unresolved_result when the injected Instance is not resolvable. Return arrays in lexicographic order without duplicates. Write null as the JSON literal null, never as a quoted string. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "injected_type": "io.quarkus.security.credential.TokenCredential",
+        "authorization_prefix": "Bearer ",
+        "unresolved_result": null
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-auth-providers/oidc-model-auth-provider/runtime/src/main/java/io/quarkiverse/langchain4j/oidc/runtime/OidcModelAuthProvider.java"
+        ],
+        "source_sha256": {
+          "model-auth-providers/oidc-model-auth-provider/runtime/src/main/java/io/quarkiverse/langchain4j/oidc/runtime/OidcModelAuthProvider.java": "f5c2d96f7262d63fa582cb488ebe779a34c9b05cf71f3d1a676efee92a085c83"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-mcp-qualifier",
+      "category": "dependency-injection",
+      "prompt": "Inspect io.quarkiverse.langchain4j.mcp.runtime.McpClientName. Return qualifier (is it annotated with jakarta.inject.Qualifier), repeatable_container (fully qualified annotation type), and literal_class (fully qualified nested Literal class, using a dot). Return arrays in lexicographic order without duplicates. Return boolean values as JSON true/false without quotes. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "qualifier": true,
+        "repeatable_container": "io.quarkiverse.langchain4j.mcp.runtime.McpClientNames",
+        "literal_class": "io.quarkiverse.langchain4j.mcp.runtime.McpClientName.Literal"
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "mcp/runtime/src/main/java/io/quarkiverse/langchain4j/mcp/runtime/McpClientName.java",
+          "mcp/runtime/src/main/java/io/quarkiverse/langchain4j/mcp/runtime/McpClientNames.java"
+        ],
+        "source_sha256": {
+          "mcp/runtime/src/main/java/io/quarkiverse/langchain4j/mcp/runtime/McpClientName.java": "824eb31952540f00e472158599661e635ab8d651207bd62f1eb625e2f50d3331",
+          "mcp/runtime/src/main/java/io/quarkiverse/langchain4j/mcp/runtime/McpClientNames.java": "c7e28d0ecb6200a6054c04379632dc338b60acc84fe239204f1d059de98e2b4c"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-mcp-module-dependencies",
+      "category": "module-graph",
+      "prompt": "In mcp/runtime/pom.xml, return direct_project_dependencies: artifactIds of direct dependencies declared in project/dependencies with groupId io.quarkiverse.langchain4j and compile scope (explicit or default). Exclude parent, dependencyManagement, plugins, test dependencies and transitive dependencies. Return arrays in lexicographic order without duplicates. The values of direct_project_dependencies must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "direct_project_dependencies": [
+          "quarkus-langchain4j-core",
+          "quarkus-langchain4j-jaxrs-client"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "mcp/runtime/pom.xml"
+        ],
+        "source_sha256": {
+          "mcp/runtime/pom.xml": "a5d5c7c8c9a0895fad6e68abfcb9513ba4b6785c5ef6fffaa2199a2637c488bc"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-openai-module-dependencies",
+      "category": "module-graph",
+      "prompt": "In model-providers/openai/openai-vanilla/runtime/pom.xml, return direct_project_dependencies: artifactIds of direct dependencies declared in project/dependencies with groupId io.quarkiverse.langchain4j and compile scope (explicit or default). Exclude parent, dependencyManagement, plugins, test dependencies and transitive dependencies. Return arrays in lexicographic order without duplicates. The values of direct_project_dependencies must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "direct_project_dependencies": [
+          "quarkus-langchain4j-openai-common"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/openai/openai-vanilla/runtime/pom.xml"
+        ],
+        "source_sha256": {
+          "model-providers/openai/openai-vanilla/runtime/pom.xml": "f3306e1d8c1305de9dae564cc171ea978ec43dbd726a6a996fcafb92433bfbaf"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-provider-module-inventory",
+      "category": "module-graph",
+      "prompt": "From model-providers/pom.xml return modules as the exact direct module path strings in its modules element. Do not recurse into nested aggregators. Return arrays in lexicographic order without duplicates. The values of modules must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "modules": [
+          "anthropic",
+          "bedrock",
+          "cohere",
+          "google/gemini/ai-gemini",
+          "google/gemini/gemini-common",
+          "google/vertex-ai",
+          "google/vertex-ai-gemini",
+          "hugging-face",
+          "jaxrs-client",
+          "mistral",
+          "ollama",
+          "openai/azure-openai",
+          "openai/openai-common",
+          "openai/openai-vanilla",
+          "openai/testing-internal",
+          "openshift-ai",
+          "watsonx"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/pom.xml"
+        ],
+        "source_sha256": {
+          "model-providers/pom.xml": "96168d001b39300e58c1cbb66a74633fc5b63a334e29db4ce05a729e88f69700"
+        },
+        "asserted_source_fragments": []
+      }
+    },
+    {
+      "id": "langchain4j-v3-priority-test-evidence",
+      "category": "affected-tests",
+      "prompt": "Find the JUnit test in model-providers/openai/openai-vanilla/deployment that explicitly verifies a lower-priority ModelBuilderCustomizer runs last and overrides the model name. Return test as package-qualified Class.method() and asserted_model as the literal model value asserted in its request body. Return arrays in lexicographic order without duplicates. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "test": "io.quarkiverse.langchain4j.openai.test.ModelBuilderCustomizerPriorityTest.lowerPriorityCustomizerRunsLastAndWins()",
+        "asserted_model": "low-priority-model"
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/io/quarkiverse/langchain4j/openai/test/ModelBuilderCustomizerPriorityTest.java"
+        ],
+        "source_sha256": {
+          "model-providers/openai/openai-vanilla/deployment/src/test/java/io/quarkiverse/langchain4j/openai/test/ModelBuilderCustomizerPriorityTest.java": "9efac3744e1d1ae93033605c2130d07ecb961ca34fcedb9df384fbcecbd8a222"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "model-providers/openai/openai-vanilla/deployment/src/test/java/io/quarkiverse/langchain4j/openai/test/ModelBuilderCustomizerPriorityTest.java",
+            "text": "assertThat(body.get(\"model\")).isEqualTo(\"low-priority-model\");"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-remove-overloads",
+      "category": "overload-resolution",
+      "prompt": "For io.quarkiverse.langchain4j.ChatMemoryRemover return signatures of every public static overload named remove (exclude removeAll). Use method(parameterTypes), simple type names, generic arguments as written without spaces; no return type or declaring class. Return arrays in lexicographic order without duplicates. The values of signatures must be JSON arrays of strings, never arrays of objects; do not add paths or metadata unless that key explicitly asks for paths. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "signatures": [
+          "remove(Object,List<Object>)",
+          "remove(Object,Object)"
+        ]
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/ChatMemoryRemover.java"
+        ],
+        "source_sha256": {
+          "core/runtime/src/main/java/io/quarkiverse/langchain4j/ChatMemoryRemover.java": "fe87c998a915398c404593b40fe02b8952f89486313959b4e550eb25cdab9e10"
+        },
+        "asserted_source_fragments": [
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/ChatMemoryRemover.java",
+            "text": "public static void remove(Object aiService, Object memoryId)"
+          },
+          {
+            "file": "core/runtime/src/main/java/io/quarkiverse/langchain4j/ChatMemoryRemover.java",
+            "text": "public static void remove(Object aiService, List<Object> memoryIds)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "langchain4j-v3-unknown-runtime-secret",
+      "category": "dynamic-unknown",
+      "prompt": "From source code alone, determine the actual OpenAI API key configured by an arbitrary deployed user overriding quarkus.langchain4j.openai.api-key. Do not read any secret/env files. Return actual_api_key (JSON null if unknowable) and statically_determined (boolean). The declared dummy fallback is not an actual deployed override. Return arrays in lexicographic order without duplicates. Return boolean values as JSON true/false without quotes. Write null as the JSON literal null, never as a quoted string. Include the mandatory top-level observed wrapper; do not return its contents at the root.",
+      "expected": {
+        "actual_api_key": null,
+        "statically_determined": false
+      },
+      "oracle": {
+        "kind": "independent source/POM review",
+        "source_files": [
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/config/LangChain4jOpenAiConfig.java"
+        ],
+        "source_sha256": {
+          "model-providers/openai/openai-vanilla/runtime/src/main/java/io/quarkiverse/langchain4j/openai/runtime/config/LangChain4jOpenAiConfig.java": "8db86e08ababccd9fc2c43e52f2ea4d73a801d618f5297095f9a8d66ce105afc"
+        },
+        "asserted_source_fragments": []
+      }
+    }
+  ]
+}

@@ -218,7 +218,7 @@ class BeanResolverTest {
         assertTrue(resolved.resolutionTrace().candidates().stream()
                 .anyMatch(candidate -> candidate.beanId() == 1
                         && candidate.disposition() == CandidateDisposition.EXCLUDED
-                        && candidate.reason().equals("DEFAULT_BEAN_SUPPRESSED")));
+                        && candidate.reason() == ResolutionReason.DEFAULT_BEAN_SUPPRESSED));
     }
 
     @Test
@@ -270,7 +270,7 @@ class BeanResolverTest {
         assertTrue(resolved.resolutionTrace().candidates().stream()
                 .anyMatch(candidate -> candidate.beanId() == 2
                         && candidate.disposition() == CandidateDisposition.SELECTED
-                        && candidate.reason().equals("HIGHEST_PRIORITY_ALTERNATIVE")));
+                        && candidate.reason() == ResolutionReason.HIGHEST_PRIORITY_ALTERNATIVE));
     }
 
     interface ConfigManager {}
@@ -323,7 +323,7 @@ class BeanResolverTest {
         assertEquals(List.of("@Default"), injectionPoint.qualifiers(),
                 "An arbitrary annotation must not be treated as a CDI selector");
         assertEquals(ResolutionStatus.UNKNOWN, injectionPoint.resolutionStatus());
-        assertEquals("NO_STATIC_CANDIDATE", injectionPoint.resolutionReason());
+        assertEquals(ResolutionReason.NO_STATIC_CANDIDATE, injectionPoint.resolutionReason());
         assertEquals(InjectionPointRecord.STATIC_CDI,
                 injectionPoint.resolutionStrategy());
         assertEquals(ResolutionConfidence.LOW,
@@ -350,12 +350,12 @@ class BeanResolverTest {
         assertEquals(GeneratedNavigationGraph.class.getName(),
                 className(result, selected));
         assertTrue(injectionPoint.resolutionTrace().appliedRules()
-                .contains("SPECIALIZATION"));
+                .contains(ResolutionRule.SPECIALIZATION));
         assertTrue(injectionPoint.resolutionTrace().candidates().stream()
                 .anyMatch(candidate -> NavigationGraph.class.getName()
                                 .equals(candidate.className())
                         && candidate.disposition() == CandidateDisposition.EXCLUDED
-                        && candidate.reason().equals("SPECIALIZED_BY")
+                        && candidate.reason() == ResolutionReason.SPECIALIZED_BY
                         && candidate.relatedBeanId().equals(selected.id())));
         assertTrue(injectionPoint.resolutionTrace().candidates().stream()
                 .anyMatch(candidate -> GeneratedNavigationGraph.class.getName()

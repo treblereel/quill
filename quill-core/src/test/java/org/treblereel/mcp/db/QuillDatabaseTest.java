@@ -19,7 +19,7 @@ class QuillDatabaseTest {
         Jdbi jdbi = QuillDatabase.create(dbPath);
         jdbi.useHandle(h -> {
             for (String table : new String[]{"classes", "class_annotations", "class_members",
-                    "method_calls", "field_accesses", "beans", "injection_points", "dependencies",
+                    "method_calls", "method_evidence", "field_accesses", "beans", "injection_points", "dependencies",
                     "module_classpath", "configuration_definitions", "configuration_usages",
                     "resource_usages",
                     "metadata"}) {
@@ -66,7 +66,7 @@ class QuillDatabaseTest {
         Jdbi jdbi = QuillDatabase.create(dbPath);
         int version = jdbi.withHandle(h ->
                 h.createQuery("PRAGMA user_version").mapTo(Integer.class).one());
-        assertEquals(QuillDatabase.SCHEMA_VERSION, version);
+        assertEquals(IndexSchema.VERSION, version);
     }
 
     @Test
@@ -75,9 +75,7 @@ class QuillDatabaseTest {
         Jdbi jdbi = QuillDatabase.createForBulkLoad(dbPath);
 
         assertFalse(hasIndex(jdbi, "idx_classes_name"));
-        IndexWriter.WriteTimings timings = IndexWriter.writeFresh(
-                jdbi, List.of(), List.of(), List.of(), List.of(), Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        IndexWriter.WriteTimings timings = IndexWriter.writeFresh(jdbi, new IndexFixture().snapshot());
         assertTrue(hasIndex(jdbi, "idx_classes_name"));
         assertTrue(timings.insertsMillis() >= 0);
         assertTrue(timings.indexesMillis() >= 0);
@@ -119,7 +117,7 @@ class QuillDatabaseTest {
         Jdbi raw = Jdbi.create("jdbc:sqlite:" + dbPath);
         raw.useHandle(h -> h.execute("PRAGMA user_version = 999"));
 
-        var ex = assertThrows(QuillDatabase.SchemaVersionException.class,
+        var ex = assertThrows(IndexSchema.SchemaVersionException.class,
                 () -> QuillDatabase.open(dbPath));
         assertTrue(ex.getMessage().contains("newer Quill"));
     }
@@ -131,13 +129,13 @@ class QuillDatabaseTest {
         Jdbi raw = Jdbi.create("jdbc:sqlite:" + dbPath);
         raw.useHandle(h -> h.execute("PRAGMA user_version = 0"));
 
-        var ex = assertThrows(QuillDatabase.SchemaVersionException.class,
+        var ex = assertThrows(IndexSchema.SchemaVersionException.class,
                 () -> QuillDatabase.open(dbPath));
         assertTrue(ex.getMessage().contains("outdated schema"));
     }
 
     @Test
-    void createRebuildsOlderSchemaInsteadOfMaskingIt() {
+    void createRejectsOlderSchemaWithoutDeletingIt() {
         Path dbPath = tempDir.resolve(".quill/old-rebuild.db");
         QuillDatabase.create(dbPath);
         Jdbi raw = Jdbi.create("jdbc:sqlite:" + dbPath);
@@ -147,15 +145,10 @@ class QuillDatabaseTest {
             h.execute("PRAGMA user_version = 0");
         });
 
-        Jdbi rebuilt = QuillDatabase.create(dbPath);
-        int version = rebuilt.withHandle(h ->
-                h.createQuery("PRAGMA user_version").mapTo(Integer.class).one());
-        boolean staleTableExists = rebuilt.withHandle(h -> h.createQuery(
-                        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='stale_marker'")
-                .mapTo(Integer.class).one() > 0);
-
-        assertEquals(QuillDatabase.SCHEMA_VERSION, version);
-        assertFalse(staleTableExists, "Outdated index must be recreated, not upgraded in place");
+        assertThrows(IndexSchema.SchemaVersionException.class, () -> QuillDatabase.create(dbPath));
+        assertEquals(0, IndexSchema.inspectVersion(dbPath));
+        assertEquals("stale", raw.withHandle(handle -> handle.createQuery("SELECT value FROM stale_marker")
+                .mapTo(String.class).one()));
     }
 
     @Test
@@ -165,7 +158,7 @@ class QuillDatabaseTest {
         Jdbi.create("jdbc:sqlite:" + dbPath)
                 .useHandle(h -> h.execute("PRAGMA user_version = 999"));
 
-        assertThrows(QuillDatabase.SchemaVersionException.class,
+        assertThrows(IndexSchema.SchemaVersionException.class,
                 () -> QuillDatabase.create(dbPath));
     }
 

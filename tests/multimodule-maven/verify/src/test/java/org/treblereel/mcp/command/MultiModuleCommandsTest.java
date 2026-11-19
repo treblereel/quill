@@ -1,5 +1,8 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
@@ -12,7 +15,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.core.ProjectRootFinder;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.BeanRepository;
 import org.treblereel.mcp.db.QuillDatabase;
 
 class MultiModuleCommandsTest {
@@ -94,7 +98,7 @@ class MultiModuleCommandsTest {
 
         Path dbPath = ProjectIndexStore.findDbForHead(PROJECT_ROOT);
         Jdbi jdbi = QuillDatabase.open(dbPath);
-        var classes = IndexReader.findAllClasses(jdbi);
+        var classes = jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findAllClasses());
         assertEquals(5, classes.stream().filter(c -> "main".equals(c.sourceSet())).count(),
                 "Re-index should preserve all main classes");
         assertEquals(classes.size(), classes.stream()
@@ -103,7 +107,7 @@ class MultiModuleCommandsTest {
                 "Re-index should not duplicate main or test classes");
 
         var classIds = classes.stream().map(c -> c.id()).collect(java.util.stream.Collectors.toSet());
-        for (var bean : IndexReader.findBeans(jdbi, null)) {
+        for (var bean : jdbi.withHandle(repositoryHandle2 -> new BeanRepository(repositoryHandle2).findBeans(null))) {
             assertTrue(classIds.contains(bean.classId()),
                     "After re-index, bean classId " + bean.classId() + " must be valid");
         }

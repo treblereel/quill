@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.treblereel.mcp.model.BeanRecord;
+import org.treblereel.mcp.model.BuiltinQualifier;
 import org.treblereel.mcp.model.CandidateDisposition;
 import org.treblereel.mcp.model.ClassOccurrenceRecord;
 import org.treblereel.mcp.model.ClassRecord;
@@ -15,6 +16,9 @@ import org.treblereel.mcp.model.InjectionPointRecord;
 import org.treblereel.mcp.model.ModuleClasspathRecord;
 import org.treblereel.mcp.model.ResolutionCandidate;
 import org.treblereel.mcp.model.ResolutionConfidence;
+import org.treblereel.mcp.model.ResolutionMessages;
+import org.treblereel.mcp.model.ResolutionReason;
+import org.treblereel.mcp.model.ResolutionRule;
 import org.treblereel.mcp.model.ResolutionStatus;
 import org.treblereel.mcp.model.ResolutionTrace;
 
@@ -24,8 +28,10 @@ public final class ApplicationContextResolver {
     private ApplicationContextResolver() {}
 
     public static List<InjectionPointRecord> refine(
-            List<InjectionPointRecord> injectionPoints, List<BeanRecord> beans,
-            List<ClassRecord> classes, List<ClassOccurrenceRecord> occurrences,
+            List<InjectionPointRecord> injectionPoints,
+            List<BeanRecord> beans,
+            List<ClassRecord> classes,
+            List<ClassOccurrenceRecord> occurrences,
             List<ModuleClasspathRecord> moduleClasspath) {
         Map<Integer, BeanRecord> beansById = new HashMap<>();
         beans.forEach(bean -> beansById.put(bean.id(), bean));
@@ -34,64 +40,125 @@ public final class ApplicationContextResolver {
         Map<Integer, Set<String>> modulesByClass = modulesByClass(classesById, occurrences);
         Map<String, Set<String>> visibleByApplication = new LinkedHashMap<>();
         for (ModuleClasspathRecord entry : moduleClasspath) {
-            visibleByApplication.computeIfAbsent(entry.applicationModule(), ignored -> new LinkedHashSet<>())
+            visibleByApplication
+                    .computeIfAbsent(entry.applicationModule(), ignored -> new LinkedHashSet<>())
                     .add(entry.visibleModule());
         }
 
         List<InjectionPointRecord> result = new ArrayList<>(injectionPoints.size());
         for (InjectionPointRecord point : injectionPoints) {
+            if (point.resolutionStatus() == ResolutionStatus.UNSUPPORTED_MECHANISM) {
+                result.add(point);
+                continue;
+            }
             BeanRecord owner = beansById.get(point.beanId());
-            Set<String> ownerModules = owner == null ? Set.of()
-                    : modulesByClass.getOrDefault(owner.classId(), Set.of());
-            List<String> contexts = visibleByApplication.entrySet().stream()
-                    .filter(entry -> entry.getValue().stream().anyMatch(ownerModules::contains))
-                    .map(Map.Entry::getKey).sorted().toList();
+            Set<String> ownerModules =
+                    owner == null
+                            ? Set.of()
+                            : modulesByClass.getOrDefault(owner.classId(), Set.of());
+            List<String> contexts =
+                    visibleByApplication.entrySet().stream()
+                            .filter(
+                                    entry ->
+                                            entry.getValue().stream()
+                                                    .anyMatch(ownerModules::contains))
+                            .map(Map.Entry::getKey)
+                            .sorted()
+                            .toList();
             if (contexts.isEmpty()) {
                 result.add(point);
                 continue;
             }
-            List<InjectionPointRecord> contextual = contexts.stream()
-                    .map(context -> resolve(point, beans, classesById, modulesByClass,
-                            visibleByApplication.get(context), context))
-                    .toList();
+            List<InjectionPointRecord> contextual =
+                    contexts.stream()
+                            .map(
+                                    context ->
+                                            resolve(
+                                                    point,
+                                                    beans,
+                                                    classesById,
+                                                    modulesByClass,
+                                                    visibleByApplication.get(context),
+                                                    context,
+                                                    owner == null
+                                                            ? null
+                                                            : classesById.get(owner.classId())))
+                            .toList();
             InjectionPointRecord first = contextual.getFirst();
-            boolean consistent = contextual.stream().allMatch(candidate -> sameOutcome(first, candidate));
+            boolean consistent =
+                    contextual.stream().allMatch(candidate -> sameOutcome(first, candidate));
             result.add(consistent ? first : contextRequired(point, contexts, contextual));
         }
         return List.copyOf(result);
     }
 
     private static InjectionPointRecord resolve(
-            InjectionPointRecord point, List<BeanRecord> beans,
-            Map<Integer, ClassRecord> classesById, Map<Integer, Set<String>> modulesByClass,
-            Set<String> visibleModules, String context) {
+            InjectionPointRecord point,
+            List<BeanRecord> beans,
+            Map<Integer, ClassRecord> classesById,
+            Map<Integer, Set<String>> modulesByClass,
+            Set<String> visibleModules,
+            String context,
+            ClassRecord ownerClass) {
         boolean spring = InjectionPointRecord.STATIC_SPRING.equals(point.resolutionStrategy());
-        List<BeanRecord> candidates = beans.stream()
-                .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
-                .filter(bean -> modulesByClass.getOrDefault(bean.classId(), Set.of()).stream()
-                        .anyMatch(visibleModules::contains))
-                .filter(bean -> qualifiersMatch(point.qualifiers(), bean.qualifiers(), spring))
-                .toList();
+        if (point.isCdiBuiltin()) return point.asCdiBuiltin();
+        List<BeanRecord> candidates =
+                beans.stream()
+                        .filter(bean -> spring || BeanResolver.injectionCandidate(bean))
+                        .filter(
+                                bean ->
+                                        BeanResolver.hasBeanType(
+                                                bean,
+                                                SpringResolver.lookupType(point.targetType())))
+                        .filter(
+                                bean ->
+                                        modulesByClass
+                                                .getOrDefault(bean.classId(), Set.of())
+                                                .stream()
+                                                .anyMatch(visibleModules::contains))
+                        .filter(
+                                bean ->
+                                        sourceSetVisible(
+                                                ownerClass, classesById.get(bean.classId())))
+                        .filter(
+                                bean ->
+                                        qualifiersMatch(
+                                                point.qualifiers(), bean.qualifiers(), spring))
+                        .toList();
+        if (!spring
+                && candidates.stream()
+                        .anyMatch(b -> b.profiles() != null && !b.profiles().isEmpty()))
+            return BeanResolver.profileContext(point);
         Set<Integer> defaultSuppressed = new LinkedHashSet<>();
         if (spring) {
-            List<BeanRecord> primaries = candidates.stream().filter(BeanRecord::isAlternative).toList();
+            List<BeanRecord> primaries =
+                    candidates.stream().filter(BeanRecord::isAlternative).toList();
             if (candidates.size() > 1 && primaries.size() == 1) candidates = primaries;
         } else {
             candidates = applySpecialization(candidates, point.resolutionTrace());
-            List<BeanRecord> nonDefault = candidates.stream()
-                    .filter(bean -> !bean.isDefault()).toList();
+            List<BeanRecord> nonDefault =
+                    candidates.stream().filter(bean -> !bean.isDefault()).toList();
             if (!nonDefault.isEmpty()) {
-                candidates.stream().filter(BeanRecord::isDefault)
-                        .map(BeanRecord::id).forEach(defaultSuppressed::add);
+                candidates.stream()
+                        .filter(BeanRecord::isDefault)
+                        .map(BeanRecord::id)
+                        .forEach(defaultSuppressed::add);
                 candidates = nonDefault;
             } else if (!candidates.isEmpty()) {
-                int bestDefaultPriority = candidates.stream()
-                        .mapToInt(ApplicationContextResolver::defaultPriority).max().orElseThrow();
-                candidates = candidates.stream()
-                        .filter(bean -> defaultPriority(bean) == bestDefaultPriority).toList();
+                int bestDefaultPriority =
+                        candidates.stream()
+                                .mapToInt(ApplicationContextResolver::defaultPriority)
+                                .max()
+                                .orElseThrow();
+                candidates =
+                        candidates.stream()
+                                .filter(bean -> defaultPriority(bean) == bestDefaultPriority)
+                                .toList();
             }
-            List<BeanRecord> alternatives = candidates.stream()
-                    .filter(bean -> bean.isAlternative() && bean.priority() != null).toList();
+            List<BeanRecord> alternatives =
+                    candidates.stream()
+                            .filter(bean -> bean.isAlternative() && bean.priority() != null)
+                            .toList();
             if (!alternatives.isEmpty()) {
                 int best = alternatives.stream().mapToInt(BeanRecord::priority).max().orElseThrow();
                 candidates = alternatives.stream().filter(bean -> bean.priority() == best).toList();
@@ -100,47 +167,120 @@ public final class ApplicationContextResolver {
             }
         }
 
+        if (spring && candidates.isEmpty() && point.springResolvableProvider() != null)
+            return point.asSpringResolvable();
         Integer selected = candidates.size() == 1 ? candidates.getFirst().id() : null;
-        ResolutionStatus status = selected != null ? ResolutionStatus.RESOLVED
-                : candidates.size() > 1 ? ResolutionStatus.AMBIGUOUS : ResolutionStatus.UNKNOWN;
-        String reason = selected != null ? "UNIQUE_CONTEXT_CANDIDATE"
-                : candidates.size() > 1 ? "MULTIPLE_CONTEXT_CANDIDATES"
-                : "NO_CONTEXT_CANDIDATE";
-        Set<Integer> eligible = candidates.stream().map(BeanRecord::id)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        List<ResolutionCandidate> traceCandidates = beans.stream()
-                .filter(bean -> bean.beanTypes() != null && bean.beanTypes().contains(point.targetType()))
-                .map(bean -> new ResolutionCandidate(bean.id(), className(classesById, bean.classId()),
-                        java.util.Objects.equals(bean.id(), selected) ? CandidateDisposition.SELECTED
-                                : eligible.contains(bean.id()) ? CandidateDisposition.ELIGIBLE
-                                : CandidateDisposition.EXCLUDED,
-                        java.util.Objects.equals(bean.id(), selected) ? "UNIQUE_CONTEXT_CANDIDATE"
-                                : eligible.contains(bean.id()) ? "CONTEXT_CANDIDATE"
-                                : defaultSuppressed.contains(bean.id())
-                                        ? "DEFAULT_BEAN_SUPPRESSED"
-                                : visible(visibleModules, modulesByClass.get(bean.classId()))
-                                        ? "FRAMEWORK_RULE_EXCLUDED" : "MODULE_NOT_VISIBLE",
-                        List.of("APPLICATION_MODULE_CLASSPATH")))
-                .toList();
-        List<String> rules = new ArrayList<>(point.resolutionTrace().appliedRules());
-        if (!rules.contains("APPLICATION_MODULE_CLASSPATH")) rules.add("APPLICATION_MODULE_CLASSPATH");
+        ResolutionStatus status =
+                selected != null
+                        ? ResolutionStatus.RESOLVED
+                        : candidates.size() > 1
+                                ? ResolutionStatus.AMBIGUOUS
+                                : ResolutionStatus.UNKNOWN;
+        ResolutionReason selectedReason =
+                selected != null && candidates.getFirst().isDefault()
+                        ? ResolutionReason.DEFAULT_BEAN_FALLBACK_SELECTED
+                        : ResolutionReason.UNIQUE_CONTEXT_CANDIDATE;
+        ResolutionReason reason =
+                selected != null
+                        ? selectedReason
+                        : candidates.size() > 1
+                                ? ResolutionReason.MULTIPLE_CONTEXT_CANDIDATES
+                                : ResolutionReason.NO_CONTEXT_CANDIDATE;
+        Set<Integer> eligible =
+                candidates.stream()
+                        .map(BeanRecord::id)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        List<ResolutionCandidate> traceCandidates =
+                beans.stream()
+                        .filter(
+                                bean ->
+                                        BeanResolver.hasBeanType(
+                                                bean,
+                                                SpringResolver.lookupType(point.targetType())))
+                        .map(
+                                bean ->
+                                        new ResolutionCandidate(
+                                                bean.id(),
+                                                className(classesById, bean.classId()),
+                                                java.util.Objects.equals(bean.id(), selected)
+                                                        ? CandidateDisposition.SELECTED
+                                                        : eligible.contains(bean.id())
+                                                                ? CandidateDisposition.ELIGIBLE
+                                                                : CandidateDisposition.EXCLUDED,
+                                                java.util.Objects.equals(bean.id(), selected)
+                                                        ? selectedReason
+                                                        : eligible.contains(bean.id())
+                                                                ? ResolutionReason.CONTEXT_CANDIDATE
+                                                                : !spring
+                                                                                && !BeanResolver
+                                                                                        .injectionCandidate(
+                                                                                                bean)
+                                                                        ? ResolutionReason
+                                                                                .NOT_INJECTION_BEAN
+                                                                        : defaultSuppressed
+                                                                                        .contains(
+                                                                                                bean
+                                                                                                        .id())
+                                                                                ? ResolutionReason
+                                                                                        .DEFAULT_BEAN_SUPPRESSED
+                                                                                : visible(
+                                                                                                        visibleModules,
+                                                                                                        modulesByClass
+                                                                                                                .get(
+                                                                                                                        bean
+                                                                                                                                .classId()))
+                                                                                                && sourceSetVisible(
+                                                                                                        ownerClass,
+                                                                                                        classesById
+                                                                                                                .get(
+                                                                                                                        bean
+                                                                                                                                .classId()))
+                                                                                        ? ResolutionReason
+                                                                                                .FRAMEWORK_RULE_EXCLUDED
+                                                                                        : ResolutionReason
+                                                                                                .MODULE_NOT_VISIBLE,
+                                                List.of(
+                                                        ResolutionRule
+                                                                .APPLICATION_MODULE_CLASSPATH)))
+                        .toList();
+        List<ResolutionRule> rules = new ArrayList<>(point.resolutionTrace().appliedRules());
+        if (!spring && !rules.contains(ResolutionRule.CDI_BEAN_KIND))
+            rules.add(ResolutionRule.CDI_BEAN_KIND);
+        if (!rules.contains(ResolutionRule.APPLICATION_MODULE_CLASSPATH))
+            rules.add(ResolutionRule.APPLICATION_MODULE_CLASSPATH);
         List<String> limitations = new ArrayList<>(point.limitations());
-        limitations.add("Resolved in application module context '" + context + "'.");
-        return new InjectionPointRecord(point.id(), point.beanId(), point.kind(), point.targetType(),
-                point.qualifiers(), point.fieldName(), selected, status, point.resolutionStrategy(),
-                reason, selected != null ? ResolutionConfidence.HIGH
-                        : candidates.size() > 1 ? ResolutionConfidence.MEDIUM : ResolutionConfidence.LOW,
-                limitations, new ResolutionTrace(traceCandidates, rules,
-                        point.resolutionTrace().unsupportedRules()));
+        limitations.add(ResolutionMessages.resolvedInApplicationContext(context));
+        return new InjectionPointRecord(
+                point.id(),
+                point.beanId(),
+                point.kind(),
+                point.targetType(),
+                point.qualifiers(),
+                point.fieldName(),
+                selected,
+                status,
+                point.resolutionStrategy(),
+                reason,
+                selected != null
+                        ? ResolutionConfidence.HIGH
+                        : candidates.size() > 1
+                                ? ResolutionConfidence.MEDIUM
+                                : ResolutionConfidence.LOW,
+                limitations,
+                new ResolutionTrace(
+                        traceCandidates, rules, point.resolutionTrace().unsupportedRules()));
     }
 
     private static List<BeanRecord> applySpecialization(
             List<BeanRecord> candidates, ResolutionTrace trace) {
-        Set<Integer> candidateIds = candidates.stream().map(BeanRecord::id).collect(
-                java.util.stream.Collectors.toSet());
+        Set<Integer> candidateIds =
+                candidates.stream()
+                        .map(BeanRecord::id)
+                        .collect(java.util.stream.Collectors.toSet());
         Set<Integer> specialized = new LinkedHashSet<>();
         for (ResolutionCandidate evidence : trace.candidates()) {
-            if ("SPECIALIZED_BY".equals(evidence.reason()) && evidence.beanId() != null
+            if (evidence.reason() == ResolutionReason.SPECIALIZED_BY
+                    && evidence.beanId() != null
                     && evidence.relatedBeanId() != null
                     && candidateIds.contains(evidence.relatedBeanId())) {
                 specialized.add(evidence.beanId());
@@ -156,7 +296,8 @@ public final class ApplicationContextResolver {
     private static boolean qualifiersMatch(
             List<String> required, List<String> available, boolean spring) {
         for (String qualifier : required) {
-            if ((spring && qualifier.equals("@Default")) || qualifier.equals("@Any")) continue;
+            if ((spring && qualifier.equals(BuiltinQualifier.DEFAULT.annotation()))
+                    || qualifier.equals(BuiltinQualifier.ANY.annotation())) continue;
             if (!available.contains(qualifier)) return false;
         }
         return true;
@@ -169,15 +310,32 @@ public final class ApplicationContextResolver {
             result.computeIfAbsent(occurrence.classId(), ignored -> new LinkedHashSet<>())
                     .add(occurrence.module());
         }
-        classesById.forEach((id, cls) -> {
-            if (cls.module() != null) result.computeIfAbsent(id, ignored -> new LinkedHashSet<>())
-                    .add(cls.module());
-        });
+        classesById.forEach(
+                (id, cls) -> {
+                    if (cls.module() != null)
+                        result.computeIfAbsent(id, ignored -> new LinkedHashSet<>())
+                                .add(cls.module());
+                });
         return result;
     }
 
+    /**
+     * A bean declared in test sources joins only test contexts of its own module: a dependency's
+     * test sources are on no other classpath, and a module's own are not in its production context.
+     * Apollo AQ-016: a portal DataSource resolved to an apollo-audit-impl test configuration, one
+     * of 32 main-source points resolved to test beans.
+     */
+    private static boolean sourceSetVisible(ClassRecord owner, ClassRecord candidate) {
+        if (candidate == null || !candidate.inTestSourceSet()) return true;
+        if (owner == null || !owner.inTestSourceSet()) return false;
+        return owner.module() == null
+                || candidate.module() == null
+                || owner.module().equals(candidate.module());
+    }
+
     private static boolean visible(Set<String> visibleModules, Set<String> candidateModules) {
-        return candidateModules != null && candidateModules.stream().anyMatch(visibleModules::contains);
+        return candidateModules != null
+                && candidateModules.stream().anyMatch(visibleModules::contains);
     }
 
     private static String className(Map<Integer, ClassRecord> classesById, int classId) {
@@ -190,23 +348,46 @@ public final class ApplicationContextResolver {
                 && java.util.Objects.equals(left.resolvedBeanId(), right.resolvedBeanId());
     }
 
-    private static InjectionPointRecord contextRequired(InjectionPointRecord original,
-            List<String> contexts, List<InjectionPointRecord> outcomes) {
+    private static InjectionPointRecord contextRequired(
+            InjectionPointRecord original,
+            List<String> contexts,
+            List<InjectionPointRecord> outcomes) {
         List<String> limitations = new ArrayList<>(original.limitations());
-        limitations.add("Resolution differs across application contexts: " + contexts + ".");
-        List<String> rules = new ArrayList<>(original.resolutionTrace().appliedRules());
-        if (!rules.contains("APPLICATION_MODULE_CLASSPATH")) rules.add("APPLICATION_MODULE_CLASSPATH");
-        Set<String> unsupported = new LinkedHashSet<>(original.resolutionTrace().unsupportedRules());
-        unsupported.add("APPLICATION_CONTEXT_SELECTION");
-        List<ResolutionCandidate> candidates = outcomes.stream()
-                .flatMap(outcome -> outcome.resolutionTrace().candidates().stream())
-                .collect(java.util.stream.Collectors.toMap(
-                        ResolutionCandidate::beanId, candidate -> candidate, (left, right) -> left,
-                        LinkedHashMap::new)).values().stream().toList();
-        return new InjectionPointRecord(original.id(), original.beanId(), original.kind(),
-                original.targetType(), original.qualifiers(), original.fieldName(), null,
-                ResolutionStatus.CONTEXT_REQUIRED, "APPLICATION_CONTEXT",
-                "APPLICATION_CONTEXT_REQUIRED", ResolutionConfidence.LOW, limitations,
+        limitations.add(ResolutionMessages.differingApplicationContexts(contexts));
+        List<ResolutionRule> rules = new ArrayList<>(original.resolutionTrace().appliedRules());
+        if (!InjectionPointRecord.STATIC_SPRING.equals(original.resolutionStrategy())
+                && !rules.contains(ResolutionRule.CDI_BEAN_KIND))
+            rules.add(ResolutionRule.CDI_BEAN_KIND);
+        if (!rules.contains(ResolutionRule.APPLICATION_MODULE_CLASSPATH))
+            rules.add(ResolutionRule.APPLICATION_MODULE_CLASSPATH);
+        Set<ResolutionRule> unsupported =
+                new LinkedHashSet<>(original.resolutionTrace().unsupportedRules());
+        unsupported.add(ResolutionRule.APPLICATION_CONTEXT_SELECTION);
+        List<ResolutionCandidate> candidates =
+                outcomes.stream()
+                        .flatMap(outcome -> outcome.resolutionTrace().candidates().stream())
+                        .collect(
+                                java.util.stream.Collectors.toMap(
+                                        ResolutionCandidate::beanId,
+                                        candidate -> candidate,
+                                        (left, right) -> left,
+                                        LinkedHashMap::new))
+                        .values()
+                        .stream()
+                        .toList();
+        return new InjectionPointRecord(
+                original.id(),
+                original.beanId(),
+                original.kind(),
+                original.targetType(),
+                original.qualifiers(),
+                original.fieldName(),
+                null,
+                ResolutionStatus.CONTEXT_REQUIRED,
+                "APPLICATION_CONTEXT",
+                ResolutionReason.APPLICATION_CONTEXT_REQUIRED,
+                ResolutionConfidence.LOW,
+                limitations,
                 new ResolutionTrace(candidates, rules, List.copyOf(unsupported)));
     }
 }

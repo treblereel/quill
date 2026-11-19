@@ -1,0 +1,47 @@
+{
+  "project_revision": "b19ddcfadf44a880550751a594fabd1769704dd4",
+  "tracked_source_patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "source_manifest_sha256": "17d492b7e4087110a261ba6614f8d1cd2317e06711c30cd2588f32344e7e755f",
+  "dependency_manifest_sha256": "8aaec784e6c1314ff1d139582282f5a3d17435171d7ce38628fb66f3165422bd",
+  "framework_version": "3.40.1.1",
+  "java_version": "25.0.1",
+  "annotation_namespace": "jakarta",
+  "language": "Java",
+  "java_files": 334,
+  "compiler_errors": [],
+  "counts": {
+    "applicable": 44,
+    "not_applicable": 6
+  },
+  "all_scenarios": 50,
+  "maximum_applicable_turns_per_arm": 49,
+  "new_model_calls": 0,
+  "application_startups": 0,
+  "production_mutations": 0,
+  "source_untracked_exclusions": [
+    ".quill",
+    ".claude",
+    ".codex",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".mcp.json",
+    ".mvn/extensions.xml",
+    "node_modules",
+    "yarn.lock"
+  ],
+  "selection_policy": "Explicit representative anchors selected and frozen before any model experiment, across actual feature kinds. Deterministic inventory sorted by symbol; this binding is curated, not claimed to be a random sample. No post-result replacement.",
+  "capability_evidence": "javac-facts.json.gz and not-applicable.json; all 50 IDs accounted for",
+  "generated_artifacts": {
+    "target/quarkus-app/quarkus/generated-bytecode.jar": "39a7bf2f9f375ffad21fbdd3d8c5ba873cc4e618c6b542d62a2b2b17a7024c5c",
+    "target/quarkus-artifact.properties": "f68ef160015ab48bf663fac6b3e4fb9914ea9900b0d391492dc7d01db384b706"
+  },
+  "generated_freshness": "Captured build artifacts are independent supplementary snapshot evidence; source/compiled consistency checked by javac attribution, not a fresh full augmentation. A paid runner must additionally establish native index readiness and full build-input alignment.",
+  "runtime_oracle_limits": "No application/container startup. Static applicability and known conditional rules are scored; actual request authorization, network calls, transactional commit and async context propagation remain explicitly unproven.",
+  "readiness": "offline_oracles_prepared; not authorization or claim that a model experiment ran",
+  "required_before_paid_run": [
+    "isolate private oracles/helpers from model filesystem",
+    "verify source/build/dependency hashes",
+    "verify current compiled/native readiness against pinned inputs",
+    "independent session/cache-stratum preflight and frozen schedule"
+  ]
+}

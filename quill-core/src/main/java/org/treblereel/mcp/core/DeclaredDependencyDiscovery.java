@@ -15,6 +15,7 @@ import org.apache.maven.model.Model;
 import org.apache.maven.model.Profile;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Reads direct dependency declarations without invoking the target build. */
 public final class DeclaredDependencyDiscovery {
@@ -166,6 +167,7 @@ public final class DeclaredDependencyDiscovery {
         try (Reader reader = Files.newBufferedReader(pom, StandardCharsets.UTF_8)) {
             return new MavenXpp3Reader().read(reader);
         } catch (IOException | XmlPullParserException | RuntimeException e) {
+            QuillLog.swallowed(e);
             return null;
         }
     }

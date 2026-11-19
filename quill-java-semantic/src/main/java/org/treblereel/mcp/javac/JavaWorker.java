@@ -11,27 +11,31 @@ public final class JavaWorker {
         return value == null ? "-" : Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
     private static List<Path> paths(Properties settings, String prefix) {
+        return strings(settings, prefix).stream().map(Path::of).toList();
+    }
+    private static List<String> strings(Properties settings, String prefix) {
         int count = Integer.parseInt(settings.getProperty(prefix + ".count"));
         if (count < 0 || count > 8192) throw new IllegalArgumentException("Input limit");
-        List<Path> result = new ArrayList<>();
-        for (int i = 0; i < count; i++) result.add(Path.of(settings.getProperty(prefix + "." + i)));
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < count; i++) result.add(settings.getProperty(prefix + "." + i));
         return result;
     }
     public static void main(String[] args) throws Exception {
         var models = new LinkedHashMap<String, JavaPositionResolver>(4, 0.75f, true);
         try (var reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
-            System.out.println("QUILL_JAVA_4");
+            System.out.println("QUILL_JAVA_6");
             for (String line; (line = reader.readLine()) != null;) {
                 try {
                     var parts = line.split("\t", -1);
-                    if (parts.length != 4 || line.length() > 1_500_000) throw new IllegalArgumentException("Invalid request");
+                    if ((parts.length != 4 && parts.length != 5) || line.length() > 1_500_000) throw new IllegalArgumentException("Invalid request");
                     String key = decode(parts[0]);
                     JavaPositionResolver model = models.get(key);
                     if (model == null) {
                         Properties settings = new Properties();
                         settings.load(new StringReader(decode(parts[1])));
                         model = new JavaPositionResolver(paths(settings, "roots"), paths(settings, "classpath"),
-                                settings.getProperty("release"), settings.getProperty("source"), settings.getProperty("target"));
+                                settings.getProperty("release"), settings.getProperty("source"), settings.getProperty("target"),
+                                strings(settings, "addExports"));
                         models.put(key, model);
                         if (models.size() > 2) {
                             var eldest = models.entrySet().iterator().next();
@@ -60,7 +64,15 @@ public final class JavaWorker {
                         System.out.println("REFERENCES\t" + encode(serialized.toString()));
                         continue;
                     }
-                    var result = offset == -1 ? model.warm(file) : model.resolve(file, offset);
+                    JavaPositionResolver.Result result;
+                    if (offset == -3 && parts.length == 5) {
+                        String[] selector=decode(parts[4]).split("\t",-1);
+                        if (selector.length!=3) throw new IllegalArgumentException("Invalid selector");
+                        result=model.declaration(file,selector[0],selector[1],selector[2]);
+                    } else {
+                        if(parts.length!=4) throw new IllegalArgumentException("Unexpected selector");
+                        result=offset == -1 ? model.warm(file) : model.resolve(file, offset);
+                    }
                     System.out.println(String.join("\t", result.status(), encode(result.owner()), encode(result.kind()),
                             encode(result.name()), encode(result.descriptor()), encode(result.declarationFile()),
                             Integer.toString(result.startLine()), Integer.toString(result.startColumn()),

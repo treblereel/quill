@@ -1,5 +1,7 @@
 package org.treblereel.mcp.command;
 
+import org.treblereel.mcp.index.ProjectInitializer;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

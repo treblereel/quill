@@ -9,8 +9,9 @@ import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.command.ProjectInitializer;
-import org.treblereel.mcp.db.IndexReader;
+import org.treblereel.mcp.index.ProjectInitializer;
+import org.treblereel.mcp.db.IndexRepository;
+import org.treblereel.mcp.mcp.project.ProjectRegistry;
 
 class BuildEventConsumerTest {
 
@@ -31,7 +32,7 @@ class BuildEventConsumerTest {
     }
 
     @Test
-    void registryConsumesSuccessfulBuildBeforeServingProject() throws Exception {
+    void registryRefreshesSuccessfulBuildInBackgroundBeforeServingProject() throws Exception {
         assertTrue(ProjectInitializer.initialize(PROJECT_ROOT, true));
         Files.createDirectories(DIRTY_RESOURCE.getParent());
         Files.writeString(DIRTY_RESOURCE, "compiled externally");
@@ -40,12 +41,15 @@ class BuildEventConsumerTest {
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(PROJECT_ROOT);
-        ProjectRegistry.Resolution resolution = registry.resolve();
+        ProjectRegistry.Resolution pending = registry.resolve();
+        if (pending.projects().isEmpty()) {
+            assertTrue(pending.issues().stream().anyMatch(issue -> issue.code().equals("refresh_pending")));
+        }
+        ProjectRegistry.Resolution resolution = awaitRefresh(registry);
 
         assertTrue(resolution.errors().isEmpty(), String.join("; ", resolution.errors()));
         assertFalse(resolution.projects().isEmpty());
-        assertTrue(Boolean.parseBoolean(IndexReader.getMetadata(
-                resolution.projects().getFirst().jdbi())
+        assertTrue(Boolean.parseBoolean(resolution.projects().getFirst().jdbi().withHandle(repositoryHandle1 -> new IndexRepository(repositoryHandle1).getMetadata())
                 .getOrDefault("compiled_before_index", "false")));
         assertFalse(Files.exists(events), "consumed build events directory should be removed");
     }
@@ -63,12 +67,11 @@ class BuildEventConsumerTest {
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(PROJECT_ROOT);
-        ProjectRegistry.Resolution resolution = registry.resolve();
+        ProjectRegistry.Resolution resolution = awaitRefresh(registry);
 
         assertTrue(resolution.errors().isEmpty(), String.join("; ", resolution.errors()));
         assertFalse(resolution.projects().isEmpty());
-        assertFalse(Boolean.parseBoolean(IndexReader.getMetadata(
-                resolution.projects().getFirst().jdbi())
+        assertFalse(Boolean.parseBoolean(resolution.projects().getFirst().jdbi().withHandle(repositoryHandle2 -> new IndexRepository(repositoryHandle2).getMetadata())
                 .getOrDefault("compiled_before_index", "false")),
                 "an event older than a structural edit must not bless stale bytecode");
         assertFalse(Files.exists(events), "stale build events should not be retried forever");
@@ -83,11 +86,22 @@ class BuildEventConsumerTest {
 
         ProjectRegistry registry = new ProjectRegistry();
         registry.register(PROJECT_ROOT);
-        ProjectRegistry.Resolution resolution = registry.resolve();
+        ProjectRegistry.Resolution resolution = awaitRefresh(registry);
 
         assertTrue(resolution.errors().isEmpty(), String.join("; ", resolution.errors()));
         assertFalse(resolution.projects().isEmpty());
         assertFalse(Files.exists(events), "invalid build events should be discarded");
+    }
+
+    private static ProjectRegistry.Resolution awaitRefresh(ProjectRegistry registry) throws Exception {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        ProjectRegistry.Resolution result;
+        do {
+            result = registry.resolve();
+            if (result.issues().stream().noneMatch(issue -> issue.code().equals("refresh_pending"))) return result;
+            Thread.sleep(10);
+        } while (System.nanoTime() < deadline);
+        throw new AssertionError("Background index refresh did not finish");
     }
 
     private static void writeEvent(Path event, long finishedAt) throws Exception {

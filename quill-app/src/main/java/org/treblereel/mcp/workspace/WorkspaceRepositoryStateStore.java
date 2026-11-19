@@ -7,12 +7,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import org.treblereel.mcp.core.Json;
 
 /** Persists the last successfully reconciled repository inventory. */
 public final class WorkspaceRepositoryStateStore {
 
     public static final String FILE = "repositories.json";
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     public record Repository(String name, String relativePath) {}
 

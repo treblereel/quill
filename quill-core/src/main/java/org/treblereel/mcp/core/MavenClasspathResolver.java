@@ -18,6 +18,7 @@ import java.util.Set;
 import org.codehaus.plexus.util.xml.pull.MXParser;
 import org.codehaus.plexus.util.xml.pull.XmlPullParser;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Resolves external Maven dependencies without requiring reactor artifacts to be installed. */
 final class MavenClasspathResolver {
@@ -60,7 +61,7 @@ final class MavenClasspathResolver {
                         .filter(Dependency::isRuntime)
                         .filter(dependency -> !reactor.contains(dependency.artifactCoordinate()))
                         .toList();
-                modules.add(new SyntheticModule(project.moduleDirectory(), external));
+                modules.add(new SyntheticModule(project.moduleDirectory(), external, project.managed()));
             }
             if (modules.isEmpty()) {
                 return DependencyIndexer.ClasspathGenerationResult.failure(
@@ -133,7 +134,7 @@ final class MavenClasspathResolver {
             String operation, ProcessResult result) {
         String detail = operation + " exited with code " + result.exitCode();
         if (!result.diagnostic().isBlank()) detail += ": " + result.diagnostic();
-        System.err.println("[quill] Warning: " + detail);
+        QuillLog.warn(detail);
         return DependencyIndexer.ClasspathGenerationResult.failure(detail);
     }
 
@@ -201,7 +202,18 @@ final class MavenClasspathResolver {
             for (Dependency dependency : modules.get(i).dependencies()) {
                 appendDependency(pom, dependency);
             }
-            pom.append("  </dependencies>\n</project>\n");
+            pom.append("  </dependencies>\n");
+            // The module's own managed versions, BOM imports already flattened by the effective POM.
+            // Without them Maven mediates transitive versions by nearness and resolves a classpath
+            // the build never uses, such as an older Jackson than the project's BOM pins.
+            List<Dependency> managed = modules.get(i).managed().stream()
+                    .filter(dependency -> dependency.version() != null && !dependency.version().isBlank()).toList();
+            if (!managed.isEmpty()) {
+                pom.append("  <dependencyManagement>\n  <dependencies>\n");
+                for (Dependency dependency : managed) appendDependency(pom, dependency);
+                pom.append("  </dependencies>\n  </dependencyManagement>\n");
+            }
+            pom.append("</project>\n");
             Files.writeString(directory.resolve("pom.xml"), pom, StandardCharsets.UTF_8);
         }
     }
@@ -304,9 +316,12 @@ final class MavenClasspathResolver {
                     }
                     if (project == null) continue;
                     List<String> relative = path.subList(projectDepth, path.size());
-                    if (matches(relative, "project", "dependencies", "dependency")) {
+                    if (matches(relative, "project", "dependencies", "dependency")
+                            || matches(relative, "project", "dependencyManagement", "dependencies", "dependency")) {
                         dependency = new DependencyBuilder();
                     } else if (matches(relative, "project", "dependencies", "dependency",
+                            "exclusions", "exclusion")
+                            || matches(relative, "project", "dependencyManagement", "dependencies", "dependency",
                             "exclusions", "exclusion")) {
                         exclusion = new CoordinateBuilder();
                     } else if (matches(relative, "project", "repositories", "repository")) {
@@ -319,6 +334,8 @@ final class MavenClasspathResolver {
                 } else if (event == XmlPullParser.END_TAG && project != null) {
                     List<String> relative = path.subList(projectDepth, path.size());
                     if (matches(relative, "project", "dependencies", "dependency",
+                            "exclusions", "exclusion")
+                            || matches(relative, "project", "dependencyManagement", "dependencies", "dependency",
                             "exclusions", "exclusion")) {
                         if (dependency != null && exclusion != null
                                 && exclusion.groupId != null && exclusion.artifactId != null) {
@@ -327,6 +344,9 @@ final class MavenClasspathResolver {
                         exclusion = null;
                     } else if (matches(relative, "project", "dependencies", "dependency")) {
                         project.dependencies.add(dependency.build());
+                        dependency = null;
+                    } else if (matches(relative, "project", "dependencyManagement", "dependencies", "dependency")) {
+                        project.managed.add(dependency.build());
                         dependency = null;
                     } else if (matches(relative, "project", "repositories", "repository")) {
                         project.repositories.add(repository.build());
@@ -360,6 +380,14 @@ final class MavenClasspathResolver {
                 "exclusions", "exclusion")) {
             return path.get(5).equals("groupId") || path.get(5).equals("artifactId");
         }
+        if (path.size() == 5 && matchesPrefix(path, "project", "dependencyManagement", "dependencies", "dependency")) {
+            return Set.of("groupId", "artifactId", "version", "type", "classifier", "scope")
+                    .contains(path.get(4));
+        }
+        if (path.size() == 7 && matchesPrefix(path, "project", "dependencyManagement", "dependencies", "dependency",
+                "exclusions", "exclusion")) {
+            return path.get(6).equals("groupId") || path.get(6).equals("artifactId");
+        }
         if (path.size() == 4 && matchesPrefix(path, "project", "repositories", "repository")) {
             return path.get(3).equals("id") || path.get(3).equals("url");
         }
@@ -381,6 +409,10 @@ final class MavenClasspathResolver {
             dependency.assign(path.get(3), value);
         } else if (path.size() == 6 && exclusion != null) {
             exclusion.assign(path.get(5), value);
+        } else if (path.size() == 5 && dependency != null && path.get(1).equals("dependencyManagement")) {
+            dependency.assign(path.get(4), value);
+        } else if (path.size() == 7 && exclusion != null) {
+            exclusion.assign(path.get(6), value);
         } else if (path.size() == 4 && repository != null) {
             repository.assign(path.get(3), value);
         } else if (path.size() == 5 && repository != null) {
@@ -456,9 +488,9 @@ final class MavenClasspathResolver {
 
     private record EffectiveProject(String groupId, String artifactId, String version,
             Path moduleDirectory, List<Dependency> dependencies,
-            List<Repository> repositories) {}
+            List<Repository> repositories, List<Dependency> managed) {}
 
-    private record SyntheticModule(Path moduleDirectory, List<Dependency> dependencies) {}
+    private record SyntheticModule(Path moduleDirectory, List<Dependency> dependencies, List<Dependency> managed) {}
 
     private static final class ProjectBuilder {
         String groupId;
@@ -467,6 +499,7 @@ final class MavenClasspathResolver {
         String buildDirectory;
         final List<Dependency> dependencies = new ArrayList<>();
         final List<Repository> repositories = new ArrayList<>();
+        final List<Dependency> managed = new ArrayList<>();
 
         EffectiveProject build(Path root) {
             Path module = null;
@@ -479,7 +512,7 @@ final class MavenClasspathResolver {
                 if (candidate != null && candidate.startsWith(normalizedRoot)) module = candidate;
             }
             return new EffectiveProject(groupId, artifactId, version, module,
-                    List.copyOf(dependencies), List.copyOf(repositories));
+                    List.copyOf(dependencies), List.copyOf(repositories), List.copyOf(managed));
         }
 
         private static Path realPath(Path path) {

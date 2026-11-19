@@ -30,10 +30,11 @@ import java.util.jar.JarFile;
 import java.util.zip.ZipFile;
 import org.jboss.jandex.CompositeIndex;
 import org.jboss.jandex.Index;
-import org.jboss.jandex.Indexer;
 import org.jboss.jandex.IndexReader;
 import org.jboss.jandex.IndexView;
 import org.jboss.jandex.IndexWriter;
+import org.jboss.jandex.Indexer;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 public final class DependencyIndexer {
 
@@ -52,10 +53,17 @@ public final class DependencyIndexer {
 
     private DependencyIndexer() {}
 
-    public enum Status { COMPLETE, DEGRADED, UNAVAILABLE }
+    public enum Status {
+        COMPLETE,
+        DEGRADED,
+        UNAVAILABLE
+    }
 
     public record DependencyIndexResult(
-            IndexView index, Status status, String detail, Map<String, Long> timings,
+            IndexView index,
+            Status status,
+            String detail,
+            Map<String, Long> timings,
             List<Path> jars) {
         public DependencyIndexResult(IndexView index, Status status, String detail) {
             this(index, status, detail, Map.of(), List.of());
@@ -74,12 +82,16 @@ public final class DependencyIndexer {
         ShardedIndex(List<Index> shards) {
             this.shards = List.copyOf(shards);
             List<IndexView> views = new ArrayList<>(shards);
-            this.view = shards.size() == 1 ? shards.get(0) : CompositeIndex.create(views);
+            this.view = shards.size() == 1 ? shards.getFirst() : CompositeIndex.create(views);
         }
 
-        List<Index> shards() { return shards; }
+        List<Index> shards() {
+            return shards;
+        }
 
-        IndexView view() { return view; }
+        IndexView view() {
+            return view;
+        }
     }
 
     private record ClasspathRead(List<Path> jars, int missingJars, boolean readable) {}
@@ -103,25 +115,40 @@ public final class DependencyIndexer {
         ClasspathGenerationResult generate(Path projectRoot, BuildSystem buildSystem);
     }
 
-    public static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs) {
-        return buildDependencyIndex(projectRoot, classesDirs, Map.of(),
-                DependencyIndexer::generateClasspathFilesDetailed, System.currentTimeMillis());
+    public static DependencyIndexResult buildDependencyIndex(
+            Path projectRoot, List<Path> classesDirs) {
+        return buildDependencyIndex(
+                projectRoot,
+                classesDirs,
+                Map.of(),
+                DependencyIndexer::generateClasspathFilesDetailed,
+                System.currentTimeMillis());
     }
 
-    public static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
-            Map<Path, String> classDirectorySourceSets) {
-        return buildDependencyIndex(projectRoot, classesDirs, classDirectorySourceSets,
-                DependencyIndexer::generateClasspathFilesDetailed, System.currentTimeMillis());
+    public static DependencyIndexResult buildDependencyIndex(
+            Path projectRoot, List<Path> classesDirs, Map<Path, String> classDirectorySourceSets) {
+        return buildDependencyIndex(
+                projectRoot,
+                classesDirs,
+                classDirectorySourceSets,
+                DependencyIndexer::generateClasspathFilesDetailed,
+                System.currentTimeMillis());
     }
 
-    static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
-            ClasspathGenerator generator, long nowMillis) {
+    static DependencyIndexResult buildDependencyIndex(
+            Path projectRoot,
+            List<Path> classesDirs,
+            ClasspathGenerator generator,
+            long nowMillis) {
         return buildDependencyIndex(projectRoot, classesDirs, Map.of(), generator, nowMillis);
     }
 
-    static DependencyIndexResult buildDependencyIndex(Path projectRoot, List<Path> classesDirs,
+    static DependencyIndexResult buildDependencyIndex(
+            Path projectRoot,
+            List<Path> classesDirs,
             Map<Path, String> classDirectorySourceSets,
-            ClasspathGenerator generator, long nowMillis) {
+            ClasspathGenerator generator,
+            long nowMillis) {
         Map<String, Long> timings = new LinkedHashMap<>();
         timings.put("dependency_classpath", 0L);
         timings.put("dependency_cache_read", 0L);
@@ -132,25 +159,34 @@ public final class DependencyIndexer {
         Map<Path, Path> classDirectoryOwners =
                 mapClassDirectoriesToModules(projectRoot, buildSystem, classesDirs);
         Set<Path> moduleDirs = new LinkedHashSet<>(classDirectoryOwners.values());
-        Set<Path> testOutputModules = classDirectoryOwners.entrySet().stream()
-                .filter(entry -> "test".equals(classDirectorySourceSets.get(entry.getKey()))
-                        || isTestClassesDirectory(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        Set<Path> additionalOutputModules = classDirectoryOwners.entrySet().stream()
-                .filter(entry -> {
-                    String sourceSet = classDirectorySourceSets.get(entry.getKey());
-                    return sourceSet != null && !sourceSet.equals("main") && !sourceSet.equals("test");
-                })
-                .map(Map.Entry::getValue).collect(java.util.stream.Collectors.toSet());
-        BuildInputSnapshot buildInputs = buildInputSnapshot(
-                projectRoot, buildSystem, moduleDirs);
+        Set<Path> testOutputModules =
+                classDirectoryOwners.entrySet().stream()
+                        .filter(
+                                entry ->
+                                        "test".equals(classDirectorySourceSets.get(entry.getKey()))
+                                                || isTestClassesDirectory(entry.getKey()))
+                        .map(Map.Entry::getValue)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<Path> additionalOutputModules =
+                classDirectoryOwners.entrySet().stream()
+                        .filter(
+                                entry -> {
+                                    String sourceSet = classDirectorySourceSets.get(entry.getKey());
+                                    return sourceSet != null
+                                            && !sourceSet.equals("main")
+                                            && !sourceSet.equals("test");
+                                })
+                        .map(Map.Entry::getValue)
+                        .collect(java.util.stream.Collectors.toSet());
+        BuildInputSnapshot buildInputs = buildInputSnapshot(projectRoot, buildSystem, moduleDirs);
         String buildFingerprint = buildInputs.fingerprint();
         boolean anyStale = false;
         for (Path moduleDir : moduleDirs) {
             if (isStale(moduleDir, buildSystem, buildFingerprint)
-                    || buildSystem == BuildSystem.GRADLE && additionalOutputModules.contains(moduleDir)
-                        && !Files.isRegularFile(moduleDir.resolve("build/quill-source-set-classpath.txt"))) {
+                    || buildSystem == BuildSystem.GRADLE
+                            && additionalOutputModules.contains(moduleDir)
+                            && !Files.isRegularFile(
+                                    moduleDir.resolve("build/quill-source-set-classpath.txt"))) {
                 anyStale = true;
                 break;
             }
@@ -158,12 +194,14 @@ public final class DependencyIndexer {
 
         String generationIssue = null;
         if (anyStale) {
-            GenerationFailure cachedFailure = readGenerationFailure(
-                    projectRoot, buildSystem, buildFingerprint, nowMillis);
+            GenerationFailure cachedFailure =
+                    readGenerationFailure(projectRoot, buildSystem, buildFingerprint, nowMillis);
             if (cachedFailure != null) {
-                generationIssue = cachedFailure.detail()
-                        + "; retry suppressed for unchanged build files for up to "
-                        + GENERATION_FAILURE_BACKOFF.toMinutes() + " minutes";
+                generationIssue =
+                        cachedFailure.detail()
+                                + "; retry suppressed for unchanged build files for up to "
+                                + GENERATION_FAILURE_BACKOFF.toMinutes()
+                                + " minutes";
             } else {
                 ClasspathGenerationResult generated = generator.generate(projectRoot, buildSystem);
                 if (generated.successful()) {
@@ -171,8 +209,12 @@ public final class DependencyIndexer {
                 } else {
                     generationIssue = generated.detail();
                     if (!Thread.currentThread().isInterrupted()) {
-                        writeGenerationFailure(projectRoot, buildSystem, buildFingerprint,
-                                nowMillis, generationIssue);
+                        writeGenerationFailure(
+                                projectRoot,
+                                buildSystem,
+                                buildFingerprint,
+                                nowMillis,
+                                generationIssue);
                     }
                 }
             }
@@ -193,7 +235,8 @@ public final class DependencyIndexer {
                 }
             }
             if (buildSystem == BuildSystem.GRADLE) {
-                Path additionalClasspath = moduleDir.resolve("build/quill-source-set-classpath.txt");
+                Path additionalClasspath =
+                        moduleDir.resolve("build/quill-source-set-classpath.txt");
                 if (Files.exists(additionalClasspath)) {
                     ClasspathRead additional = readClasspathFile(additionalClasspath);
                     jars.addAll(additional.jars());
@@ -216,22 +259,27 @@ public final class DependencyIndexer {
         timings.put("dependency_classpath", elapsedMillis(classpathStartedAt));
 
         if (modulesResolved == 0) {
-            String detail = generationIssue != null
-                    ? generationIssue
-                    : "no classpath files found";
-            return new DependencyIndexResult(
-                    null, Status.UNAVAILABLE, detail, timings, List.of());
+            String detail = generationIssue != null ? generationIssue : "no classpath files found";
+            return new DependencyIndexResult(null, Status.UNAVAILABLE, detail, timings, List.of());
         }
 
         if (jars.isEmpty()) {
-            boolean degraded = generationIssue != null
-                    || modulesResolved < moduleDirs.size() || missingJars > 0;
-            return new DependencyIndexResult(null,
+            boolean degraded =
+                    generationIssue != null
+                            || modulesResolved < moduleDirs.size()
+                            || missingJars > 0;
+            return new DependencyIndexResult(
+                    null,
                     degraded ? Status.DEGRADED : Status.COMPLETE,
                     degraded
-                            ? dependencyDetail(generationIssue, modulesResolved,
-                                    moduleDirs.size(), missingJars)
-                            : "no dependency JARs in classpath", timings, List.of());
+                            ? dependencyDetail(
+                                    generationIssue,
+                                    modulesResolved,
+                                    moduleDirs.size(),
+                                    missingJars)
+                            : "no dependency JARs in classpath",
+                    timings,
+                    List.of());
         }
 
         long cacheReadStartedAt = System.nanoTime();
@@ -240,9 +288,9 @@ public final class DependencyIndexer {
         timings.put("dependency_cache_read", elapsedMillis(cacheReadStartedAt));
         boolean cacheHit = index != null;
         if (cacheHit) {
-            System.err.println("[quill] Reusing dependency index for " + jars.size() + " JARs...");
+            QuillLog.info("Reusing dependency index for " + jars.size() + " JARs...");
         } else {
-            System.err.println("[quill] Indexing " + jars.size() + " dependency JARs...");
+            QuillLog.info("Indexing " + jars.size() + " dependency JARs...");
             long jarIndexStartedAt = System.nanoTime();
             index = indexJars(jars);
             timings.put("dependency_jar_index", elapsedMillis(jarIndexStartedAt));
@@ -252,19 +300,25 @@ public final class DependencyIndexer {
         }
 
         if (generationIssue != null || modulesResolved < moduleDirs.size() || missingJars > 0) {
-            return new DependencyIndexResult(index.view(), Status.DEGRADED,
-                    dependencyDetail(generationIssue, modulesResolved,
-                            moduleDirs.size(), missingJars), timings, List.copyOf(jars));
+            return new DependencyIndexResult(
+                    index.view(),
+                    Status.DEGRADED,
+                    dependencyDetail(
+                            generationIssue, modulesResolved, moduleDirs.size(), missingJars),
+                    timings,
+                    List.copyOf(jars));
         }
 
-        return new DependencyIndexResult(index.view(), Status.COMPLETE,
+        return new DependencyIndexResult(
+                index.view(),
+                Status.COMPLETE,
                 jars.size() + (cacheHit ? " JARs loaded from cache" : " JARs indexed"),
-                timings, List.copyOf(jars));
+                timings,
+                List.copyOf(jars));
     }
 
     private static boolean isTestClassesDirectory(Path directory) {
-        String normalized = directory.toAbsolutePath().normalize().toString()
-                .replace('\\', '/');
+        String normalized = directory.toAbsolutePath().normalize().toString().replace('\\', '/');
         return normalized.endsWith("/target/test-classes")
                 || normalized.matches(".*/build/classes/[^/]+/test");
     }
@@ -313,22 +367,26 @@ public final class DependencyIndexer {
         try {
             buildSystem = BuildSystem.detect(moduleDir);
         } catch (IllegalArgumentException ignored) {
-            buildSystem = Files.isDirectory(moduleDir.resolve("build"))
-                    ? BuildSystem.GRADLE : BuildSystem.MAVEN;
+            buildSystem =
+                    Files.isDirectory(moduleDir.resolve("build"))
+                            ? BuildSystem.GRADLE
+                            : BuildSystem.MAVEN;
         }
-        BuildInputSnapshot buildInputs = buildInputSnapshot(
-                moduleDir, buildSystem, List.of());
+        BuildInputSnapshot buildInputs = buildInputSnapshot(moduleDir, buildSystem, List.of());
         return isStale(moduleDir, buildSystem, buildInputs.fingerprint());
     }
 
-    private static boolean isStale(Path moduleDir, BuildSystem buildSystem,
-                                   String expectedFingerprint) {
+    private static boolean isStale(
+            Path moduleDir, BuildSystem buildSystem, String expectedFingerprint) {
         Path cpFile = buildSystem.classpathFile(moduleDir);
         if (!Files.exists(cpFile)) return true;
         if (buildSystem == BuildSystem.MAVEN
-                && (Files.isDirectory(moduleDir.resolve("src/main/kotlin")) || Files.isDirectory(moduleDir.resolve("src/test/kotlin")))
+                && (Files.isDirectory(moduleDir.resolve("src/main/kotlin"))
+                        || Files.isDirectory(moduleDir.resolve("src/test/kotlin")))
                 && (!Files.isRegularFile(moduleDir.resolve("target/quill-kotlin-main.properties"))
-                    || !Files.isRegularFile(moduleDir.resolve("target/quill-kotlin-test.properties")))) return true;
+                        || !Files.isRegularFile(
+                                moduleDir.resolve("target/quill-kotlin-test.properties"))))
+            return true;
 
         Path fingerprintFile = buildSystem.classpathFingerprintFile(moduleDir);
         try {
@@ -361,7 +419,12 @@ public final class DependencyIndexer {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (Path buildFile : buildFiles(projectRoot, buildSystem, moduleDirectories)) {
-                digest.update(buildFile.toAbsolutePath().normalize().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update(
+                        buildFile
+                                .toAbsolutePath()
+                                .normalize()
+                                .toString()
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 digest.update((byte) 0);
                 try {
                     digest.update(Files.readAllBytes(buildFile));
@@ -392,28 +455,35 @@ public final class DependencyIndexer {
                 independentScanRoots.add(candidate);
             }
         }
+        IgnoredTrees ignored = IgnoredTrees.of(normalizedRoot);
         for (Path scanRoot : independentScanRoots) {
             if (Files.isDirectory(scanRoot)) {
                 try {
-                    Files.walkFileTree(scanRoot, new SimpleFileVisitor<>() {
-                        @Override
-                        public FileVisitResult preVisitDirectory(
-                                Path directory, BasicFileAttributes attributes) {
-                            if (!directory.equals(scanRoot) && isBuildOutputDirectory(directory)) {
-                                return FileVisitResult.SKIP_SUBTREE;
-                            }
-                            return FileVisitResult.CONTINUE;
-                        }
+                    Files.walkFileTree(
+                            scanRoot,
+                            new SimpleFileVisitor<>() {
+                                @Override
+                                public FileVisitResult preVisitDirectory(
+                                        Path directory, BasicFileAttributes attributes) {
+                                    if (!directory.equals(scanRoot)
+                                            && (isBuildOutputDirectory(directory)
+                                                    || SourceFileHashes.excludedDirectory(directory)
+                                                    || ignored.ignored(directory))) {
+                                        return FileVisitResult.SKIP_SUBTREE;
+                                    }
+                                    return FileVisitResult.CONTINUE;
+                                }
 
-                        @Override
-                        public FileVisitResult visitFile(
-                                Path file, BasicFileAttributes attributes) {
-                            if (attributes.isRegularFile() && isBuildFile(file, buildSystem)) {
-                                files.add(file.toAbsolutePath().normalize());
-                            }
-                            return FileVisitResult.CONTINUE;
-                        }
-                    });
+                                @Override
+                                public FileVisitResult visitFile(
+                                        Path file, BasicFileAttributes attributes) {
+                                    if (attributes.isRegularFile()
+                                            && isBuildFile(file, buildSystem)) {
+                                        files.add(file.toAbsolutePath().normalize());
+                                    }
+                                    return FileVisitResult.CONTINUE;
+                                }
+                            });
                 } catch (IOException e) {
                     // Ancestor build files collected below still provide a stable fallback.
                 }
@@ -422,12 +492,18 @@ public final class DependencyIndexer {
 
         Path current = normalizedRoot;
         while (current != null) {
-            for (String name : buildSystem == BuildSystem.MAVEN
-                    ? List.of("pom.xml")
-                    : List.of("settings.gradle", "settings.gradle.kts", "build.gradle",
-                            "build.gradle.kts", "gradle.properties")) {
+            for (String name :
+                    buildSystem == BuildSystem.MAVEN
+                            ? List.of("pom.xml")
+                            : List.of(
+                                    "settings.gradle",
+                                    "settings.gradle.kts",
+                                    "build.gradle",
+                                    "build.gradle.kts",
+                                    "gradle.properties")) {
                 Path candidate = current.resolve(name);
-                if (Files.isRegularFile(candidate)) files.add(candidate.toAbsolutePath().normalize());
+                if (Files.isRegularFile(candidate))
+                    files.add(candidate.toAbsolutePath().normalize());
             }
             current = current.getParent();
         }
@@ -440,9 +516,12 @@ public final class DependencyIndexer {
         if (path.toString().contains(File.separator + "buildSrc" + File.separator)) {
             return Files.isRegularFile(path);
         }
-        return name.equals("settings.gradle") || name.equals("settings.gradle.kts")
-                || name.equals("build.gradle") || name.equals("build.gradle.kts")
-                || name.equals("gradle.properties") || name.equals("libs.versions.toml")
+        return name.equals("settings.gradle")
+                || name.equals("settings.gradle.kts")
+                || name.equals("build.gradle")
+                || name.equals("build.gradle.kts")
+                || name.equals("gradle.properties")
+                || name.equals("libs.versions.toml")
                 || name.equals("gradle-wrapper.properties");
     }
 
@@ -451,12 +530,20 @@ public final class DependencyIndexer {
         return name.equals("target") || name.equals("build") || name.equals(".gradle");
     }
 
-    private static void writeFingerprint(Path moduleDir, BuildSystem buildSystem, String fingerprint) {
+    static void writeFingerprint(Path moduleDir, BuildSystem buildSystem, String fingerprint) {
+        Path file = buildSystem.classpathFingerprintFile(moduleDir);
         try {
-            Files.writeString(buildSystem.classpathFingerprintFile(moduleDir), fingerprint);
+            // Quill servers watch build outputs; rewriting the same fingerprint would wake them
+            // all.
+            if (Files.isRegularFile(file) && Files.readString(file).trim().equals(fingerprint))
+                return;
+            Files.writeString(file, fingerprint);
         } catch (IOException e) {
-            System.err.println("[quill] Warning: could not persist dependency classpath fingerprint for "
-                    + moduleDir + ": " + e.getMessage());
+            QuillLog.warn(
+                    "could not persist dependency classpath fingerprint for "
+                            + moduleDir
+                            + ": "
+                            + e.getMessage());
         }
     }
 
@@ -474,9 +561,18 @@ public final class DependencyIndexer {
         try {
             return BuildSystem.detect(projectRoot);
         } catch (IllegalArgumentException ignored) {
-            return classesDirs.stream().anyMatch(path -> path.toString().contains(
-                    File.separator + "build" + File.separator + "classes" + File.separator))
-                    ? BuildSystem.GRADLE : BuildSystem.MAVEN;
+            return classesDirs.stream()
+                            .anyMatch(
+                                    path ->
+                                            path.toString()
+                                                    .contains(
+                                                            File.separator
+                                                                    + "build"
+                                                                    + File.separator
+                                                                    + "classes"
+                                                                    + File.separator))
+                    ? BuildSystem.GRADLE
+                    : BuildSystem.MAVEN;
         }
     }
 
@@ -496,13 +592,14 @@ public final class DependencyIndexer {
         return GradleProjectDiscovery.discover(projectRoot, true).complete();
     }
 
-    private static GenerationFailure readGenerationFailure(Path projectRoot,
-            BuildSystem buildSystem, String expectedFingerprint, long nowMillis) {
+    private static GenerationFailure readGenerationFailure(
+            Path projectRoot, BuildSystem buildSystem, String expectedFingerprint, long nowMillis) {
         Path failureCache = generationFailurePath(projectRoot, buildSystem);
         if (!Files.isRegularFile(failureCache)) return null;
         try {
             List<String> lines = Files.readAllLines(failureCache, StandardCharsets.UTF_8);
-            if (lines.size() != 4 || !FAILURE_CACHE_FORMAT.equals(lines.get(0))
+            if (lines.size() != 4
+                    || !FAILURE_CACHE_FORMAT.equals(lines.get(0))
                     || !expectedFingerprint.equals(lines.get(1))) {
                 return null;
             }
@@ -511,24 +608,35 @@ public final class DependencyIndexer {
             if (ageMillis < 0 || ageMillis >= GENERATION_FAILURE_BACKOFF.toMillis()) {
                 return null;
             }
-            String detail = new String(Base64.getDecoder().decode(lines.get(3)),
-                    StandardCharsets.UTF_8);
+            String detail =
+                    new String(Base64.getDecoder().decode(lines.get(3)), StandardCharsets.UTF_8);
             return new GenerationFailure(detail);
         } catch (IOException | IllegalArgumentException ignored) {
             return null;
         }
     }
 
-    private static void writeGenerationFailure(Path projectRoot, BuildSystem buildSystem,
-            String fingerprint, long failedAtMillis, String detail) {
+    private static void writeGenerationFailure(
+            Path projectRoot,
+            BuildSystem buildSystem,
+            String fingerprint,
+            long failedAtMillis,
+            String detail) {
         Path failureCache = generationFailurePath(projectRoot, buildSystem);
         try {
             Files.createDirectories(failureCache.getParent());
-            String encodedDetail = Base64.getEncoder().encodeToString(
-                    detail.getBytes(StandardCharsets.UTF_8));
-            Files.writeString(failureCache,
-                    FAILURE_CACHE_FORMAT + "\n" + fingerprint + "\n" + failedAtMillis + "\n"
-                            + encodedDetail + "\n",
+            String encodedDetail =
+                    Base64.getEncoder().encodeToString(detail.getBytes(StandardCharsets.UTF_8));
+            Files.writeString(
+                    failureCache,
+                    FAILURE_CACHE_FORMAT
+                            + "\n"
+                            + fingerprint
+                            + "\n"
+                            + failedAtMillis
+                            + "\n"
+                            + encodedDetail
+                            + "\n",
                     StandardCharsets.UTF_8);
         } catch (IOException ignored) {
             // The failure cache is optional; dependency discovery remains correct without it.
@@ -544,7 +652,8 @@ public final class DependencyIndexer {
     }
 
     static Path generationFailurePath(Path projectRoot, BuildSystem buildSystem) {
-        return projectRoot.resolve(buildSystem == BuildSystem.MAVEN ? "target" : "build")
+        return projectRoot
+                .resolve(buildSystem == BuildSystem.MAVEN ? "target" : "build")
                 .resolve(FAILURE_CACHE_FILE);
     }
 
@@ -616,8 +725,11 @@ public final class DependencyIndexer {
     }
 
     private static int workerCount(int tasks) {
-        return workerCount(tasks, Runtime.getRuntime().availableProcessors(),
-                Runtime.getRuntime().maxMemory(), System.getenv(WORKERS_ENV));
+        return workerCount(
+                tasks,
+                Runtime.getRuntime().availableProcessors(),
+                Runtime.getRuntime().maxMemory(),
+                System.getenv(WORKERS_ENV));
     }
 
     static int workerCount(int tasks, int processors, long maxMemory, String configured) {
@@ -641,15 +753,20 @@ public final class DependencyIndexer {
         Map<Path, Set<String>> selected = new LinkedHashMap<>();
         for (Path jar : jars) {
             Set<String> jarClasses = new HashSet<>();
-            try (JarFile jf = openJar(jar); var entries = jf.versionedStream()) {
-                entries.filter(DependencyIndexer::isClassEntry).forEach(entry -> {
-                    String name = entry.getName();
-                    // module-info.class has the same path in every modular JAR but describes
-                    // a distinct named module, so classpath shadowing does not apply to it.
-                    if (name.equals("module-info.class") || claimed.add(name)) {
-                        jarClasses.add(name);
-                    }
-                });
+            try (JarFile jf = openJar(jar);
+                    var entries = jf.versionedStream()) {
+                entries.filter(DependencyIndexer::isClassEntry)
+                        .forEach(
+                                entry -> {
+                                    String name = entry.getName();
+                                    // module-info.class has the same path in every modular JAR but
+                                    // describes
+                                    // a distinct named module, so classpath shadowing does not
+                                    // apply to it.
+                                    if (name.equals("module-info.class") || claimed.add(name)) {
+                                        jarClasses.add(name);
+                                    }
+                                });
             } catch (IOException e) {
                 // Keep the empty selection; the indexing pass will skip the unreadable JAR too.
             }
@@ -667,7 +784,8 @@ public final class DependencyIndexer {
         Indexer indexer = new Indexer();
         for (Path jar : jars) {
             Set<String> selected = selectedClasses.getOrDefault(jar, Set.of());
-            try (JarFile jf = openJar(jar); var entries = jf.versionedStream()) {
+            try (JarFile jf = openJar(jar);
+                    var entries = jf.versionedStream()) {
                 Iterator<JarEntry> iterator = entries.iterator();
                 while (iterator.hasNext()) {
                     JarEntry entry = iterator.next();
@@ -675,6 +793,7 @@ public final class DependencyIndexer {
                         try (InputStream is = jf.getInputStream(entry)) {
                             indexer.index(is);
                         } catch (Exception e) {
+                            QuillLog.swallowed(e);
                             // skip problematic class files
                         }
                     }
@@ -699,18 +818,23 @@ public final class DependencyIndexer {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update(CACHE_FORMAT.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             digest.update((byte) 0);
-            digest.update(Integer.toString(JarFile.runtimeVersion().feature())
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            digest.update(
+                    Integer.toString(JarFile.runtimeVersion().feature())
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
             digest.update((byte) 0);
             for (Path jar : jars) {
                 Path normalized = jar.toAbsolutePath().normalize();
-                digest.update(normalized.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update(
+                        normalized.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 digest.update((byte) 0);
-                digest.update(Long.toString(Files.size(normalized))
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update(
+                        Long.toString(Files.size(normalized))
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 digest.update((byte) 0);
-                digest.update(Files.getLastModifiedTime(normalized).toString()
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update(
+                        Files.getLastModifiedTime(normalized)
+                                .toString()
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 digest.update((byte) 0);
             }
             return HexFormat.of().formatHex(digest.digest());
@@ -725,8 +849,8 @@ public final class DependencyIndexer {
         if (fingerprint == null) return null;
         Path cache = dependencyCachePath(fingerprint);
         if (!Files.isRegularFile(cache)) return null;
-        try (DataInputStream input = new DataInputStream(
-                new BufferedInputStream(Files.newInputStream(cache)))) {
+        try (DataInputStream input =
+                new DataInputStream(new BufferedInputStream(Files.newInputStream(cache)))) {
             if (!CACHE_FORMAT.equals(input.readUTF()) || !fingerprint.equals(input.readUTF())) {
                 return null;
             }
@@ -743,13 +867,14 @@ public final class DependencyIndexer {
             }
             return new ShardedIndex(readIndexShards(serializedShards));
         } catch (IOException | RuntimeException ignored) {
+            QuillLog.swallowed(ignored);
             return null;
         }
     }
 
     private static List<Index> readIndexShards(List<byte[]> serializedShards) throws IOException {
         if (serializedShards.size() == 1) {
-            return List.of(readIndexShard(serializedShards.get(0)));
+            return List.of(readIndexShard(serializedShards.getFirst()));
         }
 
         int threadCount = workerCount(serializedShards.size());
@@ -784,8 +909,9 @@ public final class DependencyIndexer {
         try {
             Files.createDirectories(cache.getParent());
             temporary = Files.createTempFile(cache.getParent(), ".quill-dependencies-", ".tmp");
-            try (DataOutputStream output = new DataOutputStream(
-                    new BufferedOutputStream(Files.newOutputStream(temporary)))) {
+            try (DataOutputStream output =
+                    new DataOutputStream(
+                            new BufferedOutputStream(Files.newOutputStream(temporary)))) {
                 output.writeUTF(CACHE_FORMAT);
                 output.writeUTF(fingerprint);
                 output.writeInt(index.shards().size());
@@ -797,7 +923,10 @@ public final class DependencyIndexer {
                 }
             }
             try {
-                Files.move(temporary, cache, StandardCopyOption.ATOMIC_MOVE,
+                Files.move(
+                        temporary,
+                        cache,
+                        StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException ignored) {
                 Files.move(temporary, cache, StandardCopyOption.REPLACE_EXISTING);
@@ -822,7 +951,8 @@ public final class DependencyIndexer {
 
     private static Path sharedCacheRoot() {
         String configured = System.getProperty(CACHE_DIRECTORY_PROPERTY);
-        if (configured == null || configured.isBlank()) configured = System.getenv(CACHE_DIRECTORY_ENV);
+        if (configured == null || configured.isBlank())
+            configured = System.getenv(CACHE_DIRECTORY_ENV);
         if (configured != null && !configured.isBlank()) {
             return Path.of(configured).toAbsolutePath().normalize();
         }
@@ -832,18 +962,20 @@ public final class DependencyIndexer {
     private static void pruneSharedCache(Path current) {
         Path directory = current.getParent();
         try (var files = Files.list(directory)) {
-            List<Path> entries = files
-                    .filter(path -> path.getFileName().toString().endsWith(".idx"))
-                    .sorted(Comparator.comparingLong(DependencyIndexer::lastModified)
-                            .reversed())
-                    .toList();
+            List<Path> entries =
+                    files.filter(path -> path.getFileName().toString().endsWith(".idx"))
+                            .sorted(
+                                    Comparator.comparingLong(DependencyIndexer::lastModified)
+                                            .reversed())
+                            .toList();
             long retainedBytes = 0;
             for (int i = 0; i < entries.size(); i++) {
                 Path entry = entries.get(i);
                 long size = Files.size(entry);
-                boolean retain = entry.equals(current)
-                        || (i < MAX_SHARED_CACHE_ENTRIES
-                                && retainedBytes + size <= MAX_SHARED_CACHE_BYTES);
+                boolean retain =
+                        entry.equals(current)
+                                || (i < MAX_SHARED_CACHE_ENTRIES
+                                        && retainedBytes + size <= MAX_SHARED_CACHE_BYTES);
                 if (retain) retainedBytes += size;
                 else Files.deleteIfExists(entry);
             }

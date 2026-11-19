@@ -15,6 +15,8 @@ final class KotlinCompilerCapture {
                 || !(mojo.getGoal().equals("compile") || mojo.getGoal().equals("test-compile"))) return;
         var project = event.getProject();
         if (project == null || project.getBasedir() == null) return;
+        try { if (CompilationCapture.skipped(event)) { CompilationCapture.failed(event); return; } }
+        catch (Exception unavailable) { throw new IOException("Cannot confirm Kotlin execution", unavailable); }
         var plugins = new ArrayList<Path>();
         var descriptor = mojo.getMojoDescriptor();
         if (descriptor != null && descriptor.getPluginDescriptor() != null && descriptor.getPluginDescriptor().getClassRealm() != null)
@@ -41,7 +43,8 @@ final class KotlinCompilerCapture {
             settings.setProperty("buildInput.path." + index, input.toAbsolutePath().normalize().toString());
             settings.setProperty("buildInput.sha256." + index++, hash(input));
         }
-        write(target, settings);
+        CompilationCapture.finish(event, settings);
+
     }
     static Properties settings(Xpp3Dom config, String version, List<Path> plugins) {
         var result = new Properties();
@@ -97,6 +100,11 @@ final class KotlinCompilerCapture {
         if (Files.isRegularFile(target)) {
             var previous = new Properties(); try (var reader = Files.newBufferedReader(target)) { previous.load(reader); }
             catch (IllegalArgumentException malformed) { previous.clear(); }
+            if (settings.containsKey("compiledAt") && previous.containsKey("compiledAt")) {
+                var comparable = new Properties(); comparable.putAll(settings);
+                comparable.setProperty("compiledAt", previous.getProperty("compiledAt"));
+                if (previous.equals(comparable)) return;
+            }
             if (previous.equals(settings)) return;
         }
         Files.createDirectories(target.getParent()); Path temporary = Files.createTempFile(target.getParent(), ".kotlin-settings-", ".tmp");

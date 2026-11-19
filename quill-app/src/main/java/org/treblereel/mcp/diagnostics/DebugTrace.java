@@ -11,11 +11,12 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.treblereel.mcp.core.Json;
 
 /** Structured, stderr-safe diagnostics for explaining how an MCP answer was produced. */
 public final class DebugTrace {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
     private static final Object WRITE_LOCK = new Object();
     private static final ThreadLocal<Trace> CURRENT = new ThreadLocal<>();
     private static final long MAX_LOG_BYTES = 5L * 1024 * 1024;

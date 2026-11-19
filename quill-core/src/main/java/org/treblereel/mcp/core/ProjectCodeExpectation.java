@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.treblereel.mcp.diagnostics.QuillLog;
 
 /** Determines whether build metadata declares JVM code that should produce main classes. */
 public final class ProjectCodeExpectation {
@@ -47,6 +48,7 @@ public final class ProjectCodeExpectation {
                     && !Files.isRegularFile(root.resolve("build.gradle.kts"));
             return settingsOnly ? State.METADATA_ONLY : State.UNKNOWN;
         } catch (IOException | RuntimeException failure) {
+            QuillLog.swallowed(failure);
             return State.UNKNOWN;
         }
     }
@@ -72,6 +74,7 @@ public final class ProjectCodeExpectation {
         try (Reader reader = Files.newBufferedReader(pom, StandardCharsets.UTF_8)) {
             return new MavenXpp3Reader().read(reader);
         } catch (IOException | XmlPullParserException | RuntimeException failure) {
+            QuillLog.swallowed(failure);
             return null;
         }
     }

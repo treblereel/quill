@@ -26,6 +26,12 @@ public final class JavaGradleCapture {
                         values.setProperty('sourceSet', name)
                         values.setProperty('execution', task.path)
                         values.setProperty('evidence', confirmed ? 'successful_task' : 'configured_task')
+                        def rest = project.plugins.hasPlugin('io.quarkus') && project.configurations.findByName('compileClasspath')?.resolvedConfiguration?.resolvedArtifacts?.any { artifact ->
+                            artifact.moduleVersion.id.group == 'io.quarkus' && artifact.name in ['quarkus-rest', 'quarkus-resteasy-reactive']
+                        }
+                        values.setProperty('quarkusRest', Boolean.toString(rest == true))
+                        def arc = project.plugins.hasPlugin('io.quarkus') && project.configurations.findByName('compileClasspath')?.resolvedConfiguration?.resolvedArtifacts?.any { artifact -> artifact.moduleVersion.id.group == 'io.quarkus' && artifact.name == 'quarkus-arc' }
+                        values.setProperty('quarkusArc', Boolean.toString(arc == true))
                         values.setProperty('compilerId', 'javac')
                         def release = options.release.orNull
                         if (release != null) values.setProperty('release', release.toString())
@@ -94,6 +100,9 @@ public final class JavaGradleCapture {
                         output.parentFile.mkdirs()
                         def previous = new Properties()
                         if (output.isFile()) output.withReader('UTF-8') { previous.load(it) }
+                        if (previous.getProperty('compilationProtocol') == '1') {
+                            previous.each { key, value -> if (key.toString().startsWith('compilation') || key.toString().startsWith('compiled') || key == 'buildVariantSha256') values.setProperty(key.toString(), value.toString()) }
+                        }
                         if (previous == values) return
                         def temporary = File.createTempFile('.java-settings-', '.tmp', output.parentFile)
                         try {
@@ -115,5 +124,94 @@ public final class JavaGradleCapture {
             if (task instanceof org.gradle.api.tasks.compile.JavaCompile && state.failure == null)
                 quillCaptureJava(task.project, task, true)
         }
-        """ + BuildIntegrationProtocol.gradleScript(); }
+        """ + compilationScript() + BuildIntegrationProtocol.gradleScript(); }
+    private static String compilationScript() { return """
+        def quillCompilationStarts = new java.util.concurrent.ConcurrentHashMap()
+        def quillTreeHash = { File root ->
+            if (!root.exists()) return 'absent'
+            def sha = { byte[] bytes -> java.security.MessageDigest.getInstance('SHA-256').digest(bytes) }
+            if (root.isFile()) return java.util.HexFormat.of().formatHex(sha(root.bytes))
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            def files = []
+            root.eachFileRecurse { if (it.isFile()) files.add(it) }
+            files.sort { a, b -> a.path <=> b.path }.each { file ->
+                digest.update(root.toPath().relativize(file.toPath()).toString().replace(File.separatorChar, '/' as char).getBytes('UTF-8'))
+                digest.update((byte)0); digest.update(sha(file.bytes)); digest.update((byte)0)
+            }
+            java.util.HexFormat.of().formatHex(digest.digest())
+        }
+        def quillCompilationInputs = { task ->
+            def sets = task.project.extensions.findByName('sourceSets')
+            def set = sets?.find { task.name == it.compileJavaTaskName || task.name == it.getCompileTaskName('kotlin') }
+            if (set == null) return null
+            def values = new Properties()
+            values.setProperty('compilationModule', task.project.projectDir.canonicalPath)
+            values.setProperty('sourceSet', set.name)
+            def languages = (set.allSource.files - set.resources.files).collect { it.name.endsWith('.java') ? 'java' : it.name.endsWith('.kt') ? 'kotlin' : null }.findAll { it != null }.unique().sort()
+            values.setProperty('compilationLanguage.count', languages.size().toString())
+            languages.eachWithIndex { language, index -> values.setProperty('compilationLanguage.' + index, language) }
+            def roots = new TreeSet<File>({ a, b -> a.canonicalPath <=> b.canonicalPath } as Comparator)
+            roots.addAll(set.allSource.srcDirs)
+            roots.add(new File(task.project.projectDir, 'src/' + set.name + '/kotlin'))
+            if (task instanceof org.gradle.api.tasks.compile.JavaCompile) {
+                def generated = task.options.generatedSourceOutputDirectory.orNull
+                if (generated != null) roots.remove(generated.asFile)
+            }
+            if (set.name != 'main' && sets.findByName('main') != null) roots.addAll(sets.main.output.classesDirs.files)
+            def directory = task.project.projectDir
+            while (directory != null) {
+                ['build.gradle','build.gradle.kts','settings.gradle','settings.gradle.kts','gradle.properties','gradle/libs.versions.toml'].each { roots.add(new File(directory, it)) }
+                if (directory.canonicalFile == task.project.rootProject.projectDir.canonicalFile) break
+                directory = directory.parentFile
+            }
+            roots.add(new File(gradle.gradleUserHomeDir, 'gradle.properties'))
+            values.setProperty('compilationRoot.count', roots.size().toString())
+            roots.eachWithIndex { input, index ->
+                values.setProperty('compilationRoot.path.' + index, input.canonicalPath)
+                values.setProperty('compilationRoot.sha256.' + index, quillTreeHash(input))
+            }
+            values.setProperty('buildVariantSha256', java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance('SHA-256').digest(gradle.startParameter.projectProperties.toSorted().toString().getBytes('UTF-8'))))
+            values
+        }
+        def quillCompilerTask = { task -> task instanceof org.gradle.api.tasks.compile.JavaCompile || task.class.name.contains('KotlinCompile') }
+        gradle.taskGraph.beforeTask { task ->
+            if (quillCompilerTask(task) && System.getProperty('quill.internal') != 'true') {
+                try { def values = quillCompilationInputs(task); if (values != null) quillCompilationStarts.put(task.path, values) }
+                catch (Exception error) { task.logger.warn('[quill] Could not capture compile inputs: ' + error.message) }
+            }
+        }
+        gradle.taskGraph.afterTask { task, state ->
+            if (quillCompilerTask(task) && System.getProperty('quill.internal') != 'true') {
+                def before = quillCompilationStarts.remove(task.path)
+                if (state.failure == null && !state.noSource && (!state.skipped || state.upToDate || state.fromCache)) try {
+                    def after = quillCompilationInputs(task)
+                    if (after != null) {
+                        def kotlin = task.class.name.contains('KotlinCompile')
+                        def outputDir = task.destinationDirectory.get().asFile
+                        def file = new File(task.project.buildDir, 'quill-' + (kotlin ? 'kotlin' : 'java') + '-' + after.getProperty('sourceSet') + '.properties')
+                        def values = new Properties()
+                        if (file.isFile()) file.withReader('UTF-8') { values.load(it) }
+                        values.putAll(after)
+                        values.setProperty('compilationProtocol', '1')
+                        values.setProperty('compilationEvidence', before != null && before == after ? 'matching' : 'inputs_changed_during_compile')
+                        values.setProperty('buildTool', 'gradle'); values.setProperty('evidence', 'successful_task')
+                        values.setProperty('compiledOutput.path', outputDir.canonicalPath)
+                        values.setProperty('compiledOutput.sha256', quillTreeHash(outputDir))
+                        def previous = new Properties()
+                        if (file.isFile()) file.withReader('UTF-8') { previous.load(it) }
+                        if (previous == values) return
+                        values.setProperty('compiledAt', System.currentTimeMillis().toString())
+                        file.parentFile.mkdirs()
+                        def temporary = File.createTempFile('.compile-', '.tmp', file.parentFile)
+                        try {
+                            temporary.withWriter('UTF-8') { values.store(it, 'Quill successful compilation inputs') }
+                            try { java.nio.file.Files.move(temporary.toPath(), file.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
+                            catch (java.nio.file.AtomicMoveNotSupportedException ignored) { java.nio.file.Files.move(temporary.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
+                        } finally { temporary.delete() }
+                    }
+                } catch (Exception error) { task.logger.warn('[quill] Could not confirm compile inputs: ' + error.message) }
+            }
+        }
+        """; }
+
 }

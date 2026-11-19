@@ -1,0 +1,57 @@
+{
+  "io.quarkus.arc.InjectableBean": {
+    "jar": "io.quarkus.arc.arc-3.40.1.1.jar",
+    "sha256": "857c3f23b6d863d93e7112675f14f36555e48692fd87c0991dc9d9175d28794e",
+    "maven_properties": {
+      "META-INF/maven/io.quarkus.arc/arc/pom.properties": [
+        "artifactId=arc",
+        "groupId=io.quarkus.arc",
+        "version=3.40.1.1"
+      ]
+    }
+  },
+  "io.quarkus.arc.runtime.ConfigMappingCreator": {
+    "jar": "io.quarkus.quarkus-arc-3.40.1.1.jar",
+    "sha256": "9d63cf354dbe60981fcc4fa47c61a9f3a2c59bf80b6fef02c368d5764ef29222",
+    "maven_properties": {
+      "META-INF/maven/io.quarkus/quarkus-arc/pom.properties": [
+        "artifactId=quarkus-arc",
+        "groupId=io.quarkus",
+        "version=3.40.1.1"
+      ]
+    }
+  },
+  "io.quarkus.narayana.jta.runtime.interceptor.TransactionalInterceptorRequired": {
+    "jar": "io.quarkus.quarkus-narayana-jta-3.40.1.1.jar",
+    "sha256": "c9b28427dd5f6b93927b4c68da030f494c3ac299c25207c8c9d30ed65b26354c",
+    "maven_properties": {
+      "META-INF/maven/io.quarkus/quarkus-narayana-jta/pom.properties": [
+        "artifactId=quarkus-narayana-jta",
+        "groupId=io.quarkus",
+        "version=3.40.1.1"
+      ]
+    }
+  },
+  "io.quarkus.vertx.runtime.VertxProducer": {
+    "jar": "io.quarkus.quarkus-vertx-3.40.1.1.jar",
+    "sha256": "284609e9737903fd7d1d0ecccb795da51cc4dafaf2b393862a2d314a7c6ffbda",
+    "maven_properties": {
+      "META-INF/maven/io.quarkus/quarkus-vertx/pom.properties": [
+        "artifactId=quarkus-vertx",
+        "groupId=io.quarkus",
+        "version=3.40.1.1"
+      ]
+    }
+  },
+  "io.smallrye.common.annotation.Identifier": {
+    "jar": "io.smallrye.common.smallrye-common-annotation-2.19.0.jar",
+    "sha256": "a29ef5d8ed9e306ed683a4d680bb1c03f89c41196aa0a41c95eb0dda8e81e346",
+    "maven_properties": {
+      "META-INF/maven/io.smallrye.common/smallrye-common-annotation/pom.properties": [
+        "artifactId=smallrye-common-annotation",
+        "groupId=io.smallrye.common",
+        "version=2.19.0"
+      ]
+    }
+  }
+}

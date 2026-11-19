@@ -7,18 +7,19 @@ import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import org.treblereel.mcp.workspace.WorkspaceManifest;
 import org.treblereel.mcp.workspace.WorkspaceManifestStore;
-import org.treblereel.mcp.mcp.WorkspaceProjectScope;
+import org.treblereel.mcp.workspace.WorkspaceProjectScope;
 import org.treblereel.mcp.workspace.WorkspaceCoordinateCatalog;
 import org.treblereel.mcp.workspace.WorkspaceDiscovery;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import org.treblereel.mcp.core.Json;
 
 @Command(name = "status", mixinStandardHelpOptions = true,
         description = "Show the persisted workspace configuration")
 public final class WorkspaceStatusCommand implements Callable<Integer> {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = Json.MAPPER;
 
     @Option(names = "--project", description = "Path to the workspace root")
     Path workspaceRoot;

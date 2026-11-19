@@ -16,6 +16,22 @@ class WorktreeInspectorTest {
     @TempDir Path tempDir;
 
     @Test
+    void warmFingerprintDetectsSameSizeUntrackedEditWithRestoredMtime() throws Exception {
+        try (Git git = Git.init().setDirectory(tempDir.toFile()).call()) {
+            Path file = tempDir.resolve("artifact.bin");
+            Files.writeString(file, "aaaa");
+            var modified = Files.getLastModifiedTime(file);
+            String first = WorktreeInspector.inspect(tempDir).fingerprint();
+            assertEquals(first, WorktreeInspector.inspect(tempDir).fingerprint());
+            Files.writeString(file, "bbbb");
+            Files.setLastModifiedTime(file, modified);
+            String changed = WorktreeInspector.inspect(tempDir).fingerprint();
+            assertNotEquals(first, changed);
+            assertEquals(changed, WorktreeInspector.inspect(tempDir).fingerprint());
+        }
+    }
+
+    @Test
     void reportsDirtyServiceDescriptorAndUntrackedFileWithinProject() throws Exception {
         Path project = tempDir.resolve("processor");
         Path service = project.resolve(

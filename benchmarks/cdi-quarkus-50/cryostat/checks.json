@@ -1,0 +1,22 @@
+{
+  "unit_tests": {
+    "command": "python3 -m unittest discover -s benchmarks/cdi-quarkus-50/tools -p 'test_*.py' -v",
+    "passed": 9,
+    "failed": 0
+  },
+  "independent_attribution": {
+    "java_files": 334,
+    "errors": 0
+  },
+  "reference_patch": {
+    "baseline_behavior_cases": 12,
+    "baseline_passed": 12,
+    "renamed_behavior_cases": 12,
+    "renamed_passed": 12,
+    "compile": "passed_in_temporary_directories"
+  },
+  "config_precedence_probe": "passed_explicit_sources_only",
+  "new_model_calls": 0,
+  "cryostat_application_started": false,
+  "cryostat_tracked_sources_modified": false
+}

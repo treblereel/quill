@@ -1,0 +1,105 @@
+package org.treblereel.mcp.index;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.nio.file.*;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class BuildStatusInspectorTest {
+    @TempDir Path root;
+
+    @Test void completeObservationRetainsSettingsAndOutputsBeyondOneHundredModules() throws Exception {
+        var modules = new StringBuilder();
+        for (int i = 0; i < 105; i++) {
+            String name = String.format("module-%03d", i);
+            modules.append("<module>").append(name).append("</module>");
+            Path module = Files.createDirectories(root.resolve(name));
+            Files.writeString(module.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion>"
+                    + "<groupId>test</groupId><artifactId>" + name + "</artifactId><version>1</version></project>");
+            Path output = module.resolve("target/classes/Marker.class");
+            Files.createDirectories(output.getParent()); Files.write(output, new byte[]{1});
+        }
+        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId>"
+                + "<artifactId>parent</artifactId><version>1</version><packaging>pom</packaging><modules>"
+                + modules + "</modules></project>");
+        var result = new com.fasterxml.jackson.databind.ObjectMapper().readTree(BuildStatusInspector.inspect(root, Map.of()));
+        assertEquals(105, result.at("/compiled_outputs/count").asInt());
+        assertEquals(105, result.at("/compiled_outputs/directories").size());
+        assertFalse(result.at("/compiled_outputs/directories_truncated").asBoolean());
+        assertTrue(result.path("java_compiler_settings").valueStream()
+                .anyMatch(item -> item.path("module").asText().equals(root.resolve("module-104").toString())));
+    }
+
+    @Test void rebuiltClassesWithIndexedContentDoNotRequireARefresh() throws Exception {
+        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId>"
+                + "<artifactId>app</artifactId><version>1</version></project>");
+        Path output = root.resolve("target/classes/Marker.class");
+        Files.createDirectories(output.getParent()); Files.write(output, new byte[]{1});
+        var directories = ProjectLayout.discoverClassesDirs(root, false).classesDirectories();
+        var metadata = Map.of("index_id", "i", "last_commit", "unknown", "indexed_at", "2020-01-01T00:00:00Z",
+                "state_fingerprint", ProjectLayout.computeStateFingerprint(root, directories,
+                        org.treblereel.mcp.core.ClassFileSnapshot.fingerprint(directories), null));
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        var rebuilt = json.readTree(BuildStatusInspector.inspect(root, metadata));
+        assertTrue(rebuilt.at("/compiled_outputs/changed_after_index").asBoolean(), rebuilt.toString());
+        assertTrue(rebuilt.at("/compiled_outputs/content_matches_index").asBoolean(), rebuilt.toString());
+        assertFalse(rebuilt.at("/index/project_fingerprint_changed").asBoolean());
+        assertNotEquals("index_refresh_required", rebuilt.path("status").asText());
+
+        Files.write(output, new byte[]{2});
+        var changed = json.readTree(BuildStatusInspector.inspect(root, metadata));
+        assertTrue(changed.at("/index/project_fingerprint_changed").asBoolean(), changed.toString());
+        assertFalse(changed.at("/compiled_outputs/content_matches_index").asBoolean());
+    }
+
+    @Test void fingerprintUsesTheSameRepositoryBoundaryAsTheIndex() throws Exception {
+        Files.createDirectory(root.resolve(".git"));
+        Files.writeString(root.resolve("pom.xml"), "<project><modelVersion>4.0.0</modelVersion><groupId>test</groupId>"
+                + "<artifactId>parent</artifactId><version>1</version><modules><module>child</module></modules></project>");
+        Path child = Files.createDirectories(root.resolve("child/.git")).getParent();
+        Files.writeString(child.resolve("pom.xml"), "<project/>");
+        Path own = root.resolve("target/classes/Own.class"), nested = child.resolve("target/classes/Nested.class");
+        Files.createDirectories(own.getParent()); Files.write(own, new byte[]{1});
+        Files.createDirectories(nested.getParent()); Files.write(nested, new byte[]{2});
+        var dirs = ProjectInitializer.findClassesDirs(root);
+        assertEquals(java.util.List.of(own.getParent()), dirs);
+        var metadata = Map.of("index_id", "i", "last_commit", "unknown", "indexed_at", "2020-01-01T00:00:00Z",
+                "state_fingerprint", ProjectLayout.computeStateFingerprint(root, dirs,
+                        org.treblereel.mcp.core.ClassFileSnapshot.fingerprint(dirs), null));
+        assertEquals(false, BuildStatusInspector.capture(root, metadata, BuildStatusInspector.freshness(metadata, 0, 0)).fingerprintChanged());
+        Files.write(nested, new byte[]{3});
+        assertEquals(false, BuildStatusInspector.capture(root, metadata, BuildStatusInspector.freshness(metadata, 0, 0)).fingerprintChanged());
+        Files.write(own, new byte[]{4});
+        assertEquals(true, BuildStatusInspector.capture(root, metadata, BuildStatusInspector.freshness(metadata, 0, 0)).fingerprintChanged());
+    }
+
+    @Test void commitOnlyLegacyWorktreeFingerprintIsNotACompilationFailure() throws Exception {
+        Files.writeString(root.resolve("pom.xml"), "<project/>");
+        Path output = root.resolve("target/classes/Marker.class");
+        Files.createDirectories(output.getParent()); Files.write(output, new byte[]{1});
+        var stale = new org.treblereel.mcp.model.MetaEnvelope("old", "unknown", "old", "new", true,
+                false, 0, 0, true, java.util.List.of("commit_changed_after_index", "indexed_inputs_changed"), true, 0, 0, 0);
+        var result = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                BuildStatusInspector.capture(root, Map.of(), stale).inspect(null));
+        assertEquals("fresh", result.at("/compiled_outputs/status").asText());
+        assertNotEquals("build_required", result.path("status").asText());
+        assertTrue(result.path("build_reason").isNull());
+    }
+
+    @Test void pinnedEvidenceDoesNotResolveOrRepairNewerGenerationRefs() throws Exception {
+        Files.writeString(root.resolve("pom.xml"), "<project/>");
+        Path output = root.resolve("target/classes/Marker.class");
+        Files.createDirectories(output.getParent()); Files.write(output, new byte[]{1});
+        Path refs = root.resolve(".quill/refs.json");
+        Files.createDirectories(refs.getParent()); Files.writeString(refs, "{refs-being-replaced");
+        var metadata = Map.of("index_id", "pinned-generation", "project_root", root.toString(),
+                "indexed_at", "2026-01-01T00:00:00Z", "state_fingerprint", "previous-inputs");
+        var observation = BuildStatusInspector.capture(root, metadata, BuildStatusInspector.freshness(metadata, 0, 0));
+        assertEquals(Boolean.TRUE, observation.fingerprintChanged(), "Pinned inputs still require a real freshness check");
+        assertEquals("{refs-being-replaced", Files.readString(refs));
+        assertFalse(Files.exists(root.resolve(".quill/recovery.json")));
+    }
+}

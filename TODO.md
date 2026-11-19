@@ -47,7 +47,13 @@ Rubric: CQ-038 accepts "Explicit in-memory override" and "Application fixture"; 
 "regenerates" and "do not patch". Rescored: full2 Claude 101/105 (6.28M, $12.70), Codex 100/105
 (12.13M, $6.54); full Claude 98, Codex 98; base Claude 79 (was 77), Codex 86.
 
-- [ ] Codex Quill calls rose to 535 from 306 at +4% input; find which tools and cases.
+- [x] Codex Quill calls rose to 535 from 306 at +4% input. Cause: AGENTS.md v10 (full ran v9).
+  Codex batches Quill calls inside its `exec` steps, so steps stay 3.94 vs 3.86 per session; Quill
+  replaces shell reads: shell read/search commands 366 vs 662, steps with shell 235 vs 317, first
+  step goes to Quill in 101 vs 70 sessions; 3 Quill calls in one step 75 vs 18 times. Count calls
+  per step, not calls, when comparing Codex runs.
+- [ ] Codex input rose most on CQ-050 (527k vs 445k per 3 sessions), CQ-025 (207k vs 146k),
+  CQ-032 (252k vs 204k), CQ-011 (90k vs 51k); see which Quill results there are large.
 - [ ] CQ-027 Codex 1/3: answers say "JSON deserialization" and drop `readValue`.
 - [ ] CQ-042 Claude r2: a 656-char answer names only the `Producers.BASE64_URL` constant, not the
   five injection sites.

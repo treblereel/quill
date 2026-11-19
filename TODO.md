@@ -21,8 +21,9 @@ Every miss below had the fact in the packet or in Quill results; the answer left
   a disposable checkout; find what the agent does with Quill there.
 - [ ] Apollo: Codex with Quill costs more than without on 15 of 44 cases (AQ-040, AQ-026, AQ-028,
   AQ-036, AQ-043: +30-50k each); Codex saves 10% on Apollo against 43% on Cryostat.
-- [ ] Cryostat CQ-041 (Claude r2, r3, no Quill calls): the blast-radius answer omits that `resolve`
-  returns `Optional`, which the packet states 7 times.
+- [x] Cryostat CQ-041 (Claude r2, r3, no Quill calls): the blast-radius answer omits that `resolve`
+  returns `Optional`, which the packet states 7 times. 5060409b names the type in
+  `caller_result_use`; cq041-20261118: Claude 3/3 (was 1/3), Codex 3/3, same 12k input.
 - [ ] Cryostat CQ-027 (Claude r2, no Quill calls): the answer omits the `readValue` call the packet lists.
 - [x] Cryostat CQ-044 (both clients): answers add a new producer class instead of the existing
   `Producers`, which the packet names. 5c7e5e74 adds `application_producer_hosts_basis`;
@@ -39,6 +40,19 @@ Every miss below had the fact in the packet or in Quill results; the answer left
 - [x] CQ-012 (Codex 0/3 with and without Quill): answers wrote `@Identifier(...)` instead of
   `io.smallrye.common.annotation.Identifier`. 34d7e7f2 states the qualifier type match by FQCN;
   cq012-20261118: Codex 3/3 at 16k input (was 0/3 at 34-53k), Claude 3/3 (was 2/3).
+
+### Cryostat full2-20261118 (with Quill, after 5c7e5e74, 34d7e7f2, 5060409b and AGENTS.md v10)
+
+Rubric: CQ-038 accepts "Explicit in-memory override" and "Application fixture"; CQ-048 accepts
+"regenerates" and "do not patch". Rescored: full2 Claude 101/105 (6.28M, $12.70), Codex 100/105
+(12.13M, $6.54); full Claude 98, Codex 98; base Claude 79 (was 77), Codex 86.
+
+- [ ] Codex Quill calls rose to 535 from 306 at +4% input; find which tools and cases.
+- [ ] CQ-027 Codex 1/3: answers say "JSON deserialization" and drop `readValue`.
+- [ ] CQ-042 Claude r2: a 656-char answer names only the `Producers.BASE64_URL` constant, not the
+  five injection sites.
+- [ ] Single misses: CQ-001 Claude (quinoa), CQ-025 Claude, CQ-035 Codex (StartupEvent), CQ-038
+  Claude (fixture source unnamed), CQ-044 Codex (Producers), CQ-047 Codex (enabled key).
 
 ## Сравнимость прогонов Apollo и Cryostat (2026-11-15)
 

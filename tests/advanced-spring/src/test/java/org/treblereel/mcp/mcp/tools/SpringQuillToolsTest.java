@@ -1,4 +1,6 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.tools;
+
+import org.treblereel.mcp.db.ReadQueryContext;
 
 import org.treblereel.mcp.db.IndexFixture;
 
@@ -15,10 +17,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.tools.QuillTools;
 import org.treblereel.mcp.model.*;
 
 class SpringQuillToolsTest {
+
+    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
+    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+        return ReadQueryContext.readWithGraph(jdbi, query).toString();
+    }
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -100,8 +106,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getBeansShowsSpringBeans() {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, null, null, null, null);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getBeans(r, null, null, null, null, null));
         assertTrue(result.contains("UserRepository"));
         assertTrue(result.contains("UserService"));
         assertTrue(result.contains("EmailNotificationService"));
@@ -110,19 +116,19 @@ class SpringQuillToolsTest {
 
     @Test
     void getBeansFiltersBySingletonScope() {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, "singleton", null, null, null);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getBeans(r, null, "singleton", null, null, null));
         assertTrue(result.contains("UserRepository"));
         assertTrue(result.contains("UserService"));
         assertFalse(result.contains("requestContext"));
-        assertEquals(result, tools.getBeans(jdbi, null, "@Singleton", null, null, null),
+        assertEquals(result, read(jdbi, r -> tools.getBeans(r, null, "@Singleton", null, null, null)),
                 "the stored form still filters");
     }
 
     @Test
     void getBeansFiltersByProducerMethodKind() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getBeans(jdbi, null, null, "BEAN_METHOD", null, null);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getBeans(r, null, null, "BEAN_METHOD", null, null));
         JsonNode root = JSON.readTree(result);
         assertEquals(1, root.get("total").asInt());
         assertEquals("BEAN_METHOD", root.get("beans").get(0).get("kind").asText());
@@ -139,8 +145,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getDependenciesShowsSpringInject() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "UserService", "outbound", 1);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getDependencies(r, "UserService", "outbound", 1));
         JsonNode root = JSON.readTree(result);
         assertTrue(result.contains("SPRING_INJECT"));
         JsonNode dependsOn = root.get("depends_on");
@@ -149,8 +155,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getDependenciesDepth2ExpandsTransitive() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "OrderController", "outbound", 2);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getDependencies(r, "OrderController", "outbound", 2));
         JsonNode root = JSON.readTree(result);
         JsonNode graph = root.get("graph");
         assertNotNull(graph);
@@ -174,8 +180,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getDependenciesInboundShowsDependents() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "UserRepository", "inbound", 1);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getDependencies(r, "UserRepository", "inbound", 1));
         JsonNode root = JSON.readTree(result);
         JsonNode dependedBy = root.get("depended_by");
         assertNotNull(dependedBy);
@@ -185,8 +191,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getInjectionPointsShowsFieldAndConstructor() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getInjectionPoints(jdbi, "UserService");
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getInjectionPoints(r, "UserService"));
         JsonNode root = JSON.readTree(result);
         JsonNode ips = root.get("injection_points");
         assertEquals(2, ips.size());
@@ -196,8 +202,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getInjectionPointsConstructorParam() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getInjectionPoints(jdbi, "OrderController");
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getInjectionPoints(r, "OrderController"));
         JsonNode root = JSON.readTree(result);
         JsonNode ips = root.get("injection_points");
         assertEquals(2, ips.size());
@@ -206,8 +212,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getInjectionPointsShowsProducerIdentity() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getInjectionPoints(jdbi, "OrderController");
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getInjectionPoints(r, "OrderController"));
         JsonNode root = JSON.readTree(result);
         JsonNode ips = root.get("injection_points");
         JsonNode producerIp = null;
@@ -231,7 +237,7 @@ class SpringQuillToolsTest {
     /** Apollo AQ-010/011/013: CDI terms on Spring beans were repeated as Spring facts. */
     @Test
     void injectionPointsUseSpringTermsWithoutImplicitDefaultQualifier() throws Exception {
-        String result = new QuillTools().getInjectionPoints(jdbi, "UserService");
+        String result = read(jdbi, r -> new QuillToolQueries().getInjectionPoints(r, "UserService"));
         JsonNode root = JSON.readTree(result);
         assertEquals("singleton", root.get("scope").asText());
         assertEquals("CLASS", root.get("bean_kind").asText());
@@ -244,8 +250,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getOverviewShowsSpringProject() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getOverview(jdbi);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getOverview(r));
         JsonNode root = JSON.readTree(result);
         assertEquals(7, root.get("project").get("classes").asInt());
         assertEquals(6, root.get("project").get("beans").asInt());
@@ -263,8 +269,8 @@ class SpringQuillToolsTest {
 
     @Test
     void getRiskWorksWithSpringInject() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getRisk(jdbi, "UserService");
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getRisk(r, "UserService"));
         JsonNode root = JSON.readTree(result);
         assertEquals("com.example.UserService", root.get("target").asText());
         assertTrue(root.has("risk_score"));
@@ -277,8 +283,8 @@ class SpringQuillToolsTest {
 
     @Test
     void searchClassesFindsSpringBeans() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.searchClasses(jdbi, "*Service", 10);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.searchClasses(r, "*Service", 10));
         assertTrue(result.contains("UserService"));
         assertTrue(result.contains("EmailNotificationService"));
         assertTrue(result.contains("NotificationService"));
@@ -286,8 +292,8 @@ class SpringQuillToolsTest {
 
     @Test
     void architectureHubsDetected() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getOverview(jdbi);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getOverview(r));
         JsonNode root = JSON.readTree(result);
         JsonNode hubs = root.get("architecture_hubs");
         assertNotNull(hubs);

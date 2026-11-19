@@ -87,6 +87,8 @@ class KotlinBuildSettingsIT {
             </plugin></plugins></build></project>
             """);
         write("src/main/kotlin/Call.kt", "package probe\nannotation class Open\n@Open class Base { fun pick() = 1 }\nclass Derived: Base()\nfun call() = Derived().pick()\n");
+        // The extension records no settings for an execution without sources, so test-compile needs one.
+        write("src/test/kotlin/CallTest.kt", "package probe\nfun probeCall() = call()\n");
         Path repository = Path.of(System.getProperty("user.dir")).getParent();
         String extension = repository.resolve("quill-maven-extension/target/quill-maven-extension-" + BuildIntegrationInstaller.mavenExtensionVersion() + ".jar").toString();
         assertTrue(Files.isRegularFile(Path.of(extension)),

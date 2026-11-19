@@ -242,6 +242,9 @@ class ReuseAuditTest(unittest.TestCase):
 
     def test_saved_codex_and_claude_logs(self):
         root = Path(__file__).resolve().parent.parent / 'benchmarks/results'
+        # The saved session logs are local benchmark data, not part of the repository.
+        if not (root / 'native-prefetch-reuse-wire-v2').is_dir():
+            self.skipTest('no local session logs in benchmarks/results')
         old = a.audit(root / 'native-prefetch-reuse-wire-v2/sessions/cq-036-codex-old-wire-r1')
         self.assertEqual(old['counts']['red_flag'], 1)
         candidate = a.audit(root / 'native-prefetch-reuse-wire-v2/sessions/cq-036-codex-candidate-wire-r1')

@@ -1,4 +1,6 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.tools;
+
+import org.treblereel.mcp.db.ReadQueryContext;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -15,10 +17,14 @@ import org.treblereel.mcp.db.IndexFixture;
 import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.model.*;
-import org.treblereel.mcp.mcp.tools.QuillTools;
 
 /** Apollo AQ-028: calls stopped at publishEvent, so listeners, multicaster and transaction phase were grep work. */
 class SpringEventDeliveriesTest {
+
+    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
+    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+        return ReadQueryContext.readWithGraph(jdbi, query).toString();
+    }
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String LISTENER = "org.springframework.context.event.EventListener";
     private static final String TX_LISTENER = "org.springframework.transaction.event.TransactionalEventListener";
@@ -64,7 +70,7 @@ class SpringEventDeliveriesTest {
 
     @Test
     void outboundCallsResolveThePublishedEventToItsListeners() throws Exception {
-        String text = new QuillTools().getCallHierarchy(jdbi, "com.example.ReleaseController", "release", "outbound", 20, 0);
+        String text = read(jdbi, r -> new QuillToolQueries().getCallHierarchy(r, "com.example.ReleaseController", "release", "outbound", 20, 0));
         JsonNode events = JSON.readTree(text).path("event_deliveries");
         JsonNode publication = events.path("publications").get(0);
         assertEquals("com.example.ReleaseController#publish", publication.path("publisher_method").asText(), text);
@@ -79,9 +85,9 @@ class SpringEventDeliveriesTest {
 
     @Test
     void inboundQueriesAndMethodsThatPublishNothingGetNoSection() throws Exception {
-        assertFalse(JSON.readTree(new QuillTools().getCallHierarchy(jdbi, "com.example.ReleaseController", "release", "inbound", 20, 0))
+        assertFalse(JSON.readTree(read(jdbi, r -> new QuillToolQueries().getCallHierarchy(r, "com.example.ReleaseController", "release", "inbound", 20, 0)))
                 .has("event_deliveries"));
-        assertFalse(JSON.readTree(new QuillTools().getCallHierarchy(jdbi, "com.example.ReleaseListener", "onRelease", "outbound", 20, 0))
+        assertFalse(JSON.readTree(read(jdbi, r -> new QuillToolQueries().getCallHierarchy(r, "com.example.ReleaseListener", "onRelease", "outbound", 20, 0)))
                 .has("event_deliveries"));
     }
 }

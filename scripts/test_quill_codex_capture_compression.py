@@ -3,12 +3,15 @@ from compression import zstd
 import gzip,http.client,json,ssl,subprocess,tempfile,threading
 from pathlib import Path
 from http.server import ThreadingHTTPServer
+import unittest
 from test_quill_codex_capture import Fake,events,MITM,OUTPUT
 from quill_codex_capture import CodexCapture,wire_usage
 class Compressed(Fake):
  def do_POST(self):
   body=self.rfile.read(int(self.headers['Content-Length']));n=self.record(body,'HTTP-zstd');plain=''.join('data: '+json.dumps(e)+'\n\n' for e in events(n)).encode();payload=gzip.compress(plain);self.server.sent=payload
   self.send_response(200);self.send_header('Content-Type','text/event-stream');self.send_header('Content-Encoding','gzip');self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload)
+# Writes into the local capture output and uses mitmdump and Homebrew OpenSSL; none exists on CI.
+if not OUTPUT.is_dir() or not Path(MITM).exists() or not Path('/opt/homebrew/bin/openssl').exists(): raise unittest.SkipTest('needs the local capture output, mitmdump and Homebrew OpenSSL')
 D=OUTPUT/'compression-check';D.mkdir()
 with tempfile.TemporaryDirectory() as tmp:
  tmp=Path(tmp);cert,key=tmp/'server.crt',tmp/'server.key'

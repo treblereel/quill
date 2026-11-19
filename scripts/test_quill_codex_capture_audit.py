@@ -3,9 +3,12 @@ import json
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
+import unittest
 import quill_codex_capture as c
 
 SOURCE=Path('benchmarks/results/codex-wire-capture-local-v1')
+# The captured wire files and the mitmdump install are local benchmark data, not part of the repository.
+if not (SOURCE/'sse/wire').is_dir() or not Path('/tmp/quill-codex-wire-tools-v1/bin/mitmdump').exists(): raise unittest.SkipTest(f'needs the local capture in {SOURCE} and mitmdump')
 sse=c.wire_usage(SOURCE/'sse/wire');ws=c.wire_usage(SOURCE/'ws/wire')
 assert sse['usage_complete'] and sse['totals']['all']==22
 assert ws['usage_complete'] and ws['totals']['all']==42

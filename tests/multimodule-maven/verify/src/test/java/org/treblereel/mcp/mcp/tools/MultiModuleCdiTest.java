@@ -1,4 +1,4 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.tools;
 
 import org.treblereel.mcp.db.ReadQueryContext;
 
@@ -19,10 +19,13 @@ import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.BeanRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.tools.QuillToolQueries;
-import org.treblereel.mcp.mcp.tools.QuillTools;
 
 class MultiModuleCdiTest {
+
+    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
+    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+        return ReadQueryContext.readWithGraph(jdbi, query).toString();
+    }
 
     static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir")).getParent();
     static final Path QUILL_DIR = PROJECT_ROOT.resolve(".quill");
@@ -49,8 +52,8 @@ class MultiModuleCdiTest {
 
     @Test
     void crossModuleInjectionIsResolved() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getInjectionPoints(jdbi, "UserService");
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getInjectionPoints(r, "UserService"));
         JsonNode root = JSON.readTree(result);
 
         JsonNode ips = root.get("injection_points");
@@ -82,8 +85,8 @@ class MultiModuleCdiTest {
 
     @Test
     void crossModuleDependencyGraphIsComplete() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "UserService", "outbound", 1);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getDependencies(r, "UserService", "outbound", 1));
         JsonNode root = JSON.readTree(result);
 
         JsonNode dependsOn = root.get("depends_on");
@@ -94,8 +97,8 @@ class MultiModuleCdiTest {
 
     @Test
     void crossModuleInboundDependency() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi, "SmsNotificationService", "inbound", 1);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getDependencies(r, "SmsNotificationService", "inbound", 1));
         JsonNode root = JSON.readTree(result);
 
         JsonNode dependedBy = root.get("depended_by");
@@ -113,8 +116,8 @@ class MultiModuleCdiTest {
 
     @Test
     void overviewCountsMatchMultiModule() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getOverview(jdbi);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getOverview(r));
         JsonNode root = JSON.readTree(result);
 
         JsonNode project = root.get("project");
@@ -130,14 +133,14 @@ class MultiModuleCdiTest {
 
     @Test
     void searchClassesFindsAcrossModules() throws Exception {
-        var tools = new QuillTools();
+        var tools = new QuillToolQueries();
 
-        String dtoResult = tools.searchClasses(jdbi, "*DTO", 20);
+        String dtoResult = read(jdbi, r -> tools.searchClasses(r, "*DTO", 20));
         JsonNode dtoRoot = JSON.readTree(dtoResult);
         assertTrue(dtoRoot.get("classes").toString().contains("UserDTO"),
                 "Should find UserDTO from common module");
 
-        String serviceResult = tools.searchClasses(jdbi, "*Service", 20);
+        String serviceResult = read(jdbi, r -> tools.searchClasses(r, "*Service", 20));
         JsonNode serviceRoot = JSON.readTree(serviceResult);
         String serviceJson = serviceRoot.get("classes").toString();
         assertTrue(serviceJson.contains("UserService"));
@@ -152,7 +155,7 @@ class MultiModuleCdiTest {
         assertEquals("main", dto.sourceSet());
 
         JsonNode injections = JSON.readTree(
-                new QuillTools().getInjectionPoints(jdbi, "UserService"));
+                read(jdbi, r -> new QuillToolQueries().getInjectionPoints(r, "UserService")));
         JsonNode candidate = injections.path("injection_points").get(0)
                 .path("resolution_trace").path("candidates").get(0);
         assertEquals("service", candidate.path("module").asText());
@@ -163,20 +166,20 @@ class MultiModuleCdiTest {
     void classAndBeanQueriesCanBeScopedToModule() throws Exception {
         var queries = new QuillToolQueries();
         JsonNode commonClasses = JSON.readTree(
-                ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.searchClasses(readScope, "*", "common", "main", 20)));
+                read(jdbi, readScope -> queries.searchClasses(readScope, "*", "common", "main", 20)));
         assertEquals(2, commonClasses.path("classes").size());
         assertTrue(commonClasses.path("classes").toString().contains("UserDTO"));
         assertFalse(commonClasses.path("classes").toString().contains("UserService"));
 
-        JsonNode serviceBeans = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.getBeans(readScope, null, null, null, null, null, "service", "main", 20)));
+        JsonNode serviceBeans = JSON.readTree(read(jdbi, readScope -> queries.getBeans(readScope, null, null, null, null, null, "service", "main", 20)));
         assertEquals(3, serviceBeans.path("beans").size());
         assertTrue(serviceBeans.path("beans").toString().contains("UserService"));
     }
 
     @Test
     void beansByKindShowsCorrectDistribution() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getOverview(jdbi);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getOverview(r));
         JsonNode root = JSON.readTree(result);
 
         JsonNode byKind = root.get("beans_by_kind");
@@ -187,8 +190,8 @@ class MultiModuleCdiTest {
 
     @Test
     void beansByScopeShowsAllApplicationScoped() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getOverview(jdbi);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getOverview(r));
         JsonNode root = JSON.readTree(result);
 
         JsonNode byScope = root.get("beans_by_scope");

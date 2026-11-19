@@ -47,7 +47,7 @@
             reformatted as it is touched instead of in one sweep. The commit must stay reachable
             from main (merge, do not squash or rebase the branch that introduced it).
         -->
-        <spotless.ratchetFrom>cc14596f68790c394bb4e0b766860dd108ef9bb6</spotless.ratchetFrom>
+        <spotless.ratchetFrom>8577646f54a4b32f9b07cbf13eb4e7557a319032</spotless.ratchetFrom>
         <quill.maven.extension.version>0.1.6-SNAPSHOT</quill.maven.extension.version>
         <slf4j.version>2.0.18</slf4j.version>
         <native.buildtools.version>1.1.12</native.buildtools.version>

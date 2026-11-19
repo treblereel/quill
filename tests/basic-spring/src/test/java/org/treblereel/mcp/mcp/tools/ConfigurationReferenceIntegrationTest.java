@@ -1,4 +1,6 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.tools;
+
+import org.treblereel.mcp.db.ReadQueryContext;
 
 import org.treblereel.mcp.index.ProjectUpdater;
 
@@ -22,9 +24,13 @@ import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.command.UpdateCommand;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.mcp.project.ProjectRegistry;
-import org.treblereel.mcp.mcp.tools.QuillTools;
 
 class ConfigurationReferenceIntegrationTest {
+
+    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
+    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+        return ReadQueryContext.readWithGraph(jdbi, query).toString();
+    }
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Path FIXTURE = Path.of(System.getProperty("user.dir"));
@@ -157,8 +163,8 @@ class ConfigurationReferenceIntegrationTest {
         registry.register(project);
         var resolved = registry.resolve();
         assertTrue(resolved.errors().isEmpty(), resolved.errors().toString());
-        String response = new QuillTools().findConfigurationReferences(
-                resolved.projects().getFirst().jdbi(), key, null, "all", null, 20, 0);
+        String response = read(resolved.projects().getFirst().jdbi(),
+                r -> new QuillToolQueries().findConfigurationReferences(r, key, null, "all", null, 20, 0));
         return JSON.readTree(response);
     }
 
@@ -167,8 +173,8 @@ class ConfigurationReferenceIntegrationTest {
         registry.register(project);
         var resolved = registry.resolve();
         assertTrue(resolved.errors().isEmpty(), resolved.errors().toString());
-        String response = new QuillTools().findResourceReferences(
-                resolved.projects().getFirst().jdbi(), path, null, null, 20, 0);
+        String response = read(resolved.projects().getFirst().jdbi(),
+                r -> new QuillToolQueries().findResourceReferences(r, path, null, null, 20, 0));
         return JSON.readTree(response);
     }
 

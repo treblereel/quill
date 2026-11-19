@@ -1,4 +1,4 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.tools;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -16,11 +16,15 @@ import org.treblereel.mcp.db.IndexWriter;
 import org.treblereel.mcp.db.QuillDatabase;
 import org.treblereel.mcp.db.ReadQueryContext;
 import org.treblereel.mcp.model.*;
-import org.treblereel.mcp.mcp.tools.QuillTools;
 import org.treblereel.mcp.mcp.query.SymbolUsageQueries;
 
 /** Apollo AQ-041: a validator called only from @PreAuthorize SpEL was reported as "called only from Java". */
 class SpelExpressionReferencesTest {
+
+    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
+    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+        return ReadQueryContext.readWithGraph(jdbi, query).toString();
+    }
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String PRE_AUTHORIZE = "org.springframework.security.access.prepost.PreAuthorize";
     private static final String CHECK = "(Ljava/lang/String;)Z";
@@ -68,7 +72,7 @@ class SpelExpressionReferencesTest {
 
     @Test
     void callHierarchyListsMethodAndClassLevelSpelCallers() throws Exception {
-        String text = new QuillTools().getCallHierarchy(jdbi, "com.example.PermissionValidator", "canRelease", "inbound", 20, 0);
+        String text = read(jdbi, r -> new QuillToolQueries().getCallHierarchy(r, "com.example.PermissionValidator", "canRelease", "inbound", 20, 0));
         JsonNode expressions = JSON.readTree(text).path("expression_references");
         assertEquals(2, expressions.path("total").asInt(), text);
         assertTrue(text.contains("ReleaseController") && text.contains("release"), text);
@@ -79,7 +83,7 @@ class SpelExpressionReferencesTest {
 
     @Test
     void methodUsagesCarryTheExpressionReferences() throws Exception {
-        String text = ReadQueryContext.readWithGraph(jdbi, reader -> new SymbolUsageQueries().findSymbolUsages(
+        String text = read(jdbi, reader -> new SymbolUsageQueries().findSymbolUsages(
                 reader, "com.example.PermissionValidator", "canDelete", "METHOD", null, null, 20, 0));
         JsonNode expressions = JSON.readTree(text).path("expression_references");
         assertEquals(1, expressions.path("total").asInt(), text);
@@ -88,7 +92,7 @@ class SpelExpressionReferencesTest {
 
     @Test
     void aClassThatIsNoSpringBeanGetsNoExpressionSection() throws Exception {
-        String text = new QuillTools().getCallHierarchy(jdbi, "com.example.ReleaseController", "release", "inbound", 20, 0);
+        String text = read(jdbi, r -> new QuillToolQueries().getCallHierarchy(r, "com.example.ReleaseController", "release", "inbound", 20, 0));
         assertEquals(0, JSON.readTree(text).path("expression_references").path("total").asInt(), text);
     }
 }

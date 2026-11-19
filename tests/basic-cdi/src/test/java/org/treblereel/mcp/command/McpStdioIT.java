@@ -236,6 +236,9 @@ class McpStdioIT {
             List<String> launcher) throws Exception {
         List<String> command = new ArrayList<>(launcher);
         command.add("--mcp");
+        // These calls exercise the server, not the catalog: the default compact profile hides most tools.
+        command.add("--tools");
+        command.add("full");
         command.add("--project");
         command.add(PROJECT_ROOT.toString());
         Process process = new ProcessBuilder(command)
@@ -343,7 +346,7 @@ class McpStdioIT {
         Path engine = createWorkspaceRepository(workspace, "engine", "EngineService");
 
         Process process = new ProcessBuilder("java", "-jar", appJar.toString(),
-                "--mcp", "--workspace", workspace.toString())
+                "--mcp", "--tools", "full", "--workspace", workspace.toString())
                 .directory(workspace.toFile())
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start();
@@ -388,7 +391,7 @@ class McpStdioIT {
                 """);
 
         Process process = new ProcessBuilder(nativeImage.toString(),
-                "--mcp", "--workspace", workspace.toString())
+                "--mcp", "--tools", "full", "--workspace", workspace.toString())
                 .directory(workspace.toFile())
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start();
@@ -581,28 +584,37 @@ class McpStdioIT {
             assertFalse(invalidPayload.has("error"), invalidPayload::toString);
             assertEquals("TOOL_INVOCATION_ERROR",
                     invalidPayload.path("error_code").asText());
-            assertEquals("Unknown argument: unexpected",
-                    invalidPayload.path("message").asText());
+            // The message also lists the accepted arguments, so the client can correct the call.
+            assertTrue(invalidPayload.path("message").asText()
+                            .startsWith("Unknown argument: unexpected. Accepted arguments: "),
+                    invalidPayload::toString);
             assertFalse(invalidPayload.path("retryable").asBoolean(true));
 
             if (projectRoot.getFileName().toString().equals("basic-cdi")) {
+                // The default compact catalog does not list analyze_execution_order; clients reach it
+                // through execute_tool.
                 sendRequest(stdin, 5, "tools/call",
-                        "{\"name\":\"analyze_execution_order\",\"arguments\":{"
-                                + "\"target\":\"CaseFlowEngine\",\"method\":\"execute\"}}");
+                        "{\"name\":\"execute_tool\",\"arguments\":{\"name\":\"analyze_execution_order\","
+                                + "\"arguments\":{\"target\":\"CaseFlowEngine\",\"method\":\"execute\"}}}");
                 JsonNode execution = readResponse(stdout, 5)
                         .path("result").path("structuredContent");
                 assertEquals("invocation_order_proven_completion_unknown",
                         execution.path("ordering_analysis")
                                 .path("runtime_order_status").asText());
+                // The source file is stated once for the method; each event keeps its own lines.
+                assertTrue(execution.hasNonNull("source"), execution::toString);
                 assertTrue(execution.path("bytecode_sequence").valueStream()
-                        .allMatch(event -> event.hasNonNull("source")));
+                        .allMatch(event -> !event.path("evidence_lines").isEmpty()), execution::toString);
             } else if (projectRoot.getFileName().toString().equals("gradle-basic")) {
                 sendRequest(stdin, 5, "tools/call",
                         "{\"name\":\"find_configuration_references\",\"arguments\":{"
                                 + "\"key\":\"greeting.prefix\"}}");
                 JsonNode configuration = readResponse(stdout, 5)
                         .path("result").path("structuredContent");
-                assertEquals(1, configuration.path("definition_count").asInt(),
+                // The index view lists each reference with its entry type instead of counting them.
+                assertEquals(1, configuration.path("references").valueStream()
+                                .filter(reference -> reference.path("entry_type").asText().equals("definition"))
+                                .count(),
                         configuration.toString());
                 assertEquals("src/main/resources/application.properties",
                         configuration.path("references").get(0).path("file").asText());
@@ -655,6 +667,9 @@ class McpStdioIT {
             List<String> launcher, List<Path> projectRoots, int burstRequests) throws Exception {
         List<String> command = new ArrayList<>(launcher);
         command.add("--mcp");
+        // These calls exercise the server, not the catalog: the default compact profile hides most tools.
+        command.add("--tools");
+        command.add("full");
         for (Path projectRoot : projectRoots) {
             command.add("--project");
             command.add(projectRoot.toString());
@@ -1018,9 +1033,14 @@ class McpStdioIT {
     private static void assertNoTextPayload(JsonNode result) {
         JsonNode content = result.path("content");
         assertTrue(content.isArray(), "Tool result should contain the MCP content array");
+        // An error also carries a one-line summary for clients that read only text
+        // (McpToolCatalog.withErrorText); a successful result stays structured-only.
+        String errorCode = result.path("structuredContent").path("error_code").asText("");
         for (JsonNode item : content) {
-            assertTrue(!"text".equals(item.path("type").asText())
-                            || item.path("text").asText().isBlank(),
+            String text = item.path("text").asText();
+            if (!"text".equals(item.path("type").asText()) || text.isBlank()) continue;
+            assertTrue(result.path("isError").asBoolean() && !errorCode.isEmpty()
+                            && text.startsWith(errorCode + ": "),
                     "Structured result must not duplicate its payload as text: " + content);
         }
     }

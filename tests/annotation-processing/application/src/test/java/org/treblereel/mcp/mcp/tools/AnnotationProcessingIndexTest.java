@@ -1,4 +1,6 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.tools;
+
+import org.treblereel.mcp.db.ReadQueryContext;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -26,9 +28,13 @@ import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.tools.QuillTools;
 
 class AnnotationProcessingIndexTest {
+
+    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
+    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+        return ReadQueryContext.readWithGraph(jdbi, query).toString();
+    }
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"))
@@ -71,9 +77,8 @@ class AnnotationProcessingIndexTest {
 
     @Test
     void exposesConstructorOnlyDependencyAndDistinctFanIn() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getRisk(jdbi,
-                "org.treblereel.mcp.fixture.application.ConstructorOnlyDependency");
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getRisk(r, "org.treblereel.mcp.fixture.application.ConstructorOnlyDependency"));
         var root = JSON.readTree(result);
 
         assertEquals(1, root.path("signals").path("fan_in").path("value").asInt());
@@ -82,10 +87,9 @@ class AnnotationProcessingIndexTest {
 
     @Test
     void resolvesCurrentClassByProjectPath() throws Exception {
-        var tools = new QuillTools();
-        String result = tools.getDependencies(jdbi,
-                "application/src/main/java/org/treblereel/mcp/fixture/application/ConstructorOnlyDependency.java",
-                "both", 1);
+        var tools = new QuillToolQueries();
+        String result = read(jdbi, r -> tools.getDependencies(r, "application/src/main/java/org/treblereel/mcp/fixture/application/ConstructorOnlyDependency.java",
+                "both", 1));
         var root = JSON.readTree(result);
 
         assertEquals("org.treblereel.mcp.fixture.application.ConstructorOnlyDependency",
@@ -118,9 +122,8 @@ class AnnotationProcessingIndexTest {
 
     @Test
     void assessesAnnotationProcessorServiceDescriptorAsHighRiskFile() throws Exception {
-        var result = JSON.readTree(new QuillTools().getRisk(jdbi,
-                "processor/src/main/resources/META-INF/services/"
-                        + "javax.annotation.processing.Processor"));
+        var result = JSON.readTree(read(jdbi, r -> new QuillToolQueries().getRisk(r, "processor/src/main/resources/META-INF/services/"
+                        + "javax.annotation.processing.Processor")));
 
         assertEquals("file", result.path("target_type").asText());
         assertEquals("service_descriptor", result.path("kind").asText());

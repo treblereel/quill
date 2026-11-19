@@ -1,5 +1,8 @@
-import importlib.util,sys,subprocess,json,tempfile
+import importlib.util,sys,subprocess,json,tempfile,unittest
 from pathlib import Path
+ISOLATION=Path('benchmarks/results/cdi-quarkus-050-cryostat-v1/runtime/isolation.py')
+# The runner isolation module is local benchmark data, and Seatbelt exists only on macOS.
+if not ISOLATION.exists() or not Path('/usr/bin/sandbox-exec').exists() or not Path('/tmp/quill-codex-wire-tools-v1/bin/mitmdump').exists(): raise unittest.SkipTest('needs the local runner isolation module, mitmdump and macOS Seatbelt')
 sys.path.insert(0,'scripts');from quill_codex_capture import CodexCapture,capture_profile
 s=importlib.util.spec_from_file_location('isolation','benchmarks/results/cdi-quarkus-050-cryostat-v1/runtime/isolation.py');m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 # Generate original policy BEFORE observer, exactly as real runner.isolated does.

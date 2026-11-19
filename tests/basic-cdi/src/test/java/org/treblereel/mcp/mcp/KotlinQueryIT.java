@@ -60,7 +60,7 @@ class KotlinQueryIT {
     }
 
     private JsonNode usages(String cls, String method, String kind, String descriptor) throws Exception {
-        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, PACKAGE + cls, method, kind, descriptor, "all", 100, 0)));
+        return JSON.readTree(ReadQueryContext.readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, PACKAGE + cls, method, kind, descriptor, "all", 100, 0)).toString());
     }
 
     @Test void compiledMetadataPreservesNullabilityGenericBoundsAndProperties() throws Exception {
@@ -84,7 +84,7 @@ class KotlinQueryIT {
         assertEquals("T", boxDeclarations.stream().filter(d -> d.kind().equals("CLASS")).findFirst().orElseThrow().declarationTypes().typeParameters().getFirst().name());
         assertTrue(boxDeclarations.stream().filter(d -> d.kind().equals("PROPERTY")).allMatch(d -> d.declarationTypes().result().nullable()));
         assertTrue(boxDeclarations.stream().filter(d -> d.kind().equals("CONSTRUCTOR")).findFirst().orElseThrow().declarationTypes().parameters().getFirst().type().nullable());
-        var details = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolToolQueries().getSymbolDetails(readScope, PACKAGE + "KotlinCallsKt", true, null, 100, 0)));
+        var details = JSON.readTree(ReadQueryContext.readWithGraph(db, readScope -> new SymbolToolQueries().getSymbolDetails(readScope, PACKAGE + "KotlinCallsKt", true, null, 100, 0)).toString());
         var card = java.util.stream.StreamSupport.stream(details.path("kotlin_declarations").spliterator(), false)
                 .filter(d -> d.path("name").asText().equals("richTypes")).findFirst().orElseThrow();
         assertTrue(card.path("declaration_types").path("result").path("arguments").get(1).path("type").path("nullable").asBoolean());
@@ -106,7 +106,7 @@ class KotlinQueryIT {
         var property = usages("Invoice", "state", "property", null);
         assertTrue(property.path("usages").valueStream().anyMatch(u -> u.path("caller").path("method").asText().equals("propertyCaller") && u.path("usage_kind").asText().equals("read")), property.toPrettyString());
         assertTrue(property.path("usages").valueStream().anyMatch(u -> u.path("caller").path("method").asText().equals("propertyCaller") && u.path("usage_kind").asText().equals("write")));
-        var byId = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, property.path("symbol_id").asText(), null, null, null, "all", 100, 0)));
+        var byId = JSON.readTree(ReadQueryContext.readWithGraph(db, readScope -> new SymbolUsageQueries().findSymbolUsages(readScope, property.path("symbol_id").asText(), null, null, null, "all", 100, 0)).toString());
         assertEquals(property.path("total"), byId.path("total"));
     }
 
@@ -148,12 +148,12 @@ class KotlinQueryIT {
         var query = new PositionSymbolQueries();
         String valid = "import " + PACKAGE + "parameterShapes\nfun run() = parameterShapes(required = \"ok\")";
         Files.writeString(live, valid);
-        var result = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13)));
+        var result = JSON.readTree(ReadQueryContext.readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13)).toString());
         assertTrue(result.has("selected"), result.toPrettyString());
         Files.writeString(live, "import " + PACKAGE + "parameterShapes\nfun run() = parameterShapes(1)");
-        assertFalse(JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13))).has("selected"));
+        assertFalse(JSON.readTree(ReadQueryContext.readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13)).toString()).has("selected"));
         Files.writeString(live, "import " + PACKAGE + "ParameterShapes\nfun run() = ParameterShapes(required = \"ok\")");
-        var constructorResult = JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13)));
+        var constructorResult = JSON.readTree(ReadQueryContext.readWithGraph(db, readScope -> query.getSymbolAtPosition(readScope, project, "src/main/kotlin/Live.kt", 2, 13)).toString());
         assertEquals("CONSTRUCTOR", constructorResult.path("selected").path("kind").asText(), constructorResult.toPrettyString());
     }
 
@@ -161,7 +161,7 @@ class KotlinQueryIT {
         String source = "import " + PACKAGE + "*\nfun run() = " + expression;
         String path = "src/main/kotlin/Navigation.kt";
         Files.writeString(project.resolve(path), source);
-        return JSON.readTree(ReadQueryContext.<String>readWithGraph(db, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, project, path, 2, 13 + expression.indexOf(token))));
+        return JSON.readTree(ReadQueryContext.readWithGraph(db, readScope -> new PositionSymbolQueries().getSymbolAtPosition(readScope, project, path, 2, 13 + expression.indexOf(token))).toString());
     }
 
     @Test void generatedJvmOverloadsNavigateToSingleSourceDeclaration() throws Exception {

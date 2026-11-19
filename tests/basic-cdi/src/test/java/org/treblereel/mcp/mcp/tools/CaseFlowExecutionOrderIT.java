@@ -1,4 +1,4 @@
-package org.treblereel.mcp.mcp;
+package org.treblereel.mcp.mcp.tools;
 
 import org.treblereel.mcp.db.ReadQueryContext;
 
@@ -18,10 +18,14 @@ import org.junit.jupiter.api.Test;
 import org.treblereel.mcp.index.ProjectIndexStore;
 import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.db.QuillDatabase;
-import org.treblereel.mcp.mcp.tools.QuillToolQueries;
 
 @Tag("e2e")
 class CaseFlowExecutionOrderIT {
+
+    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
+    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+        return ReadQueryContext.readWithGraph(jdbi, query).toString();
+    }
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"));
@@ -47,7 +51,7 @@ class CaseFlowExecutionOrderIT {
     @Test
     void provesDurabilityBeforeDispatchAndReportsAsyncRecovery() throws Exception {
         QuillToolQueries queries = new QuillToolQueries();
-        JsonNode order = JSON.readTree(ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.analyzeExecutionOrder(readScope, "CaseFlowEngine", "execute", null)));
+        JsonNode order = JSON.readTree(read(jdbi, readScope -> queries.analyzeExecutionOrder(readScope, "CaseFlowEngine", "execute", null)));
 
         assertEquals("invocation_order_proven_completion_unknown",
                 order.path("ordering_analysis").path("runtime_order_status").asText());
@@ -59,7 +63,7 @@ class CaseFlowExecutionOrderIT {
                         && event.path("callee_class").asText().contains("Executor")));
 
         JsonNode lifecycle = JSON.readTree(
-                ReadQueryContext.<String>readWithGraph(jdbi, readScope -> queries.traceStateLifecycle(readScope, "CaseFlowState", 50)));
+                read(jdbi, readScope -> queries.traceStateLifecycle(readScope, "CaseFlowState", 50)));
         assertTrue(lifecycle.path("inferred_roles").valueStream().anyMatch(role ->
                 role.asText().equals("durable_execution_state_candidate")));
         assertTrue(lifecycle.path("inferred_roles").valueStream().anyMatch(role ->

@@ -17,3 +17,8 @@ jobs:
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: moderate
+          # tornado 6.5.10 in benchmarks/harness/cryostat-paired/template/data/capture-requirements.txt:
+          # mitmproxy 12.3.1, the latest release, requires tornado<=6.5.10, and the fix is in 6.6.
+          # The capture proxy runs only locally with a 127.0.0.1 upstream. Remove both once
+          # mitmproxy accepts tornado 6.6.
+          allow-ghsas: GHSA-pcg2-g6cj-q92c, GHSA-r4j5-9xpp-3985

@@ -99,14 +99,22 @@ class FrameworkContractsTest {
                         """));
         db.useHandle(h -> h.execute("UPDATE classes SET source_set = 'main', module = 'app'"));
         var fact = new ObjectMapper().createObjectNode();
-        TestReads.read(db, reader -> {
-            var cls = reader.symbols.findClassByName("p.Heartbeat").orElseThrow();
-            FrameworkContracts.append(reader, fact, cls.id(), "run", "(Ljava/lang/Object;)V");
-            return null;
-        });
+        TestReads.read(
+                db,
+                reader -> {
+                    var cls = reader.symbols.findClassByName("p.Heartbeat").orElseThrow();
+                    FrameworkContracts.append(
+                            reader, fact, cls.id(), "run", "(Ljava/lang/Object;)V");
+                    return null;
+                });
         String contract = fact.path("framework_contract").toString();
         assertTrue(contract.contains("ApplicationRunner#run: Spring Boot calls it once"), contract);
-        assertTrue(contract.contains("Clear @Order(5)") && contract.contains("Cli CommandLineRunner, no @Order"), contract);
-        assertFalse(contract.contains("Heartbeat ApplicationRunner"), "the method's own class is not its peer: " + contract);
+        assertTrue(
+                contract.contains("Clear @Order(5)")
+                        && contract.contains("Cli CommandLineRunner, no @Order"),
+                contract);
+        assertFalse(
+                contract.contains("Heartbeat ApplicationRunner"),
+                "the method's own class is not its peer: " + contract);
     }
 }

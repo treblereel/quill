@@ -20,8 +20,8 @@ import org.treblereel.mcp.model.ClassRecord;
  * Which entry points reach a class: its production callers followed inbound until an HTTP handler,
  * an annotation expression (SpEL such as {@code @PreAuthorize}), a non-request entry (event
  * listener, scheduler, async method, startup callback) or a method nothing indexed calls. Apollo
- * AQ-045 and Cryostat CQ-045: asked what request scope changes outside an HTTP request, Codex walked
- * the callers with find_usages and a transitive call hierarchy (about 180 KB of results).
+ * AQ-045 and Cryostat CQ-045: asked what request scope changes outside an HTTP request, Codex
+ * walked the callers with find_usages and a transitive call hierarchy (about 180 KB of results).
  */
 final class EntryContexts {
 
@@ -154,7 +154,8 @@ final class EntryContexts {
         return lines;
     }
 
-    private static void enqueue(ArrayDeque<Node> queue, Map<Node, Integer> depth, Node node, int level) {
+    private static void enqueue(
+            ArrayDeque<Node> queue, Map<Node, Integer> depth, Node node, int level) {
         if (depth.putIfAbsent(node, level) == null) queue.add(node);
     }
 
@@ -162,7 +163,10 @@ final class EntryContexts {
         return new Node(caller.classId(), caller.className(), caller.method(), caller.descriptor());
     }
 
-    /** Callers of the method on its class and direct supertypes; a lambda's are its enclosing method's. */
+    /**
+     * Callers of the method on its class and direct supertypes; a lambda's are its enclosing
+     * method's.
+     */
     private static List<CallerMethod> callers(
             ReadQueryContext db, Node node, Map<Integer, List<Integer>> supertypes) {
         List<CallerMethod> callers = new ArrayList<>();
@@ -171,7 +175,12 @@ final class EntryContexts {
             String enclosing = parts.length > 1 ? parts[1] : "";
             for (var member : db.symbols.findClassMembers(node.classId()))
                 if ("METHOD".equals(member.kind()) && enclosing.equals(member.name()))
-                    callers.add(new CallerMethod(node.classId(), node.className(), member.name(), member.descriptor()));
+                    callers.add(
+                            new CallerMethod(
+                                    node.classId(),
+                                    node.className(),
+                                    member.name(),
+                                    member.descriptor()));
             return callers;
         }
         // A constructor is invoked on its own class only; its supertype's constructor is not it.
@@ -180,7 +189,8 @@ final class EntryContexts {
                         ? List.of(node.classId())
                         : withSupertypes(db, node.classId(), supertypes);
         for (int owner : owners)
-            callers.addAll(db.usages.findProductionCallerMethods(owner, node.method(), node.descriptor()));
+            callers.addAll(
+                    db.usages.findProductionCallerMethods(owner, node.method(), node.descriptor()));
         return callers;
     }
 
@@ -190,28 +200,36 @@ final class EntryContexts {
                 classId,
                 id -> {
                     List<Integer> ids = new ArrayList<>(List.of(id));
-                    db.symbols.findClassById(id).ifPresent(cls -> {
-                        List<String> names = new ArrayList<>(cls.interfaces());
-                        if (cls.superclass() != null) names.add(cls.superclass());
-                        // Only application types: through java.lang.Object every caller would match.
-                        for (String name : names)
-                            db.symbols.findClassByName(name)
-                                    .filter(type -> "source".equals(type.origin()))
-                                    .ifPresent(type -> ids.add(type.id()));
-                    });
+                    db.symbols
+                            .findClassById(id)
+                            .ifPresent(
+                                    cls -> {
+                                        List<String> names = new ArrayList<>(cls.interfaces());
+                                        if (cls.superclass() != null) names.add(cls.superclass());
+                                        // Only application types: through java.lang.Object every
+                                        // caller would match.
+                                        for (String name : names)
+                                            db.symbols
+                                                    .findClassByName(name)
+                                                    .filter(type -> "source".equals(type.origin()))
+                                                    .ifPresent(type -> ids.add(type.id()));
+                                    });
                     return ids;
                 });
     }
 
     private static boolean requestCallback(ReadQueryContext db, Node node) {
         var cls = db.symbols.findClassById(node.classId()).orElse(null);
-        if (cls == null || node.method().startsWith("lambda$") || node.method().startsWith("<")) return false;
+        if (cls == null || node.method().startsWith("lambda$") || node.method().startsWith("<"))
+            return false;
         return cls.interfaces().stream().anyMatch(REQUEST_CALLBACKS::contains)
                 || REQUEST_CALLBACKS.contains(cls.superclass());
     }
 
     private static String nonRequestMarker(ReadQueryContext db, Node node) {
-        String annotations = String.join(" ", db.symbols.findMethodAnnotationNames(node.classId(), node.method()));
+        String annotations =
+                String.join(
+                        " ", db.symbols.findMethodAnnotationNames(node.classId(), node.method()));
         for (String marker : NON_REQUEST)
             if (annotations.contains("." + marker + "\"")) return marker;
         return null;
@@ -220,7 +238,8 @@ final class EntryContexts {
     private static boolean calledFromExpressions(ReadQueryContext db, Node node) {
         var cls = db.symbols.findClassById(node.classId()).orElse(null);
         if (cls == null) return false;
-        var references = org.treblereel.mcp.mcp.query.ExpressionReferences.find(db, cls, node.method());
+        var references =
+                org.treblereel.mcp.mcp.query.ExpressionReferences.find(db, cls, node.method());
         return references != null && references.path("total").asInt() > 0;
     }
 
@@ -230,7 +249,10 @@ final class EntryContexts {
         if (detail == null) return handlers;
         try {
             for (JsonNode endpoint : Json.MAPPER.readTree(detail))
-                handlers.add(endpoint.path("className").asText() + "#" + endpoint.path("methodName").asText());
+                handlers.add(
+                        endpoint.path("className").asText()
+                                + "#"
+                                + endpoint.path("methodName").asText());
         } catch (Exception unreadable) {
             QuillLog.swallowed(unreadable);
         }

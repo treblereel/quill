@@ -19,6 +19,7 @@ class AmbiguousCandidatesTest {
 
     /** These packets are sized for this budget; the default limit may differ. */
     private static final int LEGACY_BUDGET = 5000;
+
     @TempDir Path root;
 
     @Test
@@ -175,7 +176,10 @@ class AmbiguousCandidatesTest {
         var json = new ObjectMapper();
         ObjectNode packet = json.createObjectNode();
         ObjectNode fact =
-                packet.putArray("facts").addObject().put("kind", "CLASS").put("class", "c".repeat(1900));
+                packet.putArray("facts")
+                        .addObject()
+                        .put("kind", "CLASS")
+                        .put("class", "c".repeat(1900));
         fact.putObject("ambiguous_candidates").putArray("p").add("x".repeat(1800));
         // Smaller than the rule, so without its tier the smallest fitting cut would take it.
         fact.put("superclass", "y".repeat(600));
@@ -189,10 +193,15 @@ class AmbiguousCandidatesTest {
                 unasked.toString());
         // A rule, not evidence: its removal is not listed (Apollo AQ-045 lost two facts to that).
         assertTrue(
-                !unasked.path("context_omitted_fields").toString().contains("spring_candidate_selection"),
+                !unasked.path("context_omitted_fields")
+                        .toString()
+                        .contains("spring_candidate_selection"),
                 unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "Explain how @Primary and @Qualifier decide which X is used.", LEGACY_BUDGET);
+        PrefetchContext.boundContext(
+                asked,
+                "Explain how @Primary and @Qualifier decide which X is used.",
+                LEGACY_BUDGET);
         assertTrue(asked.path("facts").get(0).has("spring_candidate_selection"), asked.toString());
     }
 
@@ -204,7 +213,8 @@ class AmbiguousCandidatesTest {
         ObjectNode fact = packet.putArray("facts").addObject().put("kind", "CLASS");
         fact.putObject("ambiguous_candidates").putArray("p").add("x".repeat(3000));
         fact.put("superclass", "y".repeat(2500));
-        PrefetchContext.boundContext(packet.deepCopy(), "What is the visibility of X?", LEGACY_BUDGET);
+        PrefetchContext.boundContext(
+                packet.deepCopy(), "What is the visibility of X?", LEGACY_BUDGET);
         ObjectNode unasked = packet.deepCopy();
         PrefetchContext.boundContext(unasked, "What is the visibility of X?", LEGACY_BUDGET);
         assertTrue(!unasked.path("facts").get(0).has("ambiguous_candidates"), unasked.toString());

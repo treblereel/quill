@@ -430,8 +430,8 @@ public final class PrefetchContext {
     /**
      * Every session pays for this context once. The hosts cap hook context at about twice this:
      * Claude Code at 10,000 characters (beyond it only a 2,000-character preview), Codex at about
-     * 2,500 tokens. At 5,000 bytes half of 88 recorded benchmark contexts were cut; at 7,500 under a
-     * third are, for about 840 bytes more per session on average.
+     * 2,500 tokens. At 5,000 bytes half of 88 recorded benchmark contexts were cut; at 7,500 under
+     * a third are, for about 840 bytes more per session on average.
      */
     static final int CONTEXT_LIMIT_BYTES = 7500;
 
@@ -638,7 +638,9 @@ public final class PrefetchContext {
         if (data.path("context_truncated").asBoolean()
                 && data.path("instructions").isTextual()
                 && !data.path("instructions").asText().endsWith(PrefetchRestatements.CUT_POINTER)) {
-            data.put("instructions", data.path("instructions").asText() + PrefetchRestatements.CUT_POINTER);
+            data.put(
+                    "instructions",
+                    data.path("instructions").asText() + PrefetchRestatements.CUT_POINTER);
             if (size(data) > limit) bound(data, limit);
         }
     }

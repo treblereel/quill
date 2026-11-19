@@ -21,6 +21,7 @@ class PrefetchContextTest {
 
     /** These packets are sized for this budget; the default limit may differ. */
     private static final int LEGACY_BUDGET = 5000;
+
     @TempDir Path root;
 
     @Test
@@ -267,23 +268,35 @@ class PrefetchContextTest {
      */
     @Test
     void onlyACutPacketPointsToWhereTheRestIs() {
-        var cut = overrunBy(60, fact -> {
-            var consumers = fact.putArray("injected_into");
-            for (int i = 0; i < 20; i++) consumers.add("io.example.Consumer" + i + "#holder (FIELD) [RESOLVED]");
-        });
+        var cut =
+                overrunBy(
+                        60,
+                        fact -> {
+                            var consumers = fact.putArray("injected_into");
+                            for (int i = 0; i < 20; i++)
+                                consumers.add(
+                                        "io.example.Consumer" + i + "#holder (FIELD) [RESOLVED]");
+                        });
         cut.put("instructions", "Quill already ran these reads.");
         PrefetchContext.boundContext(cut);
-        assertTrue(cut.path("instructions").asText().contains("get_context or find_usages on the same target returns them"), cut.path("instructions").asText());
+        assertTrue(
+                cut.path("instructions")
+                        .asText()
+                        .contains("get_context or find_usages on the same target returns them"),
+                cut.path("instructions").asText());
         assertTrue(cut.toString().length() <= PrefetchContext.CONTEXT_LIMIT_BYTES, cut.toString());
-        var whole = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("instructions", "Quill already ran these reads.");
+        var whole =
+                new com.fasterxml.jackson.databind.ObjectMapper()
+                        .createObjectNode()
+                        .put("instructions", "Quill already ran these reads.");
         whole.putArray("facts").addObject().put("kind", "CLASS").put("class", "a.B");
         PrefetchContext.boundContext(whole);
         assertEquals("Quill already ran these reads.", whole.path("instructions").asText());
     }
 
     /**
-     * Apollo AQ-043: halving injected_into to fit a small overrun left 13 of 26 consumers and about a
-     * thousand bytes of the budget unused.
+     * Apollo AQ-043: halving injected_into to fit a small overrun left 13 of 26 consumers and about
+     * a thousand bytes of the budget unused.
      */
     @Test
     void aListCutForASmallOverrunLosesOnlyTheItemsThatPayForIt() {
@@ -293,13 +306,20 @@ class PrefetchContextTest {
                         fact -> {
                             var consumers = fact.putArray("injected_into");
                             for (int i = 0; i < 20; i++)
-                                consumers.add("io.example.Consumer" + i + "#holder (FIELD) [RESOLVED]");
+                                consumers.add(
+                                        "io.example.Consumer" + i + "#holder (FIELD) [RESOLVED]");
                         });
         PrefetchContext.boundContext(packet);
         var fact = packet.path("facts").get(0);
-        assertTrue(packet.toString().length() <= PrefetchContext.CONTEXT_LIMIT_BYTES, packet.toString());
-        assertTrue(fact.path("injected_into").size() >= 16, fact.path("injected_into_truncated").toString());
-        assertEquals(fact.path("injected_into").size(), fact.path("injected_into_truncated").path("shown").asInt());
+        assertTrue(
+                packet.toString().length() <= PrefetchContext.CONTEXT_LIMIT_BYTES,
+                packet.toString());
+        assertTrue(
+                fact.path("injected_into").size() >= 16,
+                fact.path("injected_into_truncated").toString());
+        assertEquals(
+                fact.path("injected_into").size(),
+                fact.path("injected_into_truncated").path("shown").asInt());
         assertEquals(20, fact.path("injected_into_truncated").path("total").asInt());
     }
 
@@ -580,7 +600,9 @@ class PrefetchContextTest {
                         db,
                         readScope ->
                                 PrefetchContext.collect(
-                                        readScope, root, "What is injected into x.Consumer#events?"));
+                                        readScope,
+                                        root,
+                                        "What is injected into x.Consumer#events?"));
         var fact = pack.path("facts").get(0);
         assertEquals(
                 "no application class extends or implements jakarta.enterprise.event.Event (of 2 indexed); no application bean has it among its bean types, @Typed included (of 1)",
@@ -654,7 +676,9 @@ class PrefetchContextTest {
                         db,
                         readScope ->
                                 PrefetchContext.collect(
-                                        readScope, root, "What is injected into x.Consumer#events?"));
+                                        readScope,
+                                        root,
+                                        "What is injected into x.Consumer#events?"));
         assertEquals(
                 List.of("run line 3: void run(Message m) { events.fire(m); }"),
                 pack.path("facts")
@@ -941,7 +965,8 @@ class PrefetchContextTest {
         fact.putObject("framework_contract").put("rules", "f".repeat(400));
         fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 500));
         PrefetchContext.boundContext(
-                data, "How can x.Validator be replaced by a @Bean method without losing its bean name?");
+                data,
+                "How can x.Validator be replaced by a @Bean method without losing its bean name?");
         var kept = data.path("facts").get(0);
         org.junit.jupiter.api.Assertions.assertTrue(
                 kept.has("bean_name_expressions"), data.path("context_omitted_fields").toString());
@@ -992,7 +1017,8 @@ class PrefetchContextTest {
         for (int i = 0; i < 4; i++) callers.add("x.C" + i + "#run " + "p".repeat(120));
         fact.put("other", "z".repeat(PrefetchContext.CONTEXT_LIMIT_BYTES - 1300));
         PrefetchContext.boundContext(
-                data, "Separate the Java callers, references outside Java code and tests for x.A#check.");
+                data,
+                "Separate the Java callers, references outside Java code and tests for x.A#check.");
         var kept = data.path("facts").get(0);
         org.junit.jupiter.api.Assertions.assertTrue(
                 kept.has("expression_references"), data.path("context_omitted_fields").toString());

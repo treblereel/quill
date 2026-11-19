@@ -228,25 +228,38 @@ class ThreadHopsTest {
     }
 
     /**
-     * Cryostat CQ-025: told only that the artifacts were present, Codex opened the libraries to find
-     * which decorator wraps Uni callbacks and which provider carries the CDI context (7 of 11 calls).
+     * Cryostat CQ-025: told only that the artifacts were present, Codex opened the libraries to
+     * find which decorator wraps Uni callbacks and which provider carries the CDI context (7 of 11
+     * calls).
      */
     @Test
     void thePropagationNamesTheRegisteredUniDecoratorAndTheCdiContextProvider() throws Exception {
-        Path mutiny = jar("io/smallrye/reactive/mutiny-smallrye-context-propagation/3.3.0/mutiny-smallrye-context-propagation-3.3.0.jar",
-                Map.of("META-INF/services/io.smallrye.mutiny.infrastructure.CallbackDecorator",
-                        "# decorator\nio.smallrye.mutiny.context.DefaultContextPropagationInterceptor\n"));
-        Path arc = jar("io/quarkus/quarkus-arc/3.40.1.1/quarkus-arc-3.40.1.1.jar",
-                Map.of("io/quarkus/arc/runtime/context/ArcContextProvider.class", ""));
+        Path mutiny =
+                jar(
+                        "io/smallrye/reactive/mutiny-smallrye-context-propagation/3.3.0/mutiny-smallrye-context-propagation-3.3.0.jar",
+                        Map.of(
+                                "META-INF/services/io.smallrye.mutiny.infrastructure.CallbackDecorator",
+                                "# decorator\nio.smallrye.mutiny.context.DefaultContextPropagationInterceptor\n"));
+        Path arc =
+                jar(
+                        "io/quarkus/quarkus-arc/3.40.1.1/quarkus-arc-3.40.1.1.jar",
+                        Map.of("io/quarkus/arc/runtime/context/ArcContextProvider.class", ""));
         String text = ThreadHops.propagation(List.of(arc, mutiny));
-        assertTrue(text.contains("Uni callbacks decorated by io.smallrye.mutiny.context.DefaultContextPropagationInterceptor"), text);
-        assertTrue(text.contains("CDI context captured by io.quarkus.arc.runtime.context.ArcContextProvider"), text);
+        assertTrue(
+                text.contains(
+                        "Uni callbacks decorated by io.smallrye.mutiny.context.DefaultContextPropagationInterceptor"),
+                text);
+        assertTrue(
+                text.contains(
+                        "CDI context captured by io.quarkus.arc.runtime.context.ArcContextProvider"),
+                text);
     }
 
     private Path jar(String relative, Map<String, String> entries) throws Exception {
         Path jar = root.resolve("m2").resolve(relative);
         java.nio.file.Files.createDirectories(jar.getParent());
-        try (var out = new java.util.jar.JarOutputStream(java.nio.file.Files.newOutputStream(jar))) {
+        try (var out =
+                new java.util.jar.JarOutputStream(java.nio.file.Files.newOutputStream(jar))) {
             for (var entry : entries.entrySet()) {
                 out.putNextEntry(new java.util.jar.JarEntry(entry.getKey()));
                 out.write(entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));

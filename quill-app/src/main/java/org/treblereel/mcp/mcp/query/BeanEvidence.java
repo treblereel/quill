@@ -212,7 +212,8 @@ public final class BeanEvidence {
      * the last one nothing keeps. Cryostat CQ-005: "injected into SsarAuthorizer" left open whether
      * the injector survives, and Codex read deployment processor bytecode to find out.
      */
-    private static String injectorChain(org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean) {
+    private static String injectorChain(
+            org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean) {
         List<String> path = new ArrayList<>();
         java.util.Set<Integer> seen = new java.util.HashSet<>(List.of(bean.id()));
         BeanRecord current = bean;
@@ -221,9 +222,11 @@ public final class BeanEvidence {
             BeanRecord next = null;
             String nextName = null;
             for (String owner : owners) {
-                String className = owner.contains("#") ? owner.substring(0, owner.indexOf('#')) : owner;
+                String className =
+                        owner.contains("#") ? owner.substring(0, owner.indexOf('#')) : owner;
                 var cls = db.symbols.findClassByName(className).orElse(null);
-                var ownerBean = cls == null ? null : db.beans.findBeanByClassId(cls.id()).orElse(null);
+                var ownerBean =
+                        cls == null ? null : db.beans.findBeanByClassId(cls.id()).orElse(null);
                 if (ownerBean == null || !seen.add(ownerBean.id())) continue;
                 String reason = ownRoot(db, ownerBean, cls);
                 if (reason != null) {
@@ -236,7 +239,8 @@ public final class BeanEvidence {
                 }
             }
             if (next == null)
-                return path.isEmpty() ? null
+                return path.isEmpty()
+                        ? null
                         : String.join(" <- ", path) + ", which no indexed injector or root keeps";
             path.add(simple(nextName));
             current = next;
@@ -246,17 +250,24 @@ public final class BeanEvidence {
 
     /** Why ArC keeps a bean without any injector, or null. */
     private static String ownRoot(
-            org.treblereel.mcp.db.ReadQueryContext db, BeanRecord bean, org.treblereel.mcp.model.ClassRecord cls) {
-        for (String type : cls.interfaces()) if (FRAMEWORK_ROOTS.containsKey(type)) return FRAMEWORK_ROOTS.get(type);
-        if (FRAMEWORK_ROOTS.containsKey(cls.superclass())) return FRAMEWORK_ROOTS.get(cls.superclass());
+            org.treblereel.mcp.db.ReadQueryContext db,
+            BeanRecord bean,
+            org.treblereel.mcp.model.ClassRecord cls) {
+        for (String type : cls.interfaces())
+            if (FRAMEWORK_ROOTS.containsKey(type)) return FRAMEWORK_ROOTS.get(type);
+        if (FRAMEWORK_ROOTS.containsKey(cls.superclass()))
+            return FRAMEWORK_ROOTS.get(cls.superclass());
         for (var annotation : db.symbols.findClassAnnotations(cls.id())) {
             String name = annotation.annotationName();
             if (name.equals(UNREMOVABLE) || ROOT_ANNOTATIONS.contains(name))
                 return "@" + name.substring(name.lastIndexOf('.') + 1);
         }
-        if (bean.qualifiers() != null && bean.qualifiers().stream().anyMatch(q -> q.startsWith("@Named"))) return "@Named";
+        if (bean.qualifiers() != null
+                && bean.qualifiers().stream().anyMatch(q -> q.startsWith("@Named")))
+            return "@Named";
         for (var member : db.symbols.findObserverAndProducerMembers(cls.id()))
-            if (String.valueOf(member.annotations()).contains(".event.Observes")) return "observer method " + member.name();
+            if (String.valueOf(member.annotations()).contains(".event.Observes"))
+                return "observer method " + member.name();
         return null;
     }
 

@@ -40,7 +40,8 @@ final class SpringEndpointSecurity {
         List<String> checks = new ArrayList<>();
         Set<String> beans = new LinkedHashSet<>();
         for (String details :
-                db.symbols.findMethodAnnotationDetails(owner, method, descriptor == null ? "" : descriptor)) {
+                db.symbols.findMethodAnnotationDetails(
+                        owner, method, descriptor == null ? "" : descriptor)) {
             for (JsonNode annotation : parse(details)) {
                 String label = ANNOTATIONS.get(annotation.path("annotationName").asText());
                 if (label == null) continue;
@@ -73,8 +74,7 @@ final class SpringEndpointSecurity {
             if (!delegates.isEmpty())
                 text.append(" (injects ").append(String.join(", ", delegates)).append(')');
         }
-        String module =
-                db.symbols.findClassByName(owner).map(cls -> cls.module()).orElse(null);
+        String module = db.symbols.findClassByName(owner).map(cls -> cls.module()).orElse(null);
         if (module == null) return text.toString();
         List<String> filters = db.symbols.findModuleServletFilters(module);
         if (!filters.isEmpty()) {
@@ -114,7 +114,9 @@ final class SpringEndpointSecurity {
         return text.toString();
     }
 
-    /** {@code Outer$A, Outer$B} as {@code Outer$ A, B}: nested configuration classes share a prefix. */
+    /**
+     * {@code Outer$A, Outer$B} as {@code Outer$ A, B}: nested configuration classes share a prefix.
+     */
     private static String grouped(List<String> names) {
         Map<String, List<String>> byOuter = new java.util.LinkedHashMap<>();
         for (String name : names) {
@@ -124,7 +126,9 @@ final class SpringEndpointSecurity {
                     .add(nested < 0 ? name : name.substring(nested + 1));
         }
         List<String> parts = new ArrayList<>();
-        byOuter.forEach((outer, inner) -> parts.add(outer.isEmpty() ? list(inner) : outer + " " + list(inner)));
+        byOuter.forEach(
+                (outer, inner) ->
+                        parts.add(outer.isEmpty() ? list(inner) : outer + " " + list(inner)));
         return String.join("; ", parts);
     }
 

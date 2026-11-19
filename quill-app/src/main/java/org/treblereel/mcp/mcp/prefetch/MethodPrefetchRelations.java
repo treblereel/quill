@@ -1055,7 +1055,8 @@ public final class MethodPrefetchRelations {
         var cls = db.symbols.findClassById(classId).orElse(null);
         if (cls == null) return;
         ObjectNode created = JSON.createObjectNode();
-        org.treblereel.mcp.mcp.query.StructureToolQueries.appendCreatingBeanMethods(db, created, cls);
+        org.treblereel.mcp.mcp.query.StructureToolQueries.appendCreatingBeanMethods(
+                db, created, cls);
         if (!created.has("created_by_bean_methods")) return;
         fact.set("created_by_bean_methods", created.get("created_by_bean_methods"));
         // The first creator's ambiguous parameters (an ObjectProvider looks up among these), marked
@@ -1090,8 +1091,7 @@ public final class MethodPrefetchRelations {
                 String own = impl.substring(impl.lastIndexOf('.') + 1) + "Test";
                 // One test class per implementation, its own <Impl>Test first.
                 List<String> tests =
-                        db.usages.findTestClassesDependingOn(implementation.id())
-                                .stream()
+                        db.usages.findTestClassesDependingOn(implementation.id()).stream()
                                 .filter(t -> t.matches(".*(Test|Tests|IT)$"))
                                 .sorted(
                                         java.util.Comparator.comparing(
@@ -1160,7 +1160,9 @@ public final class MethodPrefetchRelations {
                 if (!seen.add(provider.beanId())) continue;
                 String owner =
                         provider.className()
-                                + (provider.memberName() == null ? "" : "#" + provider.memberName());
+                                + (provider.memberName() == null
+                                        ? ""
+                                        : "#" + provider.memberName());
                 if ("test".equals(provider.sourceSet())) {
                     test.add(owner);
                     continue;
@@ -1173,13 +1175,17 @@ public final class MethodPrefetchRelations {
                         classConditions(db, provider.classId()).stream()
                                 .filter(c -> !c.startsWith("@Profile("))
                                 .toList();
-                if (!conditions.isEmpty()) line.append(" class ").append(String.join(", ", conditions));
+                if (!conditions.isEmpty())
+                    line.append(" class ").append(String.join(", ", conditions));
                 if (provider.memberName() != null) {
-                    List<String> method = memberConditions(db, provider.classId(), provider.memberName());
-                    if (!method.isEmpty()) line.append(" method ").append(String.join(", ", method));
+                    List<String> method =
+                            memberConditions(db, provider.classId(), provider.memberName());
+                    if (!method.isEmpty())
+                        line.append(" method ").append(String.join(", ", method));
                 }
-                if (profiles == null && conditions.isEmpty() && !line.toString().contains(" method "))
-                    line.append(" unconditional");
+                if (profiles == null
+                        && conditions.isEmpty()
+                        && !line.toString().contains(" method ")) line.append(" unconditional");
                 main.add(line.toString());
             }
         }
@@ -1261,7 +1267,8 @@ public final class MethodPrefetchRelations {
             try {
                 for (var name : JSON.readTree(json)) {
                     String condition = "@" + simple(name.asText());
-                    if (isCondition(name.asText()) && !found.contains(condition)) found.add(condition);
+                    if (isCondition(name.asText()) && !found.contains(condition))
+                        found.add(condition);
                 }
             } catch (Exception unreadable) {
                 // Annotations are written by the indexer; an unreadable row only drops its

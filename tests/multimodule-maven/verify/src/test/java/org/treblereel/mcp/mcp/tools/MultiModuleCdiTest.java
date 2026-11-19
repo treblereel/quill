@@ -1,29 +1,35 @@
 package org.treblereel.mcp.mcp.tools;
 
-import org.treblereel.mcp.db.ReadQueryContext;
-
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import org.treblereel.mcp.index.ProjectIndexStore;
-import java.util.Comparator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.index.ProjectInitializer;
-import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.BeanRepository;
 import org.treblereel.mcp.db.IndexRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
 
 class MultiModuleCdiTest {
 
-    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
-    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+    /**
+     * Runs one index query and returns its JSON, as the tool methods these tests were written
+     * against did.
+     */
+    private static String read(
+            org.jdbi.v3.core.Jdbi jdbi,
+            java.util.function.Function<
+                            ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode>
+                    query) {
         return ReadQueryContext.readWithGraph(jdbi, query).toString();
     }
 
@@ -62,7 +68,9 @@ class MultiModuleCdiTest {
 
         JsonNode ip = ips.get(0);
         assertEquals("notificationService", ip.get("field").asText());
-        assertEquals("resolved", ip.get("resolution").asText(),
+        assertEquals(
+                "resolved",
+                ip.get("resolution").asText(),
                 "Cross-module injection should be resolved (SmsNotificationService wins via @Alternative @Priority)");
 
         assertEquals(0, root.get("unsatisfied").size());
@@ -71,11 +79,25 @@ class MultiModuleCdiTest {
 
     @Test
     void alternativeBeanIsIndexed() {
-        var beans = jdbi.withHandle(repositoryHandle1 -> new BeanRepository(repositoryHandle1).findBeans(null));
-        var smsBeans = beans.stream()
-                .filter(b -> jdbi.withHandle(repositoryHandle2 -> new SymbolRepository(repositoryHandle2).findClassById(b.classId()))
-                        .map(c -> c.className().contains("SmsNotificationService")).orElse(false))
-                .toList();
+        var beans =
+                jdbi.withHandle(
+                        repositoryHandle1 -> new BeanRepository(repositoryHandle1).findBeans(null));
+        var smsBeans =
+                beans.stream()
+                        .filter(
+                                b ->
+                                        jdbi.withHandle(
+                                                        repositoryHandle2 ->
+                                                                new SymbolRepository(
+                                                                                repositoryHandle2)
+                                                                        .findClassById(b.classId()))
+                                                .map(
+                                                        c ->
+                                                                c.className()
+                                                                        .contains(
+                                                                                "SmsNotificationService"))
+                                                .orElse(false))
+                        .toList();
         assertEquals(1, smsBeans.size());
 
         var sms = smsBeans.get(0);
@@ -91,14 +113,16 @@ class MultiModuleCdiTest {
 
         JsonNode dependsOn = root.get("depends_on");
         assertNotNull(dependsOn);
-        assertTrue(dependsOn.size() >= 1,
+        assertTrue(
+                dependsOn.size() >= 1,
                 "UserService should depend on at least one notification service impl");
     }
 
     @Test
     void crossModuleInboundDependency() throws Exception {
         var tools = new QuillToolQueries();
-        String result = read(jdbi, r -> tools.getDependencies(r, "SmsNotificationService", "inbound", 1));
+        String result =
+                read(jdbi, r -> tools.getDependencies(r, "SmsNotificationService", "inbound", 1));
         JsonNode root = JSON.readTree(result);
 
         JsonNode dependedBy = root.get("depended_by");
@@ -110,7 +134,8 @@ class MultiModuleCdiTest {
                 hasUserService = true;
             }
         }
-        assertTrue(hasUserService,
+        assertTrue(
+                hasUserService,
                 "SmsNotificationService should show UserService as inbound dependency (via CDI injection)");
     }
 
@@ -121,10 +146,11 @@ class MultiModuleCdiTest {
         JsonNode root = JSON.readTree(result);
 
         JsonNode project = root.get("project");
-        assertEquals(8, project.get("classes").asInt(),
+        assertEquals(
+                8,
+                project.get("classes").asInt(),
                 "Should include 5 main classes and 3 compiled test classes");
-        assertEquals(3, project.get("beans").asInt(),
-                "Should have 3 CDI beans");
+        assertEquals(3, project.get("beans").asInt(), "Should have 3 CDI beans");
 
         JsonNode problems = root.get("problems");
         assertEquals(0, problems.get("unsatisfied_count").asInt());
@@ -137,7 +163,8 @@ class MultiModuleCdiTest {
 
         String dtoResult = read(jdbi, r -> tools.searchClasses(r, "*DTO", 20));
         JsonNode dtoRoot = JSON.readTree(dtoResult);
-        assertTrue(dtoRoot.get("classes").toString().contains("UserDTO"),
+        assertTrue(
+                dtoRoot.get("classes").toString().contains("UserDTO"),
                 "Should find UserDTO from common module");
 
         String serviceResult = read(jdbi, r -> tools.searchClasses(r, "*Service", 20));
@@ -150,14 +177,27 @@ class MultiModuleCdiTest {
 
     @Test
     void classesAndResolutionCandidatesExposeModuleContext() throws Exception {
-        var dto = jdbi.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findClassByName("org.acme.common.UserDTO")).orElseThrow();
+        var dto =
+                jdbi.withHandle(
+                                repositoryHandle3 ->
+                                        new SymbolRepository(repositoryHandle3)
+                                                .findClassByName("org.acme.common.UserDTO"))
+                        .orElseThrow();
         assertEquals("common", dto.module());
         assertEquals("main", dto.sourceSet());
 
-        JsonNode injections = JSON.readTree(
-                read(jdbi, r -> new QuillToolQueries().getInjectionPoints(r, "UserService")));
-        JsonNode candidate = injections.path("injection_points").get(0)
-                .path("resolution_trace").path("candidates").get(0);
+        JsonNode injections =
+                JSON.readTree(
+                        read(
+                                jdbi,
+                                r -> new QuillToolQueries().getInjectionPoints(r, "UserService")));
+        JsonNode candidate =
+                injections
+                        .path("injection_points")
+                        .get(0)
+                        .path("resolution_trace")
+                        .path("candidates")
+                        .get(0);
         assertEquals("service", candidate.path("module").asText());
         assertEquals("main", candidate.path("source_set").asText());
     }
@@ -165,13 +205,25 @@ class MultiModuleCdiTest {
     @Test
     void classAndBeanQueriesCanBeScopedToModule() throws Exception {
         var queries = new QuillToolQueries();
-        JsonNode commonClasses = JSON.readTree(
-                read(jdbi, readScope -> queries.searchClasses(readScope, "*", "common", "main", 20)));
+        JsonNode commonClasses =
+                JSON.readTree(
+                        read(
+                                jdbi,
+                                readScope ->
+                                        queries.searchClasses(
+                                                readScope, "*", "common", "main", 20)));
         assertEquals(2, commonClasses.path("classes").size());
         assertTrue(commonClasses.path("classes").toString().contains("UserDTO"));
         assertFalse(commonClasses.path("classes").toString().contains("UserService"));
 
-        JsonNode serviceBeans = JSON.readTree(read(jdbi, readScope -> queries.getBeans(readScope, null, null, null, null, null, "service", "main", 20)));
+        JsonNode serviceBeans =
+                JSON.readTree(
+                        read(
+                                jdbi,
+                                readScope ->
+                                        queries.getBeans(
+                                                readScope, null, null, null, null, null, "service",
+                                                "main", 20)));
         assertEquals(3, serviceBeans.path("beans").size());
         assertTrue(serviceBeans.path("beans").toString().contains("UserService"));
     }
@@ -197,13 +249,17 @@ class MultiModuleCdiTest {
         JsonNode byScope = root.get("beans_by_scope");
         assertNotNull(byScope);
         assertTrue(byScope.has("@ApplicationScoped"));
-        assertEquals(3, byScope.get("@ApplicationScoped").asInt(),
+        assertEquals(
+                3,
+                byScope.get("@ApplicationScoped").asInt(),
                 "All 3 beans should be @ApplicationScoped");
     }
 
     @Test
     void metadataContainsProjectRoot() {
-        var meta = jdbi.withHandle(repositoryHandle4 -> new IndexRepository(repositoryHandle4).getMetadata());
+        var meta =
+                jdbi.withHandle(
+                        repositoryHandle4 -> new IndexRepository(repositoryHandle4).getMetadata());
         assertEquals(PROJECT_ROOT.toString(), meta.get("project_root"));
         assertNotNull(meta.get("indexed_at"));
     }

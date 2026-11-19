@@ -95,14 +95,8 @@ public final class CycleQueries {
         Map<Pair<String>, List<String>> labels = new LinkedHashMap<>();
         Set<Pair<String>> direct = new LinkedHashSet<>();
         for (var row : rows) {
-            Pair<String> edge =
-                    new Pair<>(
-                            row.fromClass(),
-                            row.toClass());
-            String scope =
-                    row.toScope() == null
-                            ? "@Dependent"
-                            : row.toScope();
+            Pair<String> edge = new Pair<>(row.fromClass(), row.toClass());
+            String scope = row.toScope() == null ? "@Dependent" : row.toScope();
             boolean proxied = NORMAL_SCOPES.contains(scope);
             if (!labels.containsKey(edge)) edges.add(edge);
             String member =

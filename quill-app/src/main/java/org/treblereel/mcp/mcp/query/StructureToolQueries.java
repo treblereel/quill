@@ -1118,7 +1118,9 @@ public final class StructureToolQueries {
                 "the bean is the @Bean method's, registered under its return type; list_injection_points on the declaring class shows that method's parameters");
     }
 
-    /** Lazy wrappers SpringResolver resolves against their type argument, by the call that looks up. */
+    /**
+     * Lazy wrappers SpringResolver resolves against their type argument, by the call that looks up.
+     */
     private static final java.util.Map<String, String> LAZY_LOOKUPS =
             java.util.Map.of(
                     "org.springframework.beans.factory.ObjectProvider", "getObject()",

@@ -29,29 +29,34 @@ class InheritedInjectionAndSyntheticBeansTest {
 
     @TempDir Path tempDir;
 
-    private static final Map<String, String> CDI_STUBS = Map.of(
-            "jakarta/inject/Inject.java", """
+    private static final Map<String, String> CDI_STUBS =
+            Map.of(
+                    "jakarta/inject/Inject.java",
+                            """
                     package jakarta.inject;
                     import java.lang.annotation.*;
                     @Retention(RetentionPolicy.RUNTIME)
                     @Target({ElementType.FIELD, ElementType.CONSTRUCTOR, ElementType.METHOD})
                     public @interface Inject {}
                     """,
-            "jakarta/inject/Qualifier.java", """
+                    "jakarta/inject/Qualifier.java",
+                            """
                     package jakarta.inject;
                     import java.lang.annotation.*;
                     @Retention(RetentionPolicy.RUNTIME)
                     @Target(ElementType.ANNOTATION_TYPE)
                     public @interface Qualifier {}
                     """,
-            "jakarta/enterprise/context/ApplicationScoped.java", """
+                    "jakarta/enterprise/context/ApplicationScoped.java",
+                            """
                     package jakarta.enterprise.context;
                     import java.lang.annotation.*;
                     @Retention(RetentionPolicy.RUNTIME)
                     @Target(ElementType.TYPE)
                     public @interface ApplicationScoped {}
                     """,
-            "jakarta/enterprise/event/Event.java", """
+                    "jakarta/enterprise/event/Event.java",
+                            """
                     package jakarta.enterprise.event;
                     public interface Event<T> { void fire(T event); }
                     """);
@@ -59,8 +64,12 @@ class InheritedInjectionAndSyntheticBeansTest {
     @Test
     void cdiBeanInheritsSuperclassFieldsAndInitializersExceptOverriddenOnes() throws Exception {
         Map<String, String> sources = new java.util.LinkedHashMap<>(CDI_STUBS);
-        sources.put("app/Bus.java", "package app; @jakarta.enterprise.context.ApplicationScoped public class Bus {}");
-        sources.put("app/Base.java", """
+        sources.put(
+                "app/Bus.java",
+                "package app; @jakarta.enterprise.context.ApplicationScoped public class Bus {}");
+        sources.put(
+                "app/Base.java",
+                """
                 package app;
                 import jakarta.inject.Inject;
                 public abstract class Base {
@@ -71,7 +80,9 @@ class InheritedInjectionAndSyntheticBeansTest {
                     @Inject private void hidden(Bus bus) {}
                 }
                 """);
-        sources.put("app/Child.java", """
+        sources.put(
+                "app/Child.java",
+                """
                 package app;
                 @jakarta.enterprise.context.ApplicationScoped
                 public class Child extends Base {
@@ -85,9 +96,12 @@ class InheritedInjectionAndSyntheticBeansTest {
 
         assertTrue(members.contains("Base.bus"), members.toString());
         assertTrue(members.contains("Base.init"), members.toString());
-        assertTrue(members.contains("Base.hidden"),
-                "A private subclass method does not override a private superclass initializer: " + members);
-        assertFalse(members.contains("Base.replaced"),
+        assertTrue(
+                members.contains("Base.hidden"),
+                "A private subclass method does not override a private superclass initializer: "
+                        + members);
+        assertFalse(
+                members.contains("Base.replaced"),
                 "An overriding method without @Inject is not an initializer: " + members);
         assertFalse(members.contains("Base.ignoredStatic"), members.toString());
         InjectionPointRecord bus = point(result, "app.Child", "Base.bus");
@@ -97,43 +111,57 @@ class InheritedInjectionAndSyntheticBeansTest {
     @Test
     void configMappingsBecomeDependentSyntheticBeansExceptBuildTimeRoots() throws Exception {
         Map<String, String> sources = new java.util.LinkedHashMap<>(CDI_STUBS);
-        sources.put("io/smallrye/config/ConfigMapping.java", """
+        sources.put(
+                "io/smallrye/config/ConfigMapping.java",
+                """
                 package io.smallrye.config;
                 import java.lang.annotation.*;
                 @Retention(RetentionPolicy.RUNTIME)
                 @Target(ElementType.TYPE)
                 public @interface ConfigMapping { String prefix() default ""; }
                 """);
-        sources.put("io/quarkus/runtime/annotations/ConfigPhase.java", """
+        sources.put(
+                "io/quarkus/runtime/annotations/ConfigPhase.java",
+                """
                 package io.quarkus.runtime.annotations;
                 public enum ConfigPhase { BUILD_TIME, BUILD_AND_RUN_TIME_FIXED, RUN_TIME }
                 """);
-        sources.put("io/quarkus/runtime/annotations/ConfigRoot.java", """
+        sources.put(
+                "io/quarkus/runtime/annotations/ConfigRoot.java",
+                """
                 package io.quarkus.runtime.annotations;
                 import java.lang.annotation.*;
                 @Retention(RetentionPolicy.RUNTIME)
                 @Target(ElementType.TYPE)
                 public @interface ConfigRoot { ConfigPhase phase() default ConfigPhase.BUILD_TIME; }
                 """);
-        sources.put("app/AppConfig.java", """
+        sources.put(
+                "app/AppConfig.java",
+                """
                 package app;
                 @io.smallrye.config.ConfigMapping(prefix = "app")
                 public interface AppConfig { String name(); }
                 """);
-        sources.put("app/RuntimeRoot.java", """
+        sources.put(
+                "app/RuntimeRoot.java",
+                """
                 package app;
                 import io.quarkus.runtime.annotations.*;
                 @io.smallrye.config.ConfigMapping(prefix = "quarkus.runtime")
                 @ConfigRoot(phase = ConfigPhase.RUN_TIME)
                 public interface RuntimeRoot { String mode(); }
                 """);
-        sources.put("app/BuildRoot.java", """
+        sources.put(
+                "app/BuildRoot.java",
+                """
                 package app;
                 @io.smallrye.config.ConfigMapping(prefix = "quarkus.build")
                 @io.quarkus.runtime.annotations.ConfigRoot
                 public interface BuildRoot { String mode(); }
                 """);
-        sources.put("app/User.java", """
+        sources.put(
+                "app/User.java",
+                """
                 package app;
                 import jakarta.inject.Inject;
                 @jakarta.enterprise.context.ApplicationScoped
@@ -144,22 +172,28 @@ class InheritedInjectionAndSyntheticBeansTest {
                 """);
 
         var withoutIntegration = BeanResolver.resolve(index(sources));
-        assertTrue(withoutIntegration.beans().stream().noneMatch(bean -> "SYNTHETIC".equals(bean.kind())));
-        sources.put("io/quarkus/arc/runtime/ConfigMappingCreator.java", """
+        assertTrue(
+                withoutIntegration.beans().stream()
+                        .noneMatch(bean -> "SYNTHETIC".equals(bean.kind())));
+        sources.put(
+                "io/quarkus/arc/runtime/ConfigMappingCreator.java",
+                """
                 package io.quarkus.arc.runtime;
                 public class ConfigMappingCreator {}
                 """);
         var result = BeanResolver.resolve(index(sources));
         Map<Integer, String> classNames = classNames(result);
-        List<BeanRecord> synthetic = result.beans().stream()
-                .filter(bean -> "SYNTHETIC".equals(bean.kind())).toList();
-        List<String> syntheticClasses = synthetic.stream()
-                .map(bean -> classNames.get(bean.classId())).sorted().toList();
+        List<BeanRecord> synthetic =
+                result.beans().stream().filter(bean -> "SYNTHETIC".equals(bean.kind())).toList();
+        List<String> syntheticClasses =
+                synthetic.stream().map(bean -> classNames.get(bean.classId())).sorted().toList();
 
         assertEquals(List.of("app.AppConfig", "app.RuntimeRoot"), syntheticClasses);
-        BeanRecord appConfig = synthetic.stream()
-                .filter(bean -> classNames.get(bean.classId()).equals("app.AppConfig"))
-                .findFirst().orElseThrow();
+        BeanRecord appConfig =
+                synthetic.stream()
+                        .filter(bean -> classNames.get(bean.classId()).equals("app.AppConfig"))
+                        .findFirst()
+                        .orElseThrow();
         assertEquals("@Dependent", appConfig.scope());
         assertEquals(BeanResolver.CONFIG_MAPPING_CREATOR, appConfig.memberName());
         assertEquals(appConfig.id(), point(result, "app.User", "config").resolvedBeanId());
@@ -169,10 +203,15 @@ class InheritedInjectionAndSyntheticBeansTest {
         assertEquals(ResolutionReason.BUILTIN_BEAN, events.resolutionReason());
         assertNull(events.resolvedBeanId());
 
-        // V41 CQ-024: Quarkus ConfigBuildStep adds an InjectionPoint dependency to each config-mapping
-        // synthetic bean (its creator reads the requested prefix from it); Claude listed consumers instead.
-        InjectionPointRecord creator = result.injectionPoints().stream()
-                .filter(point -> point.beanId() == appConfig.id()).findFirst().orElseThrow();
+        // V41 CQ-024: Quarkus ConfigBuildStep adds an InjectionPoint dependency to each
+        // config-mapping
+        // synthetic bean (its creator reads the requested prefix from it); Claude listed consumers
+        // instead.
+        InjectionPointRecord creator =
+                result.injectionPoints().stream()
+                        .filter(point -> point.beanId() == appConfig.id())
+                        .findFirst()
+                        .orElseThrow();
         assertEquals("ConfigMappingCreator", creator.fieldName());
         assertEquals("SYNTHETIC", creator.kind());
         assertEquals("jakarta.enterprise.inject.spi.InjectionPoint", creator.targetType());
@@ -183,23 +222,33 @@ class InheritedInjectionAndSyntheticBeansTest {
     @Test
     void springBeanInheritsAutowiredMembersExceptOverriddenMethods() throws Exception {
         Map<String, String> sources = new java.util.LinkedHashMap<>();
-        sources.put("org/springframework/stereotype/Component.java", """
+        sources.put(
+                "org/springframework/stereotype/Component.java",
+                """
                 package org.springframework.stereotype;
                 import java.lang.annotation.*;
                 @Retention(RetentionPolicy.RUNTIME)
                 @Target(ElementType.TYPE)
                 public @interface Component {}
                 """);
-        sources.put("org/springframework/beans/factory/annotation/Autowired.java", """
+        sources.put(
+                "org/springframework/beans/factory/annotation/Autowired.java",
+                """
                 package org.springframework.beans.factory.annotation;
                 import java.lang.annotation.*;
                 @Retention(RetentionPolicy.RUNTIME)
                 @Target({ElementType.FIELD, ElementType.CONSTRUCTOR, ElementType.METHOD})
                 public @interface Autowired {}
                 """);
-        sources.put("app/Repo.java", "package app; @org.springframework.stereotype.Component public class Repo {}");
-        sources.put("app/Bus.java", "package app; @org.springframework.stereotype.Component public class Bus {}");
-        sources.put("app/Base.java", """
+        sources.put(
+                "app/Repo.java",
+                "package app; @org.springframework.stereotype.Component public class Repo {}");
+        sources.put(
+                "app/Bus.java",
+                "package app; @org.springframework.stereotype.Component public class Bus {}");
+        sources.put(
+                "app/Base.java",
+                """
                 package app;
                 import org.springframework.beans.factory.annotation.Autowired;
                 public abstract class Base {
@@ -208,7 +257,9 @@ class InheritedInjectionAndSyntheticBeansTest {
                     @Autowired void replaced(Bus bus) {}
                 }
                 """);
-        sources.put("app/Child.java", """
+        sources.put(
+                "app/Child.java",
+                """
                 package app;
                 @org.springframework.stereotype.Component
                 public class Child extends Base {
@@ -228,7 +279,9 @@ class InheritedInjectionAndSyntheticBeansTest {
     @Test
     void externalBeanReadsConfigurationOfInheritedInjectionPoint() throws Exception {
         Map<String, String> sources = new java.util.LinkedHashMap<>(CDI_STUBS);
-        sources.put("org/eclipse/microprofile/config/inject/ConfigProperty.java", """
+        sources.put(
+                "org/eclipse/microprofile/config/inject/ConfigProperty.java",
+                """
                 package org.eclipse.microprofile.config.inject;
                 import java.lang.annotation.*;
                 import jakarta.inject.Qualifier;
@@ -240,7 +293,9 @@ class InheritedInjectionAndSyntheticBeansTest {
                     String defaultValue() default "";
                 }
                 """);
-        sources.put("lib/BaseConnector.java", """
+        sources.put(
+                "lib/BaseConnector.java",
+                """
                 package lib;
                 import jakarta.inject.Inject;
                 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -249,7 +304,9 @@ class InheritedInjectionAndSyntheticBeansTest {
                     String endpoint;
                 }
                 """);
-        sources.put("lib/Connector.java", """
+        sources.put(
+                "lib/Connector.java",
+                """
                 package lib;
                 @jakarta.enterprise.context.ApplicationScoped
                 public class Connector extends BaseConnector {}
@@ -257,42 +314,57 @@ class InheritedInjectionAndSyntheticBeansTest {
 
         Path jar = jar(sources);
         var beans = ExternalBeanScanner.scan(index(jar), List.of(jar));
-        var connector = beans.stream().filter(bean -> bean.className().equals("lib.Connector"))
-                .findFirst().orElseThrow();
-        var endpoint = connector.injectionPoints().stream()
-                .filter(point -> "BaseConnector.endpoint".equals(point.member()))
-                .findFirst().orElseThrow(() -> new AssertionError(connector.injectionPoints().toString()));
+        var connector =
+                beans.stream()
+                        .filter(bean -> bean.className().equals("lib.Connector"))
+                        .findFirst()
+                        .orElseThrow();
+        var endpoint =
+                connector.injectionPoints().stream()
+                        .filter(point -> "BaseConnector.endpoint".equals(point.member()))
+                        .findFirst()
+                        .orElseThrow(
+                                () -> new AssertionError(connector.injectionPoints().toString()));
 
         assertEquals("lib.endpoint", endpoint.configurationKey());
         assertEquals("http://localhost", endpoint.configurationDefault());
     }
 
     /**
-     * Apollo AQ-014/AQ-023: SpringSecurityUserInfoHolder takes an ObjectProvider<UserService>;
-     * the index kept only "ObjectProvider", resolved nothing, and never said which bean the lazy
-     * lookup returns.
+     * Apollo AQ-014/AQ-023: SpringSecurityUserInfoHolder takes an ObjectProvider<UserService>; the
+     * index kept only "ObjectProvider", resolved nothing, and never said which bean the lazy lookup
+     * returns.
      */
     @Test
     void aLazySpringProviderResolvesAgainstItsTypeArgument() throws Exception {
         Map<String, String> sources = new java.util.LinkedHashMap<>();
-        sources.put("org/springframework/stereotype/Component.java", """
+        sources.put(
+                "org/springframework/stereotype/Component.java",
+                """
                 package org.springframework.stereotype;
                 import java.lang.annotation.*;
                 @Retention(RetentionPolicy.RUNTIME)
                 @Target(ElementType.TYPE)
                 public @interface Component {}
                 """);
-        sources.put("org/springframework/beans/factory/annotation/Autowired.java", """
+        sources.put(
+                "org/springframework/beans/factory/annotation/Autowired.java",
+                """
                 package org.springframework.beans.factory.annotation;
                 import java.lang.annotation.*;
                 @Retention(RetentionPolicy.RUNTIME)
                 @Target({ElementType.FIELD, ElementType.CONSTRUCTOR, ElementType.METHOD})
                 public @interface Autowired {}
                 """);
-        sources.put("org/springframework/beans/factory/ObjectProvider.java",
+        sources.put(
+                "org/springframework/beans/factory/ObjectProvider.java",
                 "package org.springframework.beans.factory; public interface ObjectProvider<T> { T getObject(); }");
-        sources.put("app/Repo.java", "package app; @org.springframework.stereotype.Component public class Repo {}");
-        sources.put("app/Holder.java", """
+        sources.put(
+                "app/Repo.java",
+                "package app; @org.springframework.stereotype.Component public class Repo {}");
+        sources.put(
+                "app/Holder.java",
+                """
                 package app;
                 import org.springframework.beans.factory.ObjectProvider;
                 import org.springframework.beans.factory.annotation.Autowired;
@@ -304,28 +376,38 @@ class InheritedInjectionAndSyntheticBeansTest {
                 """);
 
         var result = SpringResolver.resolve(index(sources));
-        var points = result.injectionPoints().stream()
-                .filter(point -> point.targetType().startsWith("org.springframework.beans.factory.ObjectProvider"))
-                .toList();
+        var points =
+                result.injectionPoints().stream()
+                        .filter(
+                                point ->
+                                        point.targetType()
+                                                .startsWith(
+                                                        "org.springframework.beans.factory.ObjectProvider"))
+                        .toList();
         assertEquals(2, points.size(), result.injectionPoints().toString());
         for (var point : points) {
-            assertEquals("org.springframework.beans.factory.ObjectProvider<app.Repo>", point.targetType());
+            assertEquals(
+                    "org.springframework.beans.factory.ObjectProvider<app.Repo>",
+                    point.targetType());
             assertNotNull(point.resolvedBeanId(), point.toString());
         }
     }
 
     private static List<String> membersOf(BeanResolver.ResolutionResult result, String className) {
         int beanId = beanId(result, className);
-        return result.injectionPoints().stream().filter(point -> point.beanId() == beanId)
-                .map(InjectionPointRecord::fieldName).collect(Collectors.toList());
+        return result.injectionPoints().stream()
+                .filter(point -> point.beanId() == beanId)
+                .map(InjectionPointRecord::fieldName)
+                .collect(Collectors.toList());
     }
 
-    private static InjectionPointRecord point(BeanResolver.ResolutionResult result, String className,
-            String member) {
+    private static InjectionPointRecord point(
+            BeanResolver.ResolutionResult result, String className, String member) {
         int beanId = beanId(result, className);
         return result.injectionPoints().stream()
                 .filter(point -> point.beanId() == beanId && member.equals(point.fieldName()))
-                .findFirst().orElseThrow(() -> new AssertionError("No injection point " + member));
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No injection point " + member));
     }
 
     private static int beanId(BeanResolver.ResolutionResult result, String className) {
@@ -333,7 +415,9 @@ class InheritedInjectionAndSyntheticBeansTest {
         assertNotNull(classId, className);
         return result.beans().stream()
                 .filter(bean -> bean.classId() == classId && "CLASS".equals(bean.kind()))
-                .findFirst().orElseThrow().id();
+                .findFirst()
+                .orElseThrow()
+                .id();
     }
 
     private static Map<Integer, String> classNames(BeanResolver.ResolutionResult result) {
@@ -352,8 +436,10 @@ class InheritedInjectionAndSyntheticBeansTest {
             Files.writeString(file, entry.getValue());
             args.add(file.toString());
         }
-        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
-                args.toArray(String[]::new)));
+        assertEquals(
+                0,
+                ToolProvider.getSystemJavaCompiler()
+                        .run(null, null, null, args.toArray(String[]::new)));
         return classes;
     }
 
@@ -377,7 +463,8 @@ class InheritedInjectionAndSyntheticBeansTest {
         try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar));
                 var walk = Files.walk(classes)) {
             for (Path file : walk.filter(Files::isRegularFile).toList()) {
-                output.putNextEntry(new JarEntry(classes.relativize(file).toString().replace('\\', '/')));
+                output.putNextEntry(
+                        new JarEntry(classes.relativize(file).toString().replace('\\', '/')));
                 Files.copy(file, output);
                 output.closeEntry();
             }

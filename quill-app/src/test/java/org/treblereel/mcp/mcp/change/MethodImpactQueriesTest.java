@@ -192,9 +192,13 @@ class MethodImpactQueriesTest {
             String use = check.path("result_use").asText();
             assertTrue(
                     use.startsWith("line 7: var mapping = mapper.resolve(name);"), data.toString());
-            // Cryostat full-20261118 CQ-041: Claude r2 and r3 retold this line, "calls mapping.isEmpty(),
+            // Cryostat full-20261118 CQ-041: Claude r2 and r3 retold this line, "calls
+            // mapping.isEmpty(),
             // mapping.get()", and never said the callers consume an Optional.
-            assertTrue(use.contains("var mapping = mapper.resolve(name); mapping is Optional<Verb>; then"), use);
+            assertTrue(
+                    use.contains(
+                            "var mapping = mapper.resolve(name); mapping is Optional<Verb>; then"),
+                    use);
             assertTrue(use.contains("mapping.isEmpty() (line 8)"), use);
             assertTrue(use.contains("mapping.get() (line 11) as k8s"), use);
             assertTrue(use.contains("k8s.resource() (line 12)"), use);

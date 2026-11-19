@@ -55,7 +55,10 @@ class ProjectBuildDeclarationsTest {
         NameTargetPrefetch.appendBuildDeclarations(
                 fact, root, List.of("common/pom.xml", "mvnw", "pom.xml", "portal/pom.xml"));
         assertTrue(
-                fact.path("imported_boms").toString().contains("org.springframework.boot:spring-boot-dependencies:4.1.1 at pom.xml:3"),
+                fact.path("imported_boms")
+                        .toString()
+                        .contains(
+                                "org.springframework.boot:spring-boot-dependencies:4.1.1 at pom.xml:3"),
                 fact.toString());
         assertEquals(
                 "[\"portal: org.springframework.boot:spring-boot-starter-web, org.springframework.cloud:spring-cloud-starter-config\"]",

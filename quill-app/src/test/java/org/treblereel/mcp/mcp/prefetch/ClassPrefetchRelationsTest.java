@@ -78,7 +78,10 @@ class ClassPrefetchRelationsTest {
         assertEquals(2, fact.path("contract_caller_classes").asInt(), fact.toString());
         // Grouped by package and called methods: the self-calling implementation is a caller,
         // the class calling an unrelated implementation method is not.
-        assertEquals(List.of("x: Consumer, Impl call run()"), strings(fact, "contract_callers"), fact.toString());
+        assertEquals(
+                List.of("x: Consumer, Impl call run()"),
+                strings(fact, "contract_callers"),
+                fact.toString());
         assertEquals(0, fact.path("contract_application_producer_count").asInt(-1));
     }
 
@@ -316,7 +319,8 @@ class ClassPrefetchRelationsTest {
                 strings(impl, "application_producer_hosts"),
                 impl.toString());
         // Cryostat full-20261118 CQ-044: the bare list "io.cryostat.Producers (12)" reached every
-        // Codex packet, Codex read Producers.java, and still proposed a new producer class in 4 of 5
+        // Codex packet, Codex read Producers.java, and still proposed a new producer class in 4 of
+        // 5
         // answers. The field has to say what the list is for.
         assertTrue(
                 impl.path("application_producer_hosts_basis").asText().contains("convention"),

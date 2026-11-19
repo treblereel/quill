@@ -1,7 +1,5 @@
 package org.treblereel.mcp.mcp.tools;
 
-import org.treblereel.mcp.db.ReadQueryContext;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,7 +12,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.treblereel.mcp.index.ProjectIndexStore;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
 import org.jdbi.v3.core.Jdbi;
@@ -22,23 +19,32 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.treblereel.mcp.index.ProjectInitializer;
 import org.treblereel.mcp.core.BuildSystem;
-import org.treblereel.mcp.db.SymbolRepository;
 import org.treblereel.mcp.db.IndexRepository;
-import org.treblereel.mcp.db.UsageRepository;
 import org.treblereel.mcp.db.QuillDatabase;
+import org.treblereel.mcp.db.ReadQueryContext;
+import org.treblereel.mcp.db.SymbolRepository;
+import org.treblereel.mcp.db.UsageRepository;
+import org.treblereel.mcp.index.ProjectIndexStore;
+import org.treblereel.mcp.index.ProjectInitializer;
 
 class AnnotationProcessingIndexTest {
 
-    /** Runs one index query and returns its JSON, as the tool methods these tests were written against did. */
-    private static String read(org.jdbi.v3.core.Jdbi jdbi, java.util.function.Function<ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode> query) {
+    /**
+     * Runs one index query and returns its JSON, as the tool methods these tests were written
+     * against did.
+     */
+    private static String read(
+            org.jdbi.v3.core.Jdbi jdbi,
+            java.util.function.Function<
+                            ReadQueryContext, ? extends com.fasterxml.jackson.databind.JsonNode>
+                    query) {
         return ReadQueryContext.readWithGraph(jdbi, query).toString();
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir"))
-            .getParent().toAbsolutePath().normalize();
+    private static final Path PROJECT_ROOT =
+            Path.of(System.getProperty("user.dir")).getParent().toAbsolutePath().normalize();
     private static Jdbi jdbi;
 
     @BeforeAll
@@ -62,13 +68,20 @@ class AnnotationProcessingIndexTest {
 
     @Test
     void indexesGeneratedClassesFromMultipleProcessingRounds() {
-        var classes = jdbi.withHandle(repositoryHandle1 -> new SymbolRepository(repositoryHandle1).findAllClasses());
-        var first = classes.stream()
-                .filter(cls -> cls.className().endsWith("FirstGenerated"))
-                .findFirst().orElseThrow();
-        var second = classes.stream()
-                .filter(cls -> cls.className().endsWith("SecondGenerated"))
-                .findFirst().orElseThrow();
+        var classes =
+                jdbi.withHandle(
+                        repositoryHandle1 ->
+                                new SymbolRepository(repositoryHandle1).findAllClasses());
+        var first =
+                classes.stream()
+                        .filter(cls -> cls.className().endsWith("FirstGenerated"))
+                        .findFirst()
+                        .orElseThrow();
+        var second =
+                classes.stream()
+                        .filter(cls -> cls.className().endsWith("SecondGenerated"))
+                        .findFirst()
+                        .orElseThrow();
 
         assertEquals("generated", first.origin());
         assertEquals("generated", second.origin());
@@ -78,7 +91,13 @@ class AnnotationProcessingIndexTest {
     @Test
     void exposesConstructorOnlyDependencyAndDistinctFanIn() throws Exception {
         var tools = new QuillToolQueries();
-        String result = read(jdbi, r -> tools.getRisk(r, "org.treblereel.mcp.fixture.application.ConstructorOnlyDependency"));
+        String result =
+                read(
+                        jdbi,
+                        r ->
+                                tools.getRisk(
+                                        r,
+                                        "org.treblereel.mcp.fixture.application.ConstructorOnlyDependency"));
         var root = JSON.readTree(result);
 
         assertEquals(1, root.path("signals").path("fan_in").path("value").asInt());
@@ -88,86 +107,154 @@ class AnnotationProcessingIndexTest {
     @Test
     void resolvesCurrentClassByProjectPath() throws Exception {
         var tools = new QuillToolQueries();
-        String result = read(jdbi, r -> tools.getDependencies(r, "application/src/main/java/org/treblereel/mcp/fixture/application/ConstructorOnlyDependency.java",
-                "both", 1));
+        String result =
+                read(
+                        jdbi,
+                        r ->
+                                tools.getDependencies(
+                                        r,
+                                        "application/src/main/java/org/treblereel/mcp/fixture/application/ConstructorOnlyDependency.java",
+                                        "both",
+                                        1));
         var root = JSON.readTree(result);
 
-        assertEquals("org.treblereel.mcp.fixture.application.ConstructorOnlyDependency",
+        assertEquals(
+                "org.treblereel.mcp.fixture.application.ConstructorOnlyDependency",
                 root.path("target").asText());
         assertEquals(1, root.path("metrics").path("fan_in").asInt());
         assertEquals(1, root.path("metrics").path("incoming_edges").asInt());
-        assertEquals(1, root.path("metrics").path("fan_in_breakdown")
-                .path("source").path("classes").asInt());
+        assertEquals(
+                1,
+                root.path("metrics")
+                        .path("fan_in_breakdown")
+                        .path("source")
+                        .path("classes")
+                        .asInt());
     }
 
     @Test
     void inventoriesAnnotationProcessorServiceDescriptor() {
-        assertTrue(jdbi.withHandle(repositoryHandle2 -> new IndexRepository(repositoryHandle2).findFileByPath("processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor"))
-                .filter(file -> file.kind().equals("service_descriptor"))
-                .isPresent());
+        assertTrue(
+                jdbi.withHandle(
+                                repositoryHandle2 ->
+                                        new IndexRepository(repositoryHandle2)
+                                                .findFileByPath(
+                                                        "processor/src/main/resources/META-INF/services/javax.annotation.processing.Processor"))
+                        .filter(file -> file.kind().equals("service_descriptor"))
+                        .isPresent());
     }
 
     @Test
     void indexesServiceDescriptorProviderSemantics() {
-        var provider = jdbi.withHandle(repositoryHandle3 -> new SymbolRepository(repositoryHandle3).findClassByName("org.treblereel.mcp.fixture.processor.FirstRoundProcessor"))
-                .orElseThrow();
+        var provider =
+                jdbi.withHandle(
+                                repositoryHandle3 ->
+                                        new SymbolRepository(repositoryHandle3)
+                                                .findClassByName(
+                                                        "org.treblereel.mcp.fixture.processor.FirstRoundProcessor"))
+                        .orElseThrow();
 
-        assertTrue(jdbi.withHandle(repositoryHandle4 -> new UsageRepository(repositoryHandle4).findExternalDeps(provider.id())).stream()
-                .anyMatch(dependency -> dependency.externalType()
-                                .equals("javax.annotation.processing.Processor")
-                        && dependency.usageKind().equals("SERVICE_PROVIDES")));
-        assertEquals("1", jdbi.withHandle(repositoryHandle5 -> new IndexRepository(repositoryHandle5).getMetadata()).get("service_descriptors"));
-        assertEquals("2", jdbi.withHandle(repositoryHandle6 -> new IndexRepository(repositoryHandle6).getMetadata()).get("service_registrations"));
+        assertTrue(
+                jdbi
+                        .withHandle(
+                                repositoryHandle4 ->
+                                        new UsageRepository(repositoryHandle4)
+                                                .findExternalDeps(provider.id()))
+                        .stream()
+                        .anyMatch(
+                                dependency ->
+                                        dependency
+                                                        .externalType()
+                                                        .equals(
+                                                                "javax.annotation.processing.Processor")
+                                                && dependency
+                                                        .usageKind()
+                                                        .equals("SERVICE_PROVIDES")));
+        assertEquals(
+                "1",
+                jdbi.withHandle(
+                                repositoryHandle5 ->
+                                        new IndexRepository(repositoryHandle5).getMetadata())
+                        .get("service_descriptors"));
+        assertEquals(
+                "2",
+                jdbi.withHandle(
+                                repositoryHandle6 ->
+                                        new IndexRepository(repositoryHandle6).getMetadata())
+                        .get("service_registrations"));
     }
 
     @Test
     void assessesAnnotationProcessorServiceDescriptorAsHighRiskFile() throws Exception {
-        var result = JSON.readTree(read(jdbi, r -> new QuillToolQueries().getRisk(r, "processor/src/main/resources/META-INF/services/"
-                        + "javax.annotation.processing.Processor")));
+        var result =
+                JSON.readTree(
+                        read(
+                                jdbi,
+                                r ->
+                                        new QuillToolQueries()
+                                                .getRisk(
+                                                        r,
+                                                        "processor/src/main/resources/META-INF/services/"
+                                                                + "javax.annotation.processing.Processor")));
 
         assertEquals("file", result.path("target_type").asText());
         assertEquals("service_descriptor", result.path("kind").asText());
         assertTrue(result.path("risk_score").asDouble() >= 6.0);
-        assertEquals(10, result.path("signals").path("file_criticality")
-                .path("value").asInt());
+        assertEquals(10, result.path("signals").path("file_criticality").path("value").asInt());
         assertTrue(result.path("recommendation").asText().contains("provider membership"));
     }
 
     @Test
     void nativeMcpExposesClassAndFileRisk() throws Exception {
-        Assumptions.assumeTrue(Boolean.getBoolean("native.tests.required"),
+        Assumptions.assumeTrue(
+                Boolean.getBoolean("native.tests.required"),
                 "native MCP assertions run only in the native quality gate");
         Path repositoryRoot = PROJECT_ROOT.getParent().getParent();
-        Path nativeImage = repositoryRoot.resolve(BuildSystem.isWindows()
-                ? "quill-app/target/quill.exe" : "quill-app/target/quill");
-        assertTrue(Files.isExecutable(nativeImage),
+        Path nativeImage =
+                repositoryRoot.resolve(
+                        BuildSystem.isWindows()
+                                ? "quill-app/target/quill.exe"
+                                : "quill-app/target/quill");
+        assertTrue(
+                Files.isExecutable(nativeImage),
                 "Native quality gate requires an executable image at " + nativeImage);
 
-        Process process = new ProcessBuilder(nativeImage.toString(), "--mcp", "--project",
-                PROJECT_ROOT.toString()).directory(PROJECT_ROOT.toFile()).start();
+        Process process =
+                new ProcessBuilder(
+                                nativeImage.toString(),
+                                "--mcp",
+                                "--project",
+                                PROJECT_ROOT.toString())
+                        .directory(PROJECT_ROOT.toFile())
+                        .start();
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
-        Thread stderrReader = Thread.startVirtualThread(() -> {
-            try {
-                process.getErrorStream().transferTo(stderr);
-            } catch (Exception ignored) {
-                // Process shutdown closes the stream.
-            }
-        });
-        try (BufferedWriter input = new BufferedWriter(
-                        new OutputStreamWriter(process.getOutputStream()));
-                BufferedReader output = new BufferedReader(
-                        new InputStreamReader(process.getInputStream()))) {
-            input.write("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
-                    + "\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
-                    + "\"clientInfo\":{\"name\":\"fixture\",\"version\":\"1\"}}}\n");
+        Thread stderrReader =
+                Thread.startVirtualThread(
+                        () -> {
+                            try {
+                                process.getErrorStream().transferTo(stderr);
+                            } catch (Exception ignored) {
+                                // Process shutdown closes the stream.
+                            }
+                        });
+        try (BufferedWriter input =
+                        new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+                BufferedReader output =
+                        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            input.write(
+                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+                            + "\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
+                            + "\"clientInfo\":{\"name\":\"fixture\",\"version\":\"1\"}}}\n");
             input.flush();
             assertTrue(readResponse(output, 1).path("result").isObject());
-            input.write("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\","
-                    + "\"params\":{}}\n");
-            input.write("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
-                    + "\"params\":{\"name\":\"assess_change_risk\",\"arguments\":{"
-                    + "\"target\":\"org.treblereel.mcp.fixture.application."
-                    + "ConstructorOnlyDependency\"}}}\n");
+            input.write(
+                    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\","
+                            + "\"params\":{}}\n");
+            input.write(
+                    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                            + "\"params\":{\"name\":\"assess_change_risk\",\"arguments\":{"
+                            + "\"target\":\"org.treblereel.mcp.fixture.application."
+                            + "ConstructorOnlyDependency\"}}}\n");
             input.flush();
 
             var response = readResponse(output, 2);
@@ -176,10 +263,11 @@ class AnnotationProcessingIndexTest {
             assertEquals(1, result.path("signals").path("fan_in").path("value").asInt());
             assertEquals(1, result.path("signals").path("fan_in").path("edges").asInt());
 
-            input.write("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
-                    + "\"params\":{\"name\":\"assess_change_risk\",\"arguments\":{"
-                    + "\"target\":\"processor/src/main/resources/META-INF/services/"
-                    + "javax.annotation.processing.Processor\"}}}\n");
+            input.write(
+                    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
+                            + "\"params\":{\"name\":\"assess_change_risk\",\"arguments\":{"
+                            + "\"target\":\"processor/src/main/resources/META-INF/services/"
+                            + "javax.annotation.processing.Processor\"}}}\n");
             input.flush();
             var fileResponse = readResponse(output, 3);
             assertNoTextPayload(fileResponse.path("result"));
@@ -213,7 +301,8 @@ class AnnotationProcessingIndexTest {
 
     private static void assertNoTextPayload(com.fasterxml.jackson.databind.JsonNode result) {
         for (var item : result.path("content")) {
-            assertTrue(!"text".equals(item.path("type").asText())
+            assertTrue(
+                    !"text".equals(item.path("type").asText())
                             || item.path("text").asText().isBlank(),
                     "Structured result must not duplicate its payload as text: "
                             + result.path("content"));

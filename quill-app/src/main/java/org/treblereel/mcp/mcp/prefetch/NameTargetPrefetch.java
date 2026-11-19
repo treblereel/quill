@@ -282,8 +282,8 @@ public final class NameTargetPrefetch {
 
     /**
      * The BOMs the root POM imports and the starters each module's own POM declares. Apollo AQ-001:
-     * asked which dependencies bring Spring Boot and Spring Cloud, the direct dependencies showed only
-     * test starters; Claude read pom.xml twice and queried dependencies five times.
+     * asked which dependencies bring Spring Boot and Spring Cloud, the direct dependencies showed
+     * only test starters; Claude read pom.xml twice and queried dependencies five times.
      */
     static void appendBuildDeclarations(
             ObjectNode fact, java.nio.file.Path root, List<String> buildFiles) {

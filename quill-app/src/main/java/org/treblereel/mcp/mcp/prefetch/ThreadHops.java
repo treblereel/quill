@@ -164,8 +164,7 @@ final class ThreadHops {
         // Apollo AQ-025: a static ThreadLocal set on the request thread (UserIdentityContextHolder)
         // is empty after the
         // switch; agents grepped for it in every session.
-        List<String> bound =
-                new ArrayList<>(db.symbols.findStaticThreadLocalFields());
+        List<String> bound = new ArrayList<>(db.symbols.findStaticThreadLocalFields());
         List<Path> jarNames = root == null ? List.of() : jars(db, root);
         if (root != null) {
             String propagation = propagation(jarNames);
@@ -388,8 +387,8 @@ final class ThreadHops {
 
     /**
      * The registered decorator that wraps Uni callbacks and the provider that captures the CDI
-     * context, as the jars declare them. Cryostat CQ-025: told only that the artifacts were present,
-     * Codex opened the libraries to find both (7 of 11 calls).
+     * context, as the jars declare them. Cryostat CQ-025: told only that the artifacts were
+     * present, Codex opened the libraries to find both (7 of 11 calls).
      */
     private static String mechanism(List<Path> jars) {
         Set<String> decorators = new LinkedHashSet<>();
@@ -400,20 +399,27 @@ final class ThreadHops {
                 for (String service : DECORATOR_SERVICES) {
                     var entry = zip.getEntry(service);
                     if (entry == null) continue;
-                    String text = new String(zip.getInputStream(entry).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    String text =
+                            new String(
+                                    zip.getInputStream(entry).readAllBytes(),
+                                    java.nio.charset.StandardCharsets.UTF_8);
                     text.lines()
                             .map(line -> line.replaceFirst("#.*", "").strip())
                             .filter(line -> !line.isEmpty())
                             .forEach(decorators::add);
                 }
-                if (zip.getEntry(ARC_PROVIDER.replace('.', '/') + ".class") != null) arcProvider = true;
+                if (zip.getEntry(ARC_PROVIDER.replace('.', '/') + ".class") != null)
+                    arcProvider = true;
             } catch (Exception unreadable) {
                 QuillLog.swallowed(unreadable);
             }
         }
         List<String> parts = new ArrayList<>();
         if (!decorators.isEmpty())
-            parts.add("Uni callbacks decorated by " + String.join(", ", decorators) + " (registered service)");
+            parts.add(
+                    "Uni callbacks decorated by "
+                            + String.join(", ", decorators)
+                            + " (registered service)");
         if (arcProvider) parts.add("CDI context captured by " + ARC_PROVIDER);
         return String.join("; ", parts);
     }

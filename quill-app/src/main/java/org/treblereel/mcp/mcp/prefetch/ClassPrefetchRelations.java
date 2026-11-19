@@ -259,7 +259,13 @@ final class ClassPrefetchRelations {
     static void append(ReadQueryContext db, ObjectNode fact, ClassRecord cls) {
         List<ClassInjection> injectionRows = db.beans.findClassInjections(cls.id());
         java.util.Set<String> lazy = lazyPoints(db, cls.className());
-        lines(fact, "injects", injectionRows, row -> injects(db, row) + lazyMark(lazy, row.kind(), row.fieldName(), row.targetType()));
+        lines(
+                fact,
+                "injects",
+                injectionRows,
+                row ->
+                        injects(db, row)
+                                + lazyMark(lazy, row.kind(), row.fieldName(), row.targetType()));
         ambiguousCandidates(db, fact, cls);
         appendStateAndLifecycle(db, fact, cls);
         appendPropertiesRegistration(db, fact, cls);
@@ -1000,20 +1006,19 @@ final class ClassPrefetchRelations {
         return points;
     }
 
-    private static String lazyMark(java.util.Set<String> lazy, Object kind, Object field, Object type) {
+    private static String lazyMark(
+            java.util.Set<String> lazy, Object kind, Object field, Object type) {
         if (lazy.isEmpty()) return "";
         boolean parameter = String.valueOf(kind).endsWith("_PARAM");
-        return lazy.contains(parameter ? "param:" + type : "field:" + field)
-                ? " @Lazy"
-                : "";
+        return lazy.contains(parameter ? "param:" + type : "field:" + field) ? " @Lazy" : "";
     }
 
     /** Methods named per injection point; the rest are counted. */
     private static final int USED_IN = 3;
 
     /**
-     * One line per injection point: the injected type only when it is not the class itself, and
-     * at most three using methods. Apollo AQ-003/AQ-043/AQ-044, Cryostat CQ-007: lines repeating the
+     * One line per injection point: the injected type only when it is not the class itself, and at
+     * most three using methods. Apollo AQ-003/AQ-043/AQ-044, Cryostat CQ-007: lines repeating the
      * class and listing every using method kept 3 to 6 of 15 to 26 consumers.
      */
     private static String injectedInto(InjectingPoint row, String className) {
@@ -1048,7 +1053,9 @@ final class ClassPrefetchRelations {
                         ? ""
                         : ", uses it in "
                                 + String.join(
-                                        ", ", new ArrayList<>(methods).subList(0, Math.min(USED_IN, methods.size())))
+                                        ", ",
+                                        new ArrayList<>(methods)
+                                                .subList(0, Math.min(USED_IN, methods.size())))
                                 + (methods.size() > USED_IN
                                         ? " (+" + (methods.size() - USED_IN) + " more)"
                                         : ""))

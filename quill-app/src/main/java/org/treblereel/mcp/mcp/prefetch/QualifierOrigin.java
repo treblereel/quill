@@ -86,13 +86,19 @@ final class QualifierOrigin {
                 if (match) same.add(label);
                 else if (lookalike != null) other.add(label + " (@" + lookalike + ")");
             }
-            lines.add("@" + type + " type: the same fully qualified annotation type on "
-                    + same.size() + " of " + candidates.size() + " candidates"
-                    + (same.isEmpty() ? "" : " (" + String.join(", ", same) + ")")
-                    + (other.isEmpty()
-                            ? ""
-                            : "; another type with the same simple name does not match: "
-                                    + String.join(", ", other)));
+            lines.add(
+                    "@"
+                            + type
+                            + " type: the same fully qualified annotation type on "
+                            + same.size()
+                            + " of "
+                            + candidates.size()
+                            + " candidates"
+                            + (same.isEmpty() ? "" : " (" + String.join(", ", same) + ")")
+                            + (other.isEmpty()
+                                    ? ""
+                                    : "; another type with the same simple name does not match: "
+                                            + String.join(", ", other)));
         }
     }
 

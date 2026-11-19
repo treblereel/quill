@@ -19,6 +19,7 @@ class MethodCreatedByBeanMethodTest {
 
     /** These packets are sized for this budget; the default limit may differ. */
     private static final int LEGACY_BUDGET = 5000;
+
     @TempDir Path root;
 
     @Test
@@ -46,7 +47,9 @@ class MethodCreatedByBeanMethodTest {
                 created);
         // The lazily looked-up type's candidates, so the profiles deciding them need no other read.
         assertTrue(
-                fact.path("ambiguous_candidates").toString().contains("AuthConfig#authService profiles [auth]"),
+                fact.path("ambiguous_candidates")
+                        .toString()
+                        .contains("AuthConfig#authService profiles [auth]"),
                 fact.toString());
     }
 
@@ -91,12 +94,18 @@ class MethodCreatedByBeanMethodTest {
                 db,
                 reader -> {
                     ClassPrefetchRelations.append(
-                            reader, fact, reader.symbols.findClassByName("p.SpringHolder").orElseThrow());
+                            reader,
+                            fact,
+                            reader.symbols.findClassByName("p.SpringHolder").orElseThrow());
                     return null;
                 });
-        assertTrue(fact.path("created_by_bean_methods").toString().contains("p.AuthConfig#holder"), fact.toString());
         assertTrue(
-                fact.path("ambiguous_candidates").toString().contains("AuthConfig#authService profiles [auth]"),
+                fact.path("created_by_bean_methods").toString().contains("p.AuthConfig#holder"),
+                fact.toString());
+        assertTrue(
+                fact.path("ambiguous_candidates")
+                        .toString()
+                        .contains("AuthConfig#authService profiles [auth]"),
                 fact.toString());
     }
 
@@ -120,7 +129,8 @@ class MethodCreatedByBeanMethodTest {
                         && !"partial".equals(unasked.path("status").asText()),
                 unasked.toString());
         ObjectNode asked = packet.deepCopy();
-        PrefetchContext.boundContext(asked, "Who creates X and with which parameters?", LEGACY_BUDGET);
+        PrefetchContext.boundContext(
+                asked, "Who creates X and with which parameters?", LEGACY_BUDGET);
         assertTrue(asked.path("facts").get(0).has("created_by_bean_methods"), asked.toString());
     }
 }

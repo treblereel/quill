@@ -24,9 +24,9 @@ import org.treblereel.mcp.diagnostics.QuillLog;
 
 /**
  * Where a module's direct Maven dependencies are declared (file:line of their artifactId, the
- * module's POM or a parent's) and where each version comes from: an explicit version, a property,
- * a dependencyManagement entry, or the imported BOM in the local repository that manages it.
- * Answers read pom.xml for exactly this to cite it.
+ * module's POM or a parent's) and where each version comes from: an explicit version, a property, a
+ * dependencyManagement entry, or the imported BOM in the local repository that manages it. Answers
+ * read pom.xml for exactly this to cite it.
  */
 public final class DependencyDeclarations {
 
@@ -40,16 +40,26 @@ public final class DependencyDeclarations {
 
     private static final Pattern PROPERTY = Pattern.compile("\\$\\{([^}]+)}");
 
-    private DependencyDeclarations() {
-    }
+    private DependencyDeclarations() {}
 
-    /** A module's POM chain with its interpolated properties, managed versions and imported BOMs. */
-    private record Resolved(Path root, List<Pom> chain, Properties properties, Map<String, String> propertyLocations,
-            Map<String, String> managed, List<String[]> imports) {}
+    /**
+     * A module's POM chain with its interpolated properties, managed versions and imported BOMs.
+     */
+    private record Resolved(
+            Path root,
+            List<Pom> chain,
+            Properties properties,
+            Map<String, String> propertyLocations,
+            Map<String, String> managed,
+            List<String[]> imports) {}
 
     private static Resolved resolve(Path root, String module) {
         Path normalizedRoot = root.toAbsolutePath().normalize();
-        Path start = (module == null || module.equals(".") ? normalizedRoot : normalizedRoot.resolve(module)).resolve("pom.xml");
+        Path start =
+                (module == null || module.equals(".")
+                                ? normalizedRoot
+                                : normalizedRoot.resolve(module))
+                        .resolve("pom.xml");
         List<Pom> chain = chain(start);
         if (chain.isEmpty()) return null;
         Properties properties = new Properties();
@@ -57,12 +67,14 @@ public final class DependencyDeclarations {
         for (int i = chain.size() - 1; i >= 0; i--) {
             Pom pom = chain.get(i);
             Model model = pom.model();
-            if (model.getVersion() != null) properties.setProperty("project.version", model.getVersion());
+            if (model.getVersion() != null)
+                properties.setProperty("project.version", model.getVersion());
             InputLocation locations = model.getLocation("properties");
             for (String name : model.getProperties().stringPropertyNames()) {
                 properties.setProperty(name, model.getProperties().getProperty(name));
                 InputLocation location = locations == null ? null : locations.getLocation(name);
-                if (location != null) propertyLocations.put(name, where(normalizedRoot, pom.file(), location));
+                if (location != null)
+                    propertyLocations.put(name, where(normalizedRoot, pom.file(), location));
             }
         }
         Map<String, String> managed = new LinkedHashMap<>();
@@ -70,28 +82,50 @@ public final class DependencyDeclarations {
         for (Pom pom : chain) {
             if (pom.model().getDependencyManagement() == null) continue;
             for (Dependency dependency : pom.model().getDependencyManagement().getDependencies()) {
-                String ga = interpolate(dependency.getGroupId(), properties) + ":" + interpolate(dependency.getArtifactId(), properties);
+                String ga =
+                        interpolate(dependency.getGroupId(), properties)
+                                + ":"
+                                + interpolate(dependency.getArtifactId(), properties);
                 if ("import".equals(dependency.getScope()) && "pom".equals(dependency.getType())) {
-                    imports.add(new String[] {ga + ":" + interpolate(dependency.getVersion(), properties),
-                            where(normalizedRoot, pom.file(), dependency.getLocation("artifactId")),
-                            propertyNote(dependency.getVersion(), propertyLocations, false)});
-                } else managed.putIfAbsent(ga, versionOf(dependency, pom, normalizedRoot, properties, propertyLocations, "managed in "));
+                    imports.add(
+                            new String[] {
+                                ga + ":" + interpolate(dependency.getVersion(), properties),
+                                where(
+                                        normalizedRoot,
+                                        pom.file(),
+                                        dependency.getLocation("artifactId")),
+                                propertyNote(dependency.getVersion(), propertyLocations, false)
+                            });
+                } else
+                    managed.putIfAbsent(
+                            ga,
+                            versionOf(
+                                    dependency,
+                                    pom,
+                                    normalizedRoot,
+                                    properties,
+                                    propertyLocations,
+                                    "managed in "));
             }
         }
         return new Resolved(normalizedRoot, chain, properties, propertyLocations, managed, imports);
     }
 
     /**
-     * BOMs a module imports through dependencyManagement, its own and its parents', as
-     * {@code group:artifact:version at file:line}, with the version property's location when one
-     * property sets it.
+     * BOMs a module imports through dependencyManagement, its own and its parents', as {@code
+     * group:artifact:version at file:line}, with the version property's location when one property
+     * sets it.
      */
     public static List<String> importedBoms(Path root, String module) {
         Resolved resolved = resolve(root, module);
         if (resolved == null) return List.of();
         List<String> result = new ArrayList<>();
         for (String[] imported : resolved.imports())
-            result.add(imported[0] + " at " + imported[1] + (imported[2] == null ? "" : " (" + imported[2] + ")"));
+            result.add(
+                    imported[0]
+                            + " at "
+                            + imported[1]
+                            + (imported[2] == null ? "" : " (" + imported[2] + ")"));
         return result;
     }
 
@@ -108,12 +142,30 @@ public final class DependencyDeclarations {
         Map<String, String> versions = new LinkedHashMap<>();
         for (Pom pom : chain) {
             List<Dependency> dependencies = new ArrayList<>(pom.model().getDependencies());
-            for (Profile profile : pom.model().getProfiles()) dependencies.addAll(profile.getDependencies());
+            for (Profile profile : pom.model().getProfiles())
+                dependencies.addAll(profile.getDependencies());
             for (Dependency dependency : dependencies) {
-                String ga = interpolate(dependency.getGroupId(), properties) + ":" + interpolate(dependency.getArtifactId(), properties);
-                declared.computeIfAbsent(ga, ignored -> new ArrayList<>()).add(where(normalizedRoot, pom.file(), dependency.getLocation("artifactId")));
+                String ga =
+                        interpolate(dependency.getGroupId(), properties)
+                                + ":"
+                                + interpolate(dependency.getArtifactId(), properties);
+                declared.computeIfAbsent(ga, ignored -> new ArrayList<>())
+                        .add(
+                                where(
+                                        normalizedRoot,
+                                        pom.file(),
+                                        dependency.getLocation("artifactId")));
                 if (versions.containsKey(ga)) continue;
-                if (dependency.getVersion() != null) versions.put(ga, versionOf(dependency, pom, normalizedRoot, properties, propertyLocations, ""));
+                if (dependency.getVersion() != null)
+                    versions.put(
+                            ga,
+                            versionOf(
+                                    dependency,
+                                    pom,
+                                    normalizedRoot,
+                                    properties,
+                                    propertyLocations,
+                                    ""));
                 else if (managed.containsKey(ga)) versions.put(ga, managed.get(ga));
                 else versions.put(ga, bom(ga, imports, repository));
             }
@@ -123,22 +175,37 @@ public final class DependencyDeclarations {
         return result;
     }
 
-    private static String versionOf(Dependency dependency, Pom pom, Path root, Properties properties,
-            Map<String, String> propertyLocations, String prefix) {
+    private static String versionOf(
+            Dependency dependency,
+            Pom pom,
+            Path root,
+            Properties properties,
+            Map<String, String> propertyLocations,
+            String prefix) {
         String version = dependency.getVersion();
         if (version == null) return null;
         String note = propertyNote(version, propertyLocations, true);
         if (note != null) {
             Matcher matcher = PROPERTY.matcher(version);
             matcher.find();
-            return prefix + note.replace("version property " + matcher.group(1),
-                    "version property " + matcher.group(1) + "=" + interpolate(version, properties));
+            return prefix
+                    + note.replace(
+                            "version property " + matcher.group(1),
+                            "version property "
+                                    + matcher.group(1)
+                                    + "="
+                                    + interpolate(version, properties));
         }
-        return prefix + "version " + version + " at " + where(root, pom.file(), dependency.getLocation("version"));
+        return prefix
+                + "version "
+                + version
+                + " at "
+                + where(root, pom.file(), dependency.getLocation("version"));
     }
 
     /** "version property name at file:line" when the version is one property. */
-    private static String propertyNote(String version, Map<String, String> locations, boolean bare) {
+    private static String propertyNote(
+            String version, Map<String, String> locations, boolean bare) {
         if (version == null) return null;
         Matcher matcher = PROPERTY.matcher(version);
         if (!matcher.matches()) return null;
@@ -151,19 +218,35 @@ public final class DependencyDeclarations {
         for (String[] imported : imports) {
             String[] coordinates = imported[0].split(":");
             if (coordinates.length != 3 || repository == null) continue;
-            Path pom = repository.resolve(coordinates[0].replace('.', '/')).resolve(coordinates[1]).resolve(coordinates[2])
-                    .resolve(coordinates[1] + "-" + coordinates[2] + ".pom");
+            Path pom =
+                    repository
+                            .resolve(coordinates[0].replace('.', '/'))
+                            .resolve(coordinates[1])
+                            .resolve(coordinates[2])
+                            .resolve(coordinates[1] + "-" + coordinates[2] + ".pom");
             Model model = read(pom);
             if (model == null || model.getDependencyManagement() == null) {
                 candidates.add(imported[0] + " at " + imported[1]);
                 continue;
             }
-            boolean manages = model.getDependencyManagement().getDependencies().stream()
-                    .anyMatch(dependency -> ga.equals(dependency.getGroupId() + ":" + dependency.getArtifactId()));
-            if (manages) return "managed by imported BOM " + imported[0] + " at " + imported[1]
-                    + (imported[2] == null ? "" : " (" + imported[2] + ")");
+            boolean manages =
+                    model.getDependencyManagement().getDependencies().stream()
+                            .anyMatch(
+                                    dependency ->
+                                            ga.equals(
+                                                    dependency.getGroupId()
+                                                            + ":"
+                                                            + dependency.getArtifactId()));
+            if (manages)
+                return "managed by imported BOM "
+                        + imported[0]
+                        + " at "
+                        + imported[1]
+                        + (imported[2] == null ? "" : " (" + imported[2] + ")");
         }
-        return candidates.isEmpty() ? null : "managed by one of the imported BOMs " + String.join(", ", candidates);
+        return candidates.isEmpty()
+                ? null
+                : "managed by one of the imported BOMs " + String.join(", ", candidates);
     }
 
     private static List<Pom> chain(Path start) {
@@ -211,8 +294,11 @@ public final class DependencyDeclarations {
         if (value == null) return null;
         Matcher matcher = PROPERTY.matcher(value);
         StringBuilder result = new StringBuilder();
-        while (matcher.find()) matcher.appendReplacement(result,
-                Matcher.quoteReplacement(properties.getProperty(matcher.group(1), matcher.group())));
+        while (matcher.find())
+            matcher.appendReplacement(
+                    result,
+                    Matcher.quoteReplacement(
+                            properties.getProperty(matcher.group(1), matcher.group())));
         matcher.appendTail(result);
         return result.toString();
     }

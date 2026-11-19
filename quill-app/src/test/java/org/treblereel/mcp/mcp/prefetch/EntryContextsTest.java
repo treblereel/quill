@@ -19,9 +19,16 @@ class EntryContextsTest {
     @TempDir Path root;
 
     @Test
-    void callersAreTracedToHttpHandlersExpressionsNonRequestEntriesAndUncalledRoots() throws Exception {
+    void callersAreTracedToHttpHandlersExpressionsNonRequestEntriesAndUncalledRoots()
+            throws Exception {
         Jdbi db = index();
-        var lines = TestReads.read(db, reader -> EntryContexts.of(reader, reader.symbols.findClassByName("p.Target").orElseThrow()));
+        var lines =
+                TestReads.read(
+                        db,
+                        reader ->
+                                EntryContexts.of(
+                                        reader,
+                                        reader.symbols.findClassByName("p.Target").orElseThrow()));
         String text = lines.toString();
         // Facade calls Target through its interface; Web#get reaches it through Facade.
         assertTrue(text.contains("HTTP handlers: 1 (Web#get)"), text);
@@ -34,7 +41,13 @@ class EntryContextsTest {
     @Test
     void aSubclassConstructorIsNotACallerOfItsSupertype() throws Exception {
         Jdbi db = index();
-        var lines = TestReads.read(db, reader -> EntryContexts.of(reader, reader.symbols.findClassByName("p.Leaf").orElseThrow()));
+        var lines =
+                TestReads.read(
+                        db,
+                        reader ->
+                                EntryContexts.of(
+                                        reader,
+                                        reader.symbols.findClassByName("p.Leaf").orElseThrow()));
         String text = String.join("\n", lines.valueStream().map(line -> line.asText()).toList());
         assertTrue(text.contains("UsesLeaf#go") && !text.contains("Sibling#<init>"), text);
     }
@@ -46,54 +59,80 @@ class EntryContextsTest {
      */
     @Test
     void lambdasCostNoDepthAndRequestCallbacksAreRequestEntries() throws Exception {
-        Jdbi db = JavaEvidenceFixture.index(root, "package p; class Cache { void use() {} } "
-                + "class A { Cache c; void a() { Runnable r = () -> c.use(); r.run(); } } "
-                + "class B { A x; void b() { Runnable r = () -> x.a(); r.run(); } } "
-                + "class C { B x; void c() { Runnable r = () -> x.b(); r.run(); } } "
-                + "class D { C x; void d() { Runnable r = () -> x.c(); r.run(); } } "
-                + "class Mechanism { D x; void authenticate() { x.d(); } }");
-        db.useHandle(h -> {
-            h.execute("UPDATE classes SET source_set = 'main', module = 'app'");
-            h.execute("UPDATE classes SET interfaces = '[\"io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism\"]' "
-                    + "WHERE class_name = 'p.Mechanism'");
-        });
-        var lines = TestReads.read(db, reader -> EntryContexts.of(reader, reader.symbols.findClassByName("p.Cache").orElseThrow()));
+        Jdbi db =
+                JavaEvidenceFixture.index(
+                        root,
+                        "package p; class Cache { void use() {} } "
+                                + "class A { Cache c; void a() { Runnable r = () -> c.use(); r.run(); } } "
+                                + "class B { A x; void b() { Runnable r = () -> x.a(); r.run(); } } "
+                                + "class C { B x; void c() { Runnable r = () -> x.b(); r.run(); } } "
+                                + "class D { C x; void d() { Runnable r = () -> x.c(); r.run(); } } "
+                                + "class Mechanism { D x; void authenticate() { x.d(); } }");
+        db.useHandle(
+                h -> {
+                    h.execute("UPDATE classes SET source_set = 'main', module = 'app'");
+                    h.execute(
+                            "UPDATE classes SET interfaces = '[\"io.quarkus.vertx.http.runtime.security.HttpAuthenticationMechanism\"]' "
+                                    + "WHERE class_name = 'p.Mechanism'");
+                });
+        var lines =
+                TestReads.read(
+                        db,
+                        reader ->
+                                EntryContexts.of(
+                                        reader,
+                                        reader.symbols.findClassByName("p.Cache").orElseThrow()));
         String text = String.join("\n", lines.valueStream().map(line -> line.asText()).toList());
         assertTrue(text.contains("HTTP request callbacks: Mechanism#authenticate"), text);
-        assertTrue(text.contains("non-request entries: none found") && !text.contains("truncated"), text);
+        assertTrue(
+                text.contains("non-request entries: none found") && !text.contains("truncated"),
+                text);
     }
 
     @Test
     void theFieldIsComputedOnlyForQuestionsAboutScopeOrCallContext() {
-        assertTrue(QuestionFocus.fields("What changes if X moves to request scope? Check the call context outside an HTTP request.").contains("entry_contexts"));
-        assertTrue(QuestionFocus.fields("What changes if X becomes @RequestScoped?").contains("entry_contexts"));
+        assertTrue(
+                QuestionFocus.fields(
+                                "What changes if X moves to request scope? Check the call context outside an HTTP request.")
+                        .contains("entry_contexts"));
+        assertTrue(
+                QuestionFocus.fields("What changes if X becomes @RequestScoped?")
+                        .contains("entry_contexts"));
         assertTrue(!QuestionFocus.fields("Who injects X?").contains("entry_contexts"));
     }
 
     private Jdbi index() throws Exception {
-        Jdbi db = JavaEvidenceFixture.index(root, "package p; interface Check { boolean ok(); } "
-                + "class Target implements Check { public boolean ok() { return true; } } "
-                + "class Facade { Check delegate; boolean allowed() { return delegate.ok(); } } "
-                + "class Web { Facade f; String get() { return f.allowed() ? \"y\" : \"n\"; } String post() { return \"\"; } } "
-                + "class Listener { Target t; void onEvent() { t.ok(); } } "
-                + "class Orphan { Target t; void run2() { t.ok(); } } "
-                + "class Gate { Target t; boolean can() { return t.ok(); } } "
-                + "abstract class Base implements Check {} class Leaf extends Base { public boolean ok() { return false; } } "
-                + "class Sibling extends Base { Sibling() { super(); } public boolean ok() { return true; } } class UsesLeaf { Leaf l; void go() { l.ok(); } }");
-        db.useHandle(h -> {
-            h.execute("UPDATE classes SET source_set = 'main', module = 'app'");
-            h.execute("INSERT OR REPLACE INTO metadata(key, value) VALUES ('framework_endpoints_detail', ?)",
-                    "[{\"className\":\"p.Web\",\"methodName\":\"get\",\"descriptor\":\"()Ljava/lang/String;\",\"framework\":\"spring\"},"
-                            + "{\"className\":\"p.Web\",\"methodName\":\"post\",\"descriptor\":\"()Ljava/lang/String;\",\"framework\":\"spring\"}]");
-            h.execute("UPDATE class_members SET annotations = '[\"org.springframework.context.event.EventListener\"]' "
-                    + "WHERE name = 'onEvent'");
-            h.execute("UPDATE class_members SET annotations = '[\"org.springframework.security.access.prepost.PreAuthorize\"]', "
-                    + "annotation_details = ? WHERE name = 'post'",
-                    "[{\"annotationName\":\"org.springframework.security.access.prepost.PreAuthorize\",\"targetKind\":\"METHOD\","
-                            + "\"values\":{\"value\":\"@gate.can()\"}}]");
-            h.execute("INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, framework) SELECT id, 'CLASS', 'singleton', "
-                    + "'[\"@Default\",\"@Qualifier(\\\"gate\\\")\"]', '[\"p.Gate\"]', 'spring' FROM classes WHERE class_name = 'p.Gate'");
-        });
+        Jdbi db =
+                JavaEvidenceFixture.index(
+                        root,
+                        "package p; interface Check { boolean ok(); } "
+                                + "class Target implements Check { public boolean ok() { return true; } } "
+                                + "class Facade { Check delegate; boolean allowed() { return delegate.ok(); } } "
+                                + "class Web { Facade f; String get() { return f.allowed() ? \"y\" : \"n\"; } String post() { return \"\"; } } "
+                                + "class Listener { Target t; void onEvent() { t.ok(); } } "
+                                + "class Orphan { Target t; void run2() { t.ok(); } } "
+                                + "class Gate { Target t; boolean can() { return t.ok(); } } "
+                                + "abstract class Base implements Check {} class Leaf extends Base { public boolean ok() { return false; } } "
+                                + "class Sibling extends Base { Sibling() { super(); } public boolean ok() { return true; } } class UsesLeaf { Leaf l; void go() { l.ok(); } }");
+        db.useHandle(
+                h -> {
+                    h.execute("UPDATE classes SET source_set = 'main', module = 'app'");
+                    h.execute(
+                            "INSERT OR REPLACE INTO metadata(key, value) VALUES ('framework_endpoints_detail', ?)",
+                            "[{\"className\":\"p.Web\",\"methodName\":\"get\",\"descriptor\":\"()Ljava/lang/String;\",\"framework\":\"spring\"},"
+                                    + "{\"className\":\"p.Web\",\"methodName\":\"post\",\"descriptor\":\"()Ljava/lang/String;\",\"framework\":\"spring\"}]");
+                    h.execute(
+                            "UPDATE class_members SET annotations = '[\"org.springframework.context.event.EventListener\"]' "
+                                    + "WHERE name = 'onEvent'");
+                    h.execute(
+                            "UPDATE class_members SET annotations = '[\"org.springframework.security.access.prepost.PreAuthorize\"]', "
+                                    + "annotation_details = ? WHERE name = 'post'",
+                            "[{\"annotationName\":\"org.springframework.security.access.prepost.PreAuthorize\",\"targetKind\":\"METHOD\","
+                                    + "\"values\":{\"value\":\"@gate.can()\"}}]");
+                    h.execute(
+                            "INSERT INTO beans(class_id, kind, scope, qualifiers, bean_types, framework) SELECT id, 'CLASS', 'singleton', "
+                                    + "'[\"@Default\",\"@Qualifier(\\\"gate\\\")\"]', '[\"p.Gate\"]', 'spring' FROM classes WHERE class_name = 'p.Gate'");
+                });
         return db;
     }
 }

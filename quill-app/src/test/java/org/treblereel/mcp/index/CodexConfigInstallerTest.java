@@ -1,8 +1,5 @@
 package org.treblereel.mcp.index;
 
-import org.treblereel.mcp.index.CodexConfigInstaller;
-import org.treblereel.mcp.index.ProjectInitializer;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,8 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class CodexConfigInstallerTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void doesNothingWhenProjectConfigIsAbsent() {
@@ -37,53 +33,77 @@ class CodexConfigInstallerTest {
         assertTrue(content.contains("enabled = true"));
         assertTrue(content.contains("default_tools_approval_mode = \"approve\""));
         assertTrue(content.contains(CodexConfigInstaller.PROJECT_ARGS));
-        assertTrue(content.contains(
-                "cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
+        assertTrue(
+                content.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
     }
 
     @Test
     void upgradesOwnedRegistrationWithoutChangingExplicitApprovalOrGlobalPolicy() throws Exception {
-        Path config=createConfig("approval_policy = \"on-request\"\n# Added by Quill.\n[mcp_servers.\"quill\"]\ncommand = \"quill\"\nargs = [\"--mcp\"]\n");
-        assertEquals(CodexConfigInstaller.Result.REPLACED,CodexConfigInstaller.installIfPresent(tempDir,null));
-        String upgraded=Files.readString(config);
+        Path config =
+                createConfig(
+                        "approval_policy = \"on-request\"\n# Added by Quill.\n[mcp_servers.\"quill\"]\ncommand = \"quill\"\nargs = [\"--mcp\"]\n");
+        assertEquals(
+                CodexConfigInstaller.Result.REPLACED,
+                CodexConfigInstaller.installIfPresent(tempDir, null));
+        String upgraded = Files.readString(config);
         assertTrue(upgraded.startsWith("approval_policy = \"on-request\""));
         assertTrue(upgraded.contains(CodexConfigInstaller.PROJECT_ARGS));
         assertTrue(upgraded.contains("default_tools_approval_mode = \"approve\""));
-        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,CodexConfigInstaller.installIfPresent(tempDir,null));
-        Files.writeString(config,upgraded.replace("\"approve\"","\"prompt\""));
-        String restricted=Files.readString(config);
-        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,CodexConfigInstaller.installIfPresent(tempDir,null));
-        assertEquals(restricted,Files.readString(config));
+        assertEquals(
+                CodexConfigInstaller.Result.ALREADY_CONFIGURED,
+                CodexConfigInstaller.installIfPresent(tempDir, null));
+        Files.writeString(config, upgraded.replace("\"approve\"", "\"prompt\""));
+        String restricted = Files.readString(config);
+        assertEquals(
+                CodexConfigInstaller.Result.ALREADY_CONFIGURED,
+                CodexConfigInstaller.installIfPresent(tempDir, null));
+        assertEquals(restricted, Files.readString(config));
     }
 
-    // Every Quill tool only reads, so Quill's own registration approves them all instead of the earlier "writes" default.
+    // Every Quill tool only reads, so Quill's own registration approves them all instead of the
+    // earlier "writes" default.
     @Test
     void anOwnedRegistrationOnTheEarlierWritesDefaultIsUpgradedToApprove() throws Exception {
-        Path config=createConfig("# Added by Quill.\n[mcp_servers.quill]\ncommand = \"quill\"\nargs = [\"--mcp\"]\ndefault_tools_approval_mode = \"writes\"\n");
-        assertEquals(CodexConfigInstaller.Result.REPLACED,CodexConfigInstaller.installIfPresent(tempDir,null));
-        String upgraded=Files.readString(config);
-        assertTrue(upgraded.contains("default_tools_approval_mode = \"approve\""),upgraded);
-        assertFalse(upgraded.contains("\"writes\""),upgraded);
+        Path config =
+                createConfig(
+                        "# Added by Quill.\n[mcp_servers.quill]\ncommand = \"quill\"\nargs = [\"--mcp\"]\ndefault_tools_approval_mode = \"writes\"\n");
+        assertEquals(
+                CodexConfigInstaller.Result.REPLACED,
+                CodexConfigInstaller.installIfPresent(tempDir, null));
+        String upgraded = Files.readString(config);
+        assertTrue(upgraded.contains("default_tools_approval_mode = \"approve\""), upgraded);
+        assertFalse(upgraded.contains("\"writes\""), upgraded);
     }
 
     @Test
     void anOwnedWorkspaceRegistrationOnWritesIsRewrittenWithApprove() throws Exception {
-        Path config=createConfig("# Added by Quill.\n[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"writes\"\n");
-        CodexConfigInstaller.installWorkspaceIfPresent(tempDir,tempDir.resolve("workspace"),"/opt/quill");
-        assertTrue(Files.readString(config).contains("default_tools_approval_mode = \"approve\""),Files.readString(config));
+        Path config =
+                createConfig(
+                        "# Added by Quill.\n[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"writes\"\n");
+        CodexConfigInstaller.installWorkspaceIfPresent(
+                tempDir, tempDir.resolve("workspace"), "/opt/quill");
+        assertTrue(
+                Files.readString(config).contains("default_tools_approval_mode = \"approve\""),
+                Files.readString(config));
     }
 
     @Test
     void aUserRegistrationKeepsItsWritesMode() throws Exception {
-        Path config=createConfig("[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"writes\"\n");
-        CodexConfigInstaller.installWorkspaceIfPresent(tempDir,tempDir.resolve("workspace"),"/opt/quill");
+        Path config =
+                createConfig(
+                        "[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"writes\"\n");
+        CodexConfigInstaller.installWorkspaceIfPresent(
+                tempDir, tempDir.resolve("workspace"), "/opt/quill");
         assertTrue(Files.readString(config).contains("default_tools_approval_mode = \"writes\""));
     }
 
     @Test
     void workspaceRegistrationPreservesExplicitApprovalMode() throws Exception {
-        Path config=createConfig("[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"prompt\"\n");
-        CodexConfigInstaller.installWorkspaceIfPresent(tempDir,tempDir.resolve("workspace"),"/opt/quill");
+        Path config =
+                createConfig(
+                        "[mcp_servers.quill]\ncommand = \"quill\"\ndefault_tools_approval_mode = \"prompt\"\n");
+        CodexConfigInstaller.installWorkspaceIfPresent(
+                tempDir, tempDir.resolve("workspace"), "/opt/quill");
         assertTrue(Files.readString(config).contains("default_tools_approval_mode = \"prompt\""));
     }
 
@@ -91,8 +111,7 @@ class CodexConfigInstallerTest {
     void projectUninstallDeletesConfigCreatedByQuill() throws Exception {
         CodexConfigInstaller.install(tempDir, null);
 
-        assertEquals(CodexConfigInstaller.Result.REMOVED,
-                CodexConfigInstaller.uninstall(tempDir));
+        assertEquals(CodexConfigInstaller.Result.REMOVED, CodexConfigInstaller.uninstall(tempDir));
         assertFalse(Files.exists(tempDir.resolve(".codex/config.toml")));
         assertFalse(Files.exists(tempDir.resolve(".codex")));
     }
@@ -102,8 +121,7 @@ class CodexConfigInstallerTest {
         Path config = createConfig("model = \"gpt-test\"\n");
         CodexConfigInstaller.install(tempDir, null);
 
-        assertEquals(CodexConfigInstaller.Result.REMOVED,
-                CodexConfigInstaller.uninstall(tempDir));
+        assertEquals(CodexConfigInstaller.Result.REMOVED, CodexConfigInstaller.uninstall(tempDir));
         assertEquals("model = \"gpt-test\"\n", Files.readString(config));
     }
 
@@ -131,7 +149,8 @@ class CodexConfigInstallerTest {
         assertTrue(content.contains("[mcp_servers.quill]"));
         assertTrue(content.contains("command = \"C:\\\\Tools\\\\Quill Démarreur\\\\quill.exe\""));
         assertTrue(content.contains(CodexConfigInstaller.PROJECT_ARGS));
-        assertTrue(content.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
+        assertTrue(
+                content.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
     }
 
     @Test
@@ -146,14 +165,15 @@ class CodexConfigInstallerTest {
 
     @Test
     void readsConfiguredQuillCommandForDiagnostics() {
-        String content = """
+        String content =
+                """
                 [mcp_servers.quill]
                 command = "/tmp/quill launcher"
                 args = ["--mcp"]
                 """;
 
-        assertEquals("/tmp/quill launcher",
-                CodexConfigInstaller.quillCommand(content).orElseThrow());
+        assertEquals(
+                "/tmp/quill launcher", CodexConfigInstaller.quillCommand(content).orElseThrow());
     }
 
     @Test
@@ -161,21 +181,26 @@ class CodexConfigInstallerTest {
         Path replacement = Files.createFile(tempDir.resolve("quill-new"));
         assertTrue(replacement.toFile().setExecutable(true));
         String missing = tempDir.resolve("missing/quill").toAbsolutePath().toString();
-        Path config = createConfig("""
+        Path config =
+                createConfig(
+                        """
                 # Added by Quill.
                 [mcp_servers.quill]
                 command = "%s"
                 default_tools_approval_mode = "prompt"
                 args = ["--mcp"]
                 cwd = "/old"
-                """.formatted(escaped(missing)));
+                """
+                                .formatted(escaped(missing)));
 
-        assertEquals(CodexConfigInstaller.Result.REPLACED,
+        assertEquals(
+                CodexConfigInstaller.Result.REPLACED,
                 CodexConfigInstaller.installIfPresent(tempDir, replacement.toString()));
 
         String updated = Files.readString(config);
         assertTrue(updated.contains("command = \"" + escaped(replacement.toString()) + "\""));
-        assertTrue(updated.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
+        assertTrue(
+                updated.contains("cwd = \"" + escaped(tempDir.toAbsolutePath().toString()) + "\""));
         assertTrue(updated.contains("default_tools_approval_mode = \"prompt\""));
     }
 
@@ -184,14 +209,18 @@ class CodexConfigInstallerTest {
         Path replacement = Files.createFile(tempDir.resolve("quill-new"));
         assertTrue(replacement.toFile().setExecutable(true));
         String missing = tempDir.resolve("missing/quill").toAbsolutePath().toString();
-        Path config = createConfig("""
+        Path config =
+                createConfig(
+                        """
                 [mcp_servers.quill]
                 command = "%s"
                 args = ["--mcp"]
-                """.formatted(escaped(missing)));
+                """
+                                .formatted(escaped(missing)));
         String original = Files.readString(config);
 
-        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,
+        assertEquals(
+                CodexConfigInstaller.Result.ALREADY_CONFIGURED,
                 CodexConfigInstaller.installIfPresent(tempDir, replacement.toString()));
         assertEquals(original, Files.readString(config));
     }
@@ -200,18 +229,22 @@ class CodexConfigInstallerTest {
     void repeatedInstallationDoesNotModifyConfig() throws Exception {
         Path config = createConfig("approval_policy = \"never\"\n");
 
-        assertEquals(CodexConfigInstaller.Result.ADDED,
+        assertEquals(
+                CodexConfigInstaller.Result.ADDED,
                 CodexConfigInstaller.installIfPresent(tempDir, null));
         String first = Files.readString(config);
 
-        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,
+        assertEquals(
+                CodexConfigInstaller.Result.ALREADY_CONFIGURED,
                 CodexConfigInstaller.installIfPresent(tempDir, null));
         assertEquals(first, Files.readString(config));
     }
 
     @Test
     void preservesExistingQuotedQuillTable() throws Exception {
-        Path config = createConfig("""
+        Path config =
+                createConfig(
+                        """
                 [mcp_servers."quill"]
                 command = "custom-quill"
                 args = ["--mcp"]
@@ -226,7 +259,9 @@ class CodexConfigInstallerTest {
 
     @Test
     void preservesQuillEntryInParentMcpTable() throws Exception {
-        Path config = createConfig("""
+        Path config =
+                createConfig(
+                        """
                 [mcp_servers]
                 quill = { command = "custom-quill", args = ["--mcp"] }
                 """);
@@ -262,7 +297,9 @@ class CodexConfigInstallerTest {
 
     @Test
     void replacesLegacyQuillWithWorkspaceEntryAndRemovesIt() throws Exception {
-        Path config = createConfig("""
+        Path config =
+                createConfig(
+                        """
                 model = "gpt-test"
 
                 [mcp_servers.quill]
@@ -274,16 +311,17 @@ class CodexConfigInstallerTest {
                 """);
         Path workspace = tempDir.resolve("workspace");
 
-        assertEquals(CodexConfigInstaller.Result.REPLACED,
-                CodexConfigInstaller.installWorkspaceIfPresent(
-                        tempDir, workspace, "/opt/quill"));
+        assertEquals(
+                CodexConfigInstaller.Result.REPLACED,
+                CodexConfigInstaller.installWorkspaceIfPresent(tempDir, workspace, "/opt/quill"));
         String installed = Files.readString(config);
         assertFalse(installed.contains("old-quill"));
         assertTrue(installed.contains("\"--workspace\""));
         assertTrue(installed.contains(escaped(workspace.toAbsolutePath().toString())));
         assertTrue(installed.contains("[mcp_servers.other]"));
 
-        assertEquals(CodexConfigInstaller.Result.REMOVED,
+        assertEquals(
+                CodexConfigInstaller.Result.REMOVED,
                 CodexConfigInstaller.uninstallWorkspaceIfPresent(tempDir, workspace));
         String cleaned = Files.readString(config);
         assertFalse(cleaned.contains("[mcp_servers.quill]"));
@@ -295,7 +333,8 @@ class CodexConfigInstallerTest {
     void workspaceInitializationCreatesMissingCodexConfig() throws Exception {
         Path workspace = tempDir.resolve("workspace");
 
-        assertEquals(CodexConfigInstaller.Result.ADDED,
+        assertEquals(
+                CodexConfigInstaller.Result.ADDED,
                 CodexConfigInstaller.installWorkspace(tempDir, workspace, "/opt/quill"));
 
         String content = Files.readString(tempDir.resolve(".codex/config.toml"));
@@ -310,11 +349,13 @@ class CodexConfigInstallerTest {
         Path first = tempDir.resolve("first");
         CodexConfigInstaller.installWorkspaceIfPresent(tempDir, first, null);
 
-        assertEquals(CodexConfigInstaller.Result.ALREADY_CONFIGURED,
+        assertEquals(
+                CodexConfigInstaller.Result.ALREADY_CONFIGURED,
                 CodexConfigInstaller.uninstallWorkspaceIfPresent(
                         tempDir, tempDir.resolve("second")));
-        assertTrue(Files.readString(tempDir.resolve(".codex/config.toml"))
-                .contains("# Added by Quill for workspace "));
+        assertTrue(
+                Files.readString(tempDir.resolve(".codex/config.toml"))
+                        .contains("# Added by Quill for workspace "));
     }
 
     private Path createConfig(String content) throws Exception {

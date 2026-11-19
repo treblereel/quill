@@ -30,8 +30,7 @@ public final class ExternalBeanScanner {
 
     private static final String CONFIG_PROPERTY =
             "org.eclipse.microprofile.config.inject.ConfigProperty";
-    private static final String SPRING_VALUE =
-            "org.springframework.beans.factory.annotation.Value";
+    private static final String SPRING_VALUE = "org.springframework.beans.factory.annotation.Value";
 
     private ExternalBeanScanner() {}
 
@@ -40,12 +39,13 @@ public final class ExternalBeanScanner {
 
         List<FrameworkResolution> resolutions = new ArrayList<>();
         if (SpringResolver.isSpringProject(dependencyIndex)) {
-            resolutions.add(new FrameworkResolution(
-                    "spring", SpringResolver.resolve(dependencyIndex, null)));
+            resolutions.add(
+                    new FrameworkResolution(
+                            "spring", SpringResolver.resolve(dependencyIndex, null)));
         }
         if (BeanResolver.isCdiProject(dependencyIndex)) {
-            resolutions.add(new FrameworkResolution(
-                    "cdi", BeanResolver.resolve(dependencyIndex, null)));
+            resolutions.add(
+                    new FrameworkResolution("cdi", BeanResolver.resolve(dependencyIndex, null)));
         }
         if (resolutions.isEmpty()) return List.of();
 
@@ -62,40 +62,78 @@ public final class ExternalBeanScanner {
             Map<Integer, String> classNames = reverse(resolution.result().classNameToId());
             Map<Integer, List<InjectionPointRecord>> injections = new HashMap<>();
             for (InjectionPointRecord injection : resolution.result().injectionPoints()) {
-                injections.computeIfAbsent(injection.beanId(), ignored -> new ArrayList<>())
+                injections
+                        .computeIfAbsent(injection.beanId(), ignored -> new ArrayList<>())
                         .add(injection);
             }
             for (BeanRecord bean : resolution.result().beans()) {
                 String className = classNames.get(bean.classId());
                 if (className == null) continue;
-                String key = resolution.framework() + '|' + className + '|' + bean.kind()
-                        + '|' + bean.memberName();
+                String key =
+                        resolution.framework()
+                                + '|'
+                                + className
+                                + '|'
+                                + bean.kind()
+                                + '|'
+                                + bean.memberName();
                 if (!seen.add(key)) continue;
                 Path jar = origins.get(className);
-                result.add(new ExternalBeanRecord(nextId++, className, bean.kind(), bean.scope(),
-                        bean.qualifiers(), bean.stereotypes(), bean.isAlternative(),
-                        bean.isDefault(), bean.priority(), bean.profiles(), bean.memberName(),
-                        bean.beanTypes(), resolution.framework(), coordinates(jar),
-                        jar == null ? null : jar.toString(), externalInjections(
-                                dependencyIndex.getClassByName(className),
-                                injections.getOrDefault(bean.id(), List.of()), dependencyIndex),
-                        "INTERCEPTOR".equals(bean.kind())
-                                ? interceptorBindings(dependencyIndex.getClassByName(className), dependencyIndex)
-                                : List.of()));
+                result.add(
+                        new ExternalBeanRecord(
+                                nextId++,
+                                className,
+                                bean.kind(),
+                                bean.scope(),
+                                bean.qualifiers(),
+                                bean.stereotypes(),
+                                bean.isAlternative(),
+                                bean.isDefault(),
+                                bean.priority(),
+                                bean.profiles(),
+                                bean.memberName(),
+                                bean.beanTypes(),
+                                resolution.framework(),
+                                coordinates(jar),
+                                jar == null ? null : jar.toString(),
+                                externalInjections(
+                                        dependencyIndex.getClassByName(className),
+                                        injections.getOrDefault(bean.id(), List.of()),
+                                        dependencyIndex),
+                                "INTERCEPTOR".equals(bean.kind())
+                                        ? interceptorBindings(
+                                                dependencyIndex.getClassByName(className),
+                                                dependencyIndex)
+                                        : List.of()));
             }
         }
-        result.sort(Comparator.comparing(ExternalBeanRecord::className)
-                .thenComparing(ExternalBeanRecord::framework)
-                .thenComparing(ExternalBeanRecord::kind)
-                .thenComparing(value -> String.valueOf(value.memberName())));
+        result.sort(
+                Comparator.comparing(ExternalBeanRecord::className)
+                        .thenComparing(ExternalBeanRecord::framework)
+                        .thenComparing(ExternalBeanRecord::kind)
+                        .thenComparing(value -> String.valueOf(value.memberName())));
         List<ExternalBeanRecord> numbered = new ArrayList<>(result.size());
         for (int i = 0; i < result.size(); i++) {
             ExternalBeanRecord bean = result.get(i);
-            numbered.add(new ExternalBeanRecord(i + 1, bean.className(), bean.kind(),
-                    bean.scope(), bean.qualifiers(), bean.stereotypes(), bean.alternative(),
-                    bean.defaultBean(), bean.priority(), bean.profiles(), bean.memberName(),
-                    bean.beanTypes(), bean.framework(), bean.artifact(), bean.jarPath(),
-                    bean.injectionPoints(), bean.interceptorBindings()));
+            numbered.add(
+                    new ExternalBeanRecord(
+                            i + 1,
+                            bean.className(),
+                            bean.kind(),
+                            bean.scope(),
+                            bean.qualifiers(),
+                            bean.stereotypes(),
+                            bean.alternative(),
+                            bean.defaultBean(),
+                            bean.priority(),
+                            bean.profiles(),
+                            bean.memberName(),
+                            bean.beanTypes(),
+                            bean.framework(),
+                            bean.artifact(),
+                            bean.jarPath(),
+                            bean.injectionPoints(),
+                            bean.interceptorBindings()));
         }
         return List.copyOf(numbered);
     }
@@ -110,18 +148,28 @@ public final class ExternalBeanScanner {
         List<String> bindings = new ArrayList<>();
         for (AnnotationInstance annotation : interceptor.declaredAnnotations()) {
             ClassInfo declaration = index.getClassByName(annotation.name());
-            if (declaration == null || !(declaration.hasDeclaredAnnotation(INTERCEPTOR_BINDING)
-                    || declaration.hasDeclaredAnnotation(JAVAX_INTERCEPTOR_BINDING))) continue;
+            if (declaration == null
+                    || !(declaration.hasDeclaredAnnotation(INTERCEPTOR_BINDING)
+                            || declaration.hasDeclaredAnnotation(JAVAX_INTERCEPTOR_BINDING)))
+                continue;
             List<String> members = new ArrayList<>();
             for (MethodInfo member : declaration.methods()) {
                 AnnotationValue value = annotation.value(member.name());
                 if (value == null) value = member.defaultValue();
                 if (value == null) continue;
-                boolean nonbinding = member.hasAnnotation(NONBINDING) || member.hasAnnotation(JAVAX_NONBINDING);
-                members.add(member.name() + "=" + memberValue(value) + (nonbinding ? " @Nonbinding" : ""));
+                boolean nonbinding =
+                        member.hasAnnotation(NONBINDING) || member.hasAnnotation(JAVAX_NONBINDING);
+                members.add(
+                        member.name()
+                                + "="
+                                + memberValue(value)
+                                + (nonbinding ? " @Nonbinding" : ""));
             }
             members.sort(null);
-            bindings.add("@" + annotation.name() + (members.isEmpty() ? "" : "(" + String.join(", ", members) + ")"));
+            bindings.add(
+                    "@"
+                            + annotation.name()
+                            + (members.isEmpty() ? "" : "(" + String.join(", ", members) + ")"));
         }
         bindings.sort(null);
         return List.copyOf(bindings);
@@ -132,7 +180,14 @@ public final class ExternalBeanScanner {
             case ENUM -> value.asEnum();
             case STRING -> value.asString();
             case CLASS -> value.asClass().name().toString();
-            case ARRAY -> "[" + String.join(", ", value.asArrayList().stream().map(ExternalBeanScanner::memberValue).toList()) + "]";
+            case ARRAY ->
+                    "["
+                            + String.join(
+                                    ", ",
+                                    value.asArrayList().stream()
+                                            .map(ExternalBeanScanner::memberValue)
+                                            .toList())
+                            + "]";
             case NESTED -> "@" + value.asNested().name();
             default -> String.valueOf(value.value());
         };
@@ -155,17 +210,29 @@ public final class ExternalBeanScanner {
             Collection<AnnotationInstance> annotations =
                     annotations(owner, injection, parameterCursors, index);
             Configuration configuration = configuration(annotations);
-            result.add(new ExternalInjectionPointRecord(injection.kind(), injection.targetType(),
-                    injection.qualifiers(), injection.fieldName(), annotations.stream()
-                            .map(value -> value.name().toString()).distinct().sorted().toList(),
-                    configuration.key(), configuration.defaultValue(), configuration.required()));
+            result.add(
+                    new ExternalInjectionPointRecord(
+                            injection.kind(),
+                            injection.targetType(),
+                            injection.qualifiers(),
+                            injection.fieldName(),
+                            annotations.stream()
+                                    .map(value -> value.name().toString())
+                                    .distinct()
+                                    .sorted()
+                                    .toList(),
+                            configuration.key(),
+                            configuration.defaultValue(),
+                            configuration.required()));
         }
         return List.copyOf(result);
     }
 
     private static Collection<AnnotationInstance> annotations(
-            ClassInfo owner, InjectionPointRecord injection,
-            Map<String, Integer> parameterCursors, IndexView index) {
+            ClassInfo owner,
+            InjectionPointRecord injection,
+            Map<String, Integer> parameterCursors,
+            IndexView index) {
         if (owner == null) return List.of();
         // Inherited injection points are labelled Parent.member (see InjectionHierarchy).
         String member = injection.fieldName();
@@ -174,9 +241,11 @@ public final class ExternalBeanScanner {
         if (dot > 0) {
             String parentName = member.substring(0, dot);
             member = member.substring(dot + 1);
-            declaring = InjectionHierarchy.superclasses(owner, index).stream()
-                    .filter(parent -> parent.simpleName().equals(parentName))
-                    .findFirst().orElse(null);
+            declaring =
+                    InjectionHierarchy.superclasses(owner, index).stream()
+                            .filter(parent -> parent.simpleName().equals(parentName))
+                            .findFirst()
+                            .orElse(null);
             if (declaring == null) return List.of();
         }
         if ("FIELD".equals(injection.kind())) {
@@ -189,17 +258,28 @@ public final class ExternalBeanScanner {
             if (!method.name().equals(member)) continue;
             int start = parameterCursors.getOrDefault(cursorKey, 0);
             for (int parameter = start; parameter < method.parametersCount(); parameter++) {
-                String type = method.parameterType(parameter).name() == null
-                        ? method.parameterType(parameter).toString()
-                        : method.parameterType(parameter).name().toString();
+                String type =
+                        method.parameterType(parameter).name() == null
+                                ? method.parameterType(parameter).toString()
+                                : method.parameterType(parameter).name().toString();
                 if (!type.equals(injection.targetType())) continue;
                 int selected = parameter;
-                result.addAll(method.annotations().stream().filter(annotation -> {
-                    AnnotationTarget target = annotation.target();
-                    return target != null && (target.kind() == AnnotationTarget.Kind.METHOD
-                            || (target.kind() == AnnotationTarget.Kind.METHOD_PARAMETER
-                            && target.asMethodParameter().position() == selected));
-                }).toList());
+                result.addAll(
+                        method.annotations().stream()
+                                .filter(
+                                        annotation -> {
+                                            AnnotationTarget target = annotation.target();
+                                            return target != null
+                                                    && (target.kind()
+                                                                    == AnnotationTarget.Kind.METHOD
+                                                            || (target.kind()
+                                                                            == AnnotationTarget.Kind
+                                                                                    .METHOD_PARAMETER
+                                                                    && target.asMethodParameter()
+                                                                                    .position()
+                                                                            == selected));
+                                        })
+                                .toList());
                 parameterCursors.put(cursorKey, parameter + 1);
                 return result;
             }
@@ -213,10 +293,12 @@ public final class ExternalBeanScanner {
             if (CONFIG_PROPERTY.equals(name)) {
                 String key = stringValue(annotation.value("name"));
                 String defaultValue = stringValue(annotation.value("defaultValue"));
-                boolean configuredDefault = defaultValue != null && !defaultValue.isBlank()
-                        && !defaultValue.toLowerCase().contains("unconfigureddvalue");
-                return new Configuration(key, configuredDefault ? defaultValue : null,
-                        !configuredDefault);
+                boolean configuredDefault =
+                        defaultValue != null
+                                && !defaultValue.isBlank()
+                                && !defaultValue.toLowerCase().contains("unconfigureddvalue");
+                return new Configuration(
+                        key, configuredDefault ? defaultValue : null, !configuredDefault);
             }
             if (SPRING_VALUE.equals(name)) {
                 String expression = stringValue(annotation.value());
@@ -234,7 +316,8 @@ public final class ExternalBeanScanner {
         int separator = body.indexOf(':');
         return separator < 0
                 ? new Configuration(body, null, true)
-                : new Configuration(body.substring(0, separator), body.substring(separator + 1), false);
+                : new Configuration(
+                        body.substring(0, separator), body.substring(separator + 1), false);
     }
 
     private static String stringValue(AnnotationValue value) {
@@ -265,8 +348,10 @@ public final class ExternalBeanScanner {
                 while (enumeration.hasMoreElements()) {
                     JarEntry entry = enumeration.nextElement();
                     if (!entries.contains(entry.getName())) continue;
-                    String className = entry.getName().substring(0, entry.getName().length() - 6)
-                            .replace('/', '.');
+                    String className =
+                            entry.getName()
+                                    .substring(0, entry.getName().length() - 6)
+                                    .replace('/', '.');
                     result.putIfAbsent(className, jar);
                 }
             } catch (IOException ignored) {
@@ -282,7 +367,10 @@ public final class ExternalBeanScanner {
         for (Path part : jar.toAbsolutePath().normalize()) parts.add(part.toString());
         int gradle = parts.indexOf("files-2.1");
         if (gradle >= 0 && gradle + 3 < parts.size()) {
-            return parts.get(gradle + 1) + ':' + parts.get(gradle + 2) + ':'
+            return parts.get(gradle + 1)
+                    + ':'
+                    + parts.get(gradle + 2)
+                    + ':'
                     + parts.get(gradle + 3);
         }
         int repository = parts.lastIndexOf("repository");
@@ -294,8 +382,7 @@ public final class ExternalBeanScanner {
         return jar.getFileName().toString();
     }
 
-    private record FrameworkResolution(
-            String framework, BeanResolver.ResolutionResult result) {}
+    private record FrameworkResolution(String framework, BeanResolver.ResolutionResult result) {}
 
     private record Configuration(String key, String defaultValue, boolean required) {
         private static final Configuration NONE = new Configuration(null, null, false);

@@ -9,11 +9,17 @@ import org.treblereel.mcp.diagnostics.QuillLog;
 /** Owns the reversible project configuration installed around an index generation. */
 public final class ProjectConfiguration {
 
-    public enum InstructionsState { CURRENT, MISSING, OUTDATED, INVALID }
+    public enum InstructionsState {
+        CURRENT,
+        MISSING,
+        OUTDATED,
+        INVALID
+    }
 
     private static final String CLAUDE_BLOCK_START = "<!-- quill:managed:start -->";
     private static final String CLAUDE_BLOCK_END = "<!-- quill:managed:end -->";
-    private static final String QUILL_CLAUDE_MD = """
+    private static final String QUILL_CLAUDE_MD =
+            """
             <!-- quill:managed:start -->
             <!-- quill:instructions:v10 -->
             ## Quill — Codebase Intelligence (MCP)
@@ -33,7 +39,8 @@ public final class ProjectConfiguration {
             Quill evidence does not cover it.
             <!-- quill:managed:end -->
             """;
-    private static final String QUILL_AGENTS_MD_TEMPLATE = """
+    private static final String QUILL_AGENTS_MD_TEMPLATE =
+            """
             <!-- quill:managed:start -->
             <!-- quill:instructions:v10 -->
             ## Quill MCP
@@ -61,7 +68,10 @@ public final class ProjectConfiguration {
             %s<!-- quill:managed:end -->
             """;
 
-    /** The Codex tool argument guide; the CLI supplies it, since this package does not see the tool catalog. */
+    /**
+     * The Codex tool argument guide; the CLI supplies it, since this package does not see the tool
+     * catalog.
+     */
     private static volatile java.util.function.Supplier<String> agentsToolGuide = () -> "";
 
     public static void useAgentsToolGuide(java.util.function.Supplier<String> guide) {
@@ -97,16 +107,18 @@ public final class ProjectConfiguration {
                     McpJsonInstaller.installProject(root, QuillLauncher.detect());
             if (result == McpJsonInstaller.Result.ADDED
                     || result == McpJsonInstaller.Result.REPLACED) {
-                QuillLog.info("Updated " + root.resolve(".mcp.json")
-                        + " with the Quill MCP server.");
+                QuillLog.info(
+                        "Updated " + root.resolve(".mcp.json") + " with the Quill MCP server.");
             } else if (result == McpJsonInstaller.Result.UNSUPPORTED) {
-                QuillLog.warn("could not update "
-                        + root.resolve(".mcp.json") + ": unsupported structure");
+                QuillLog.warn(
+                        "could not update "
+                                + root.resolve(".mcp.json")
+                                + ": unsupported structure");
             }
             return result;
         } catch (IOException error) {
-            QuillLog.warn("could not update "
-                    + root.resolve(".mcp.json") + ": " + error.getMessage());
+            QuillLog.warn(
+                    "could not update " + root.resolve(".mcp.json") + ": " + error.getMessage());
             return McpJsonInstaller.Result.UNSUPPORTED;
         }
     }
@@ -117,13 +129,15 @@ public final class ProjectConfiguration {
     }
 
     public static void ensureClaudeMd(Path root) {
-        ensureInstructions(root.resolve("CLAUDE.md"), QUILL_CLAUDE_MD,
+        ensureInstructions(
+                root.resolve("CLAUDE.md"),
+                QUILL_CLAUDE_MD,
                 "CLAUDE.md with Quill tool instructions");
     }
 
     public static void ensureAgentsMd(Path root) {
-        ensureInstructions(root.resolve("AGENTS.md"), agentsBlock(),
-                "AGENTS.md with Quill tool instructions");
+        ensureInstructions(
+                root.resolve("AGENTS.md"), agentsBlock(), "AGENTS.md with Quill tool instructions");
     }
 
     private static void ensureInstructions(Path file, String managedBlock, String description) {
@@ -136,15 +150,19 @@ public final class ProjectConfiguration {
             int start = content.indexOf(CLAUDE_BLOCK_START);
             int end = start < 0 ? -1 : content.indexOf(CLAUDE_BLOCK_END, start);
             if (!validMarkers(content)) {
-                QuillLog.warn("malformed Quill markers in " + file
-                        + "; repair the marker boundaries before refreshing instructions.");
+                QuillLog.warn(
+                        "malformed Quill markers in "
+                                + file
+                                + "; repair the marker boundaries before refreshing instructions.");
                 return;
             }
             String updated;
             if (start >= 0) {
                 int after = end + CLAUDE_BLOCK_END.length();
-                updated = content.substring(0, start) + managedBlock.strip()
-                        + content.substring(after);
+                updated =
+                        content.substring(0, start)
+                                + managedBlock.strip()
+                                + content.substring(after);
             } else {
                 String separator = content.isEmpty() || content.endsWith("\n") ? "" : "\n";
                 String gap = content.isEmpty() ? "" : "\n";
@@ -154,8 +172,7 @@ public final class ProjectConfiguration {
             Files.writeString(file, updated);
             QuillLog.info("Updated " + description + ".");
         } catch (IOException error) {
-            QuillLog.warn("could not update " + file + ": "
-                    + error.getMessage());
+            QuillLog.warn("could not update " + file + ": " + error.getMessage());
         }
     }
 
@@ -171,16 +188,15 @@ public final class ProjectConfiguration {
         if (!Files.isRegularFile(file)) return false;
         String content = Files.readString(file);
         if (!validMarkers(content)) {
-            QuillLog.warn("malformed Quill markers in " + file
-                    + "; instructions were preserved.");
+            QuillLog.warn("malformed Quill markers in " + file + "; instructions were preserved.");
             return false;
         }
         int start = content.indexOf(CLAUDE_BLOCK_START);
         if (start < 0) return false;
         int end = content.indexOf(CLAUDE_BLOCK_END, start);
         int after = end + CLAUDE_BLOCK_END.length();
-        String updated = (content.substring(0, start) + content.substring(after))
-                .replaceFirst("\\s+$", "");
+        String updated =
+                (content.substring(0, start) + content.substring(after)).replaceFirst("\\s+$", "");
         if (updated.isBlank()) Files.delete(file);
         else Files.writeString(file, updated + "\n");
         return true;
@@ -202,10 +218,13 @@ public final class ProjectConfiguration {
             boolean end = content.contains(CLAUDE_BLOCK_END);
             if (!start && !end) return InstructionsState.MISSING;
             if (!validMarkers(content)) return InstructionsState.INVALID;
-            String block = content.substring(content.indexOf(CLAUDE_BLOCK_START),
-                    content.indexOf(CLAUDE_BLOCK_END) + CLAUDE_BLOCK_END.length());
+            String block =
+                    content.substring(
+                            content.indexOf(CLAUDE_BLOCK_START),
+                            content.indexOf(CLAUDE_BLOCK_END) + CLAUDE_BLOCK_END.length());
             return block.replace("\r\n", "\n").equals(expected.strip())
-                    ? InstructionsState.CURRENT : InstructionsState.OUTDATED;
+                    ? InstructionsState.CURRENT
+                    : InstructionsState.OUTDATED;
         } catch (IOException error) {
             return InstructionsState.INVALID;
         }
@@ -215,7 +234,8 @@ public final class ProjectConfiguration {
         int start = content.indexOf(CLAUDE_BLOCK_START);
         int end = content.indexOf(CLAUDE_BLOCK_END);
         if (start < 0 && end < 0) return true;
-        return start >= 0 && end > start
+        return start >= 0
+                && end > start
                 && content.indexOf(CLAUDE_BLOCK_START, start + CLAUDE_BLOCK_START.length()) < 0
                 && content.indexOf(CLAUDE_BLOCK_END, end + CLAUDE_BLOCK_END.length()) < 0;
     }

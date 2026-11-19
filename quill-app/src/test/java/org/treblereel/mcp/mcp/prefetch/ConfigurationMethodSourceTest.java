@@ -19,6 +19,7 @@ class ConfigurationMethodSourceTest {
 
     /** These packets are sized for this budget; the default limit may differ. */
     private static final int LEGACY_BUDGET = 5000;
+
     @TempDir Path root;
     Jdbi db;
     final ObjectMapper json = new ObjectMapper();

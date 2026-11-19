@@ -10,8 +10,12 @@ class SymbolContractTest {
 
     @Test
     void roundTripsJvmIdentityWithoutLosingUnicodeOrSpecialCharacters() {
-        String id = SymbolContract.id("org.acme.Café$Companion", "METHOD",
-                "`when`:impl", "(Ljava/lang/String;[Lmodèle;)Ljava/lang/Object;");
+        String id =
+                SymbolContract.id(
+                        "org.acme.Café$Companion",
+                        "METHOD",
+                        "`when`:impl",
+                        "(Ljava/lang/String;[Lmodèle;)Ljava/lang/Object;");
 
         SymbolContract.Reference reference = SymbolContract.parse(id).orElseThrow();
 
@@ -31,11 +35,10 @@ class SymbolContractTest {
 
     @Test
     void rejectsUnsupportedVersionsExplicitly() {
-        for (String id : new String[] {
-                "quill:symbol:v1:anything", "quill:symbol:v4:anything"}) {
-            SymbolContract.ParseException error = assertThrows(
-                    SymbolContract.ParseException.class,
-                    () -> SymbolContract.parse(id));
+        for (String id : new String[] {"quill:symbol:v1:anything", "quill:symbol:v4:anything"}) {
+            SymbolContract.ParseException error =
+                    assertThrows(
+                            SymbolContract.ParseException.class, () -> SymbolContract.parse(id));
             assertEquals("UNSUPPORTED_SYMBOL_ID_VERSION", error.errorCode());
             assertEquals("Unsupported symbol_id version", error.getMessage());
         }
@@ -58,28 +61,37 @@ class SymbolContractTest {
 
     @Test
     void acceptsTypeIdentityWithoutDescriptor() {
-        SymbolContract.Reference reference = SymbolContract.parse(
-                SymbolContract.id("org.acme.Type", "CLASS", "org.acme.Type", ""))
-                .orElseThrow();
+        SymbolContract.Reference reference =
+                SymbolContract.parse(
+                                SymbolContract.id("org.acme.Type", "CLASS", "org.acme.Type", ""))
+                        .orElseThrow();
 
         assertEquals("CLASS", reference.kind());
         assertEquals("", reference.descriptor());
     }
 
     private static void assertMalformed(String id) {
-        SymbolContract.ParseException error = assertThrows(SymbolContract.ParseException.class,
-                () -> SymbolContract.parse(id));
+        SymbolContract.ParseException error =
+                assertThrows(SymbolContract.ParseException.class, () -> SymbolContract.parse(id));
         assertEquals("MALFORMED_SYMBOL_ID", error.errorCode());
         assertEquals("Malformed symbol_id", error.getMessage());
     }
 
     private static String rawId(String className, String kind, String name, String descriptor) {
-        return "quill:symbol:v2:" + encode(className) + ":" + kind + ":"
-                + encode(name) + ":" + encode(descriptor) + ":";
+        return "quill:symbol:v2:"
+                + encode(className)
+                + ":"
+                + kind
+                + ":"
+                + encode(name)
+                + ":"
+                + encode(descriptor)
+                + ":";
     }
 
     private static String encode(String value) {
-        return Base64.getUrlEncoder().withoutPadding()
+        return Base64.getUrlEncoder()
+                .withoutPadding()
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 }

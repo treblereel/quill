@@ -49,7 +49,55 @@ final class QualifierOrigin {
             String members = memberBinding(db, type);
             if (members != null) lines.add("@" + type + " members: " + members);
         }
+        typeMatches(point, lines);
         return lines;
+    }
+
+    /**
+     * CDI compares a qualifier's annotation type before its members. For each qualifier the point
+     * declares by a qualified name, which traced candidates carry the same type, and which carry a
+     * different type of the same simple name, the one mistake a simple-name reading cannot catch.
+     */
+    private static void typeMatches(JsonNode point, List<String> lines) {
+        JsonNode candidates = point.path("resolution_trace").path("candidates");
+        if (!candidates.isArray() || candidates.isEmpty()) return;
+        Set<String> types = new LinkedHashSet<>();
+        for (JsonNode qualifier : point.path("qualifiers")) {
+            String type = typeOf(qualifier.asText());
+            if (type.contains(".")) types.add(type);
+        }
+        for (String type : types) {
+            String simple = type.substring(type.lastIndexOf('.') + 1);
+            List<String> same = new ArrayList<>();
+            List<String> other = new ArrayList<>();
+            for (JsonNode candidate : candidates) {
+                String label =
+                        candidate.path("class").asText()
+                                + (candidate.hasNonNull("member")
+                                        ? "#" + candidate.path("member").asText()
+                                        : "");
+                String lookalike = null;
+                boolean match = false;
+                for (JsonNode qualifier : candidate.path("qualifiers")) {
+                    String candidateType = typeOf(qualifier.asText());
+                    if (candidateType.equals(type)) match = true;
+                    else if (candidateType.endsWith("." + simple)) lookalike = candidateType;
+                }
+                if (match) same.add(label);
+                else if (lookalike != null) other.add(label + " (@" + lookalike + ")");
+            }
+            lines.add("@" + type + " type: the same fully qualified annotation type on "
+                    + same.size() + " of " + candidates.size() + " candidates"
+                    + (same.isEmpty() ? "" : " (" + String.join(", ", same) + ")")
+                    + (other.isEmpty()
+                            ? ""
+                            : "; another type with the same simple name does not match: "
+                                    + String.join(", ", other)));
+        }
+    }
+
+    private static String typeOf(String qualifier) {
+        return qualifier.replaceFirst("^@", "").replaceFirst("\\(.*", "");
     }
 
     private static final String NONBINDING = "jakarta.enterprise.util.Nonbinding";

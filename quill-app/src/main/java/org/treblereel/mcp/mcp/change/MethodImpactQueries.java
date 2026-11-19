@@ -120,7 +120,8 @@ public final class MethodImpactQueries {
                         CallerResultUse.describe(
                                 text,
                                 usage.path("evidence_lines").path(0).asInt(),
-                                refs.path("name").asText());
+                                refs.path("name").asText(),
+                                CallerResultUse.returnType(refs.path("signature").asText(null)));
                 if (use != null) {
                     row.put("result_use", use);
                     resultUses++;

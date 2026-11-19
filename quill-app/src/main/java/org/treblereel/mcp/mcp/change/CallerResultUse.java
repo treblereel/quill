@@ -22,8 +22,16 @@ final class CallerResultUse {
     private CallerResultUse() {
     }
 
-    /** {@code line N: statement[; then var.call() (line M), ...]}, or null when the line is out of range. */
     static String describe(List<String> lines, int line, String method) {
+        return describe(lines, line, method, null);
+    }
+
+    /**
+     * {@code line N: statement[ var is Type;][ then var.call() (line M), ...]}, or null when the line is
+     * out of range. The returned type is named once the result is assigned: the uses that follow are
+     * calls on that type, the part of a caller a return type change breaks.
+     */
+    static String describe(List<String> lines, int line, String method, String returnType) {
         if (line < 1 || line > lines.size()) return null;
         StringBuilder statement = new StringBuilder();
         int last = line;
@@ -64,11 +72,23 @@ final class CallerResultUse {
             }
             if (depth < 0) break;
         }
+        if (returnType != null && !returnType.isBlank())
+            text += " " + tracked.get(0) + " is " + returnType + ";";
         if (uses.isEmpty()) return text;
         List<String> listed = new ArrayList<>();
         uses.forEach((use, at) -> listed.add(use + " (line" + (at.size() > 1 ? "s " : " ")
                 + String.join(", ", at.stream().map(String::valueOf).toList()) + ")"
                 + (aliases.containsKey(use) ? " as " + aliases.get(use) : "")));
         return text + " then " + String.join(", ", listed);
+    }
+
+    /** {@code resolve(java.lang.String):java.util.Optional<p.Mapper$Verb>} to {@code Optional<Verb>}. */
+    static String returnType(String signature) {
+        if (signature == null) return null;
+        int close = signature.lastIndexOf("):");
+        if (close < 0) return null;
+        String type = signature.substring(close + 2).strip();
+        if (type.isEmpty() || type.equals("void")) return null;
+        return type.replaceAll("(?:[\\p{L}_$][\\p{L}\\p{N}_]*[.$])+([\\p{L}_][\\p{L}\\p{N}_]*)", "$1");
     }
 }

@@ -138,12 +138,25 @@ def start(suite, name):
 
 # ---------------------------------------------------------------------------------------------- summaries
 
+# gpt-6.1-sol API list prices in USD per 1M tokens as of 2026-11 (input, cached input, output). An
+# estimate only: the benchmark runs on a Codex subscription, and requests over 272k input tokens,
+# priced higher, do not occur here. Codex inputTokens includes the cached part and outputTokens the
+# reasoning tokens.
+CODEX_PRICE = (2.00, 0.10, 10.00)
+
+
+def codex_cost(u):
+    full, cached, output = CODEX_PRICE
+    cache = u.get('cachedInputTokens', 0)
+    return ((u.get('inputTokens', 0) - cache) * full + cache * cached + u.get('outputTokens', 0) * output) / 1e6
+
+
 def usage(session_dir):
     s = json.loads((session_dir / 'session.json').read_text())
     if 'usage' in s:  # codex
         u = s['usage']
         return {'input': u.get('inputTokens', 0), 'cached': u.get('cachedInputTokens', 0),
-                'output': u.get('outputTokens', 0), 'cost': None}
+                'output': u.get('outputTokens', 0), 'cost': codex_cost(u)}
     u = next(iter(s.get('cumulative_model_usage', {}).values()), {})  # claude
     return {'input': u.get('inputTokens', 0) + u.get('cacheReadInputTokens', 0) + u.get('cacheCreationInputTokens', 0),
             'cached': u.get('cacheReadInputTokens', 0), 'output': u.get('outputTokens', 0),

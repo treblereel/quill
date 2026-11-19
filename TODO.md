@@ -8,6 +8,38 @@
 
 - [ ] После завершения интеграции измерить эффективность всего набора на независимых эталонах; платные прогоны ожидают отдельной команды пользователя.
 - [ ] Проверить доставку hook-контекста установленными CLI в сырых модельных запросах; сейчас проверены локальные stdin/stdout, конфигурация и жизненный цикл cache.
+
+## Gaps from the English runs of 2026-11-18 (Apollo and Cryostat full/base-20261118)
+
+Every miss below had the fact in the packet or in Quill results; the answer left it out.
+
+- [ ] Apollo AQ-009 (Claude: +++ without Quill, --- with it): `injects` lines carry no injection
+  mechanism (`FIELD ConfigPublishEmailBuilder.appNamespaceService: ... [RESOLVED]`), so Claude answers
+  from the packet without `@Autowired`. Add the mechanism (`@Autowired`, `@Inject`, `@Resource`,
+  constructor parameter) to the line; check first that the index keeps the injection annotation.
+- [ ] Apollo AQ-049 costs more with Quill: Claude 631k vs 396k input, Codex 466k vs 318k. Patch case in
+  a disposable checkout; find what the agent does with Quill there.
+- [ ] Apollo: Codex with Quill costs more than without on 15 of 44 cases (AQ-040, AQ-026, AQ-028,
+  AQ-036, AQ-043: +30-50k each); Codex saves 10% on Apollo against 43% on Cryostat.
+- [ ] Cryostat CQ-041 (Claude r2, r3, no Quill calls): the blast-radius answer omits that `resolve`
+  returns `Optional`, which the packet states 7 times.
+- [ ] Cryostat CQ-027 (Claude r2, no Quill calls): the answer omits the `readValue` call the packet lists.
+- [x] Cryostat CQ-044 (both clients): answers add a new producer class instead of the existing
+  `Producers`, which the packet names. 5c7e5e74 adds `application_producer_hosts_basis`;
+  cq044b-20261118: Claude 3/3 (was 2/3), Codex 2/3 (was 1/3, and 0/2 on agents10).
+- [x] Chronic in every arm, question or rubric rather than Quill: CQ-045 (`SsarClientCacheTest`
+  not named), CQ-049 (`resolve` not named although the changed lines are inside it). Rubric: CQ-045
+  drops the test point the question never asks for; CQ-049 accepts "all three call sites".
+- [ ] Apollo AQ-018 Codex (`repositories`), chronic in every arm.
+- [ ] CQ-049: Claude applies the rename in the benchmark checkout in all 6 sessions although the
+  question requires a disposable checkout; Codex always uses one. The rubric does not score it.
+- [ ] Re-queries of a prefetched target: 23% of Codex and 33% of Claude Quill calls. Measure any change
+  to the instructions sentence alone (see 7f5071b6).
+- [ ] Codex answers with Quill got shorter (median 2036 -> 1851 chars) and drop names they had.
+- [x] CQ-012 (Codex 0/3 with and without Quill): answers wrote `@Identifier(...)` instead of
+  `io.smallrye.common.annotation.Identifier`. 34d7e7f2 states the qualifier type match by FQCN;
+  cq012-20261118: Codex 3/3 at 16k input (was 0/3 at 34-53k), Claude 3/3 (was 2/3).
+
 ## Сравнимость прогонов Apollo и Cryostat (2026-11-15)
 
 Оба набора запускаются через `benchmarks/bench.py` в одну раскладку, но протокол пока разный, поэтому
